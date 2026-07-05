@@ -1,0 +1,66 @@
+# https://mise.jdx.dev
+# AgentOps reference agent — Go track tasks.
+
+[tools]
+go = "1.26"
+
+# Secrets/model come from the global .env at the repo root (loaded by the root mise.toml).
+
+[tasks.install]
+alias = "i"
+description = "Resolve and tidy module dependencies"
+run = "go mod tidy"
+
+[tasks.format]
+alias = "f"
+description = "Format Go source and imports"
+run = "mise run format:go ${@:-.}"
+
+[tasks."format:go"]
+description = "Run goimports and gofumpt"
+run = [
+  "go tool goimports -w ${@:-.}",
+  "go tool gofumpt -w ${@:-.}",
+]
+
+[tasks.check]
+alias = "c"
+description = "Build, lint, and vuln-check in parallel"
+depends = ["check:build", "check:lint", "check:vuln"]
+
+[tasks."check:build"]
+alias = "cb"
+description = "Compile all packages"
+run = "go build ./..."
+
+[tasks."check:lint"]
+alias = "cl"
+description = "Run golangci-lint"
+run = "go tool golangci-lint run ${@:-./...}"
+
+[tasks."check:vuln"]
+alias = "cv"
+description = "Run govulncheck"
+run = "go tool govulncheck ${@:-./...}"
+
+[tasks.test]
+alias = "t"
+description = "Run tests with gotestsum"
+# -coverpkg=./... attributes coverage to the internal packages the external `tests/`
+# package exercises; without it Go credits only the (empty) test package and reports ~0%.
+run = "go tool gotestsum --format pkgname -- -coverpkg=./... -coverprofile=coverage.out ${@:-./...}"
+
+[tasks.build]
+alias = "b"
+description = "Compile the agent binary"
+run = "go build -o bin/agent ./cmd/agent"
+
+[tasks.run]
+alias = "r"
+description = "Run the agent (needs a provider key in .env); e.g. `mise run run -- web webui`"
+run = "go run ./cmd/agent ${@}"
+
+[tasks.clean]
+alias = "n"
+description = "Remove build artifacts"
+run = "rm -rf bin/ coverage.out"

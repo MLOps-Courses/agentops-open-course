@@ -1,0 +1,86 @@
+{
+  "eval_set_id": "ops_copilot_core",
+  "name": "Ops Copilot core behaviors",
+  "description": "Deterministic tool-trajectory checks over the bundled dataset (Ch. 4.4).",
+  "eval_cases": [
+    {
+      "eval_id": "inventory-status",
+      "conversation": [
+        {
+          "invocation_id": "inv-inventory-status",
+          "user_content": {
+            "role": "user",
+            "parts": [{ "text": "What is the status of the inventory service?" }]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [{ "text": "The inventory service is currently down." }]
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              { "name": "get_service_status", "args": { "name": "inventory" } }
+            ],
+            "intermediate_responses": []
+          },
+          "creation_timestamp": 0.0
+        }
+      ],
+      "session_input": { "app_name": "agentops_agent", "user_id": "eval", "state": {} },
+      "creation_timestamp": 0.0
+    },
+    {
+      "eval_id": "incident-detail",
+      "conversation": [
+        {
+          "invocation_id": "inv-incident-detail",
+          "user_content": {
+            "role": "user",
+            "parts": [{ "text": "Give me the details of incident INC-001." }]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [{ "text": "INC-001 is a SEV2 checkout latency spike, currently investigating." }]
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              { "name": "get_incident", "args": { "incident_id": "INC-001" } }
+            ],
+            "intermediate_responses": []
+          },
+          "creation_timestamp": 0.0
+        }
+      ],
+      "session_input": { "app_name": "agentops_agent", "user_id": "eval", "state": {} },
+      "creation_timestamp": 0.0
+    },
+    {
+      "eval_id": "recommend-fix",
+      "conversation": [
+        {
+          "invocation_id": "inv-recommend-fix",
+          "user_content": {
+            "role": "user",
+            "parts": [{ "text": "How should I fix INC-002? Cite the runbook." }]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              { "text": "Follow the service-down runbook: check the pods, roll back a bad release, then restart." }
+            ]
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              { "name": "get_incident", "args": { "incident_id": "INC-002" } },
+              { "name": "get_runbook", "args": { "slug": "service-down" } }
+            ],
+            "intermediate_responses": []
+          },
+          "creation_timestamp": 0.0
+        }
+      ],
+      "session_input": { "app_name": "agentops_agent", "user_id": "eval", "state": {} },
+      "creation_timestamp": 0.0
+    }
+  ],
+  "creation_timestamp": 0.0
+}

@@ -1,0 +1,8 @@
+# Trivy ignore list — accepted, documented risks (re-evaluate periodically).
+#
+# CVE-2026-54293 — nltk path traversal in nltk.data.load().
+# Mirrors the pip-audit suppression of PYSEC-2026-597 (agents/python/mise.toml).
+# nltk is a DEV-ONLY transitive of rouge-score via google-adk[eval] (the extras that
+# power `adk eval`, Ch. 4.4). It is never imported by the agent runtime, and upstream
+# has no fixed release yet. Drop this entry once nltk ships a fix.
+CVE-2026-54293

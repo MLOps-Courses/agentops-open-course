@@ -1,0 +1,6 @@
+/* Custom styles for the AgentOps Open Course. */
+
+iframe.youtube {
+    display: block;
+    margin: 0 auto;
+}

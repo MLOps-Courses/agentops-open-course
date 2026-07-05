@@ -1,0 +1,78 @@
+# https://mise.jdx.dev
+# AgentOps reference agent — Python track tasks.
+# Secrets/model come from the global .env at the repo root (loaded by the root mise.toml).
+
+[tasks.install]
+alias = "i"
+description = "Install development dependencies"
+run = "uv sync"
+
+[tasks.format]
+alias = "f"
+description = "Format Python source and imports"
+run = "mise run format:python ${@:-.}"
+
+[tasks."format:python"]
+description = "Sort imports and format with Ruff"
+run = "uv run ruff check --select=I --fix --force-exclude ${@:-.} && uv run ruff format --force-exclude ${@:-.}"
+
+[tasks.check]
+alias = "c"
+description = "Run code checks in parallel"
+depends = ["check:format", "check:lint", "check:types", "check:audit"]
+
+[tasks."check:format"]
+alias = "cf"
+description = "Check formatting and configuration"
+run = [
+  "uv run validate-pyproject pyproject.toml",
+  "uv run ruff format --check .",
+  "uv lock --check",
+]
+
+[tasks."check:lint"]
+alias = "cl"
+description = "Run the Ruff linter"
+run = "uv run ruff check --force-exclude ${@:-.}"
+
+[tasks."check:types"]
+alias = "ct"
+description = "Run the ty type checker"
+run = "uv run ty check"
+
+[tasks."check:audit"]
+alias = "ca"
+description = "Audit dependencies for known vulnerabilities"
+# PYSEC-2026-597: path traversal in nltk.data.load(). nltk is a dev-only transitive of
+# rouge-score (pulled by google-adk[eval] for `adk eval`); it is never imported by the agent
+# runtime and receives no attacker-controlled resource names. No fixed release exists yet —
+# revisit when one ships. Documented, specific ignore (not a blanket suppression).
+run = "uv run pip-audit --ignore-vuln PYSEC-2026-597"
+
+[tasks.test]
+alias = "t"
+description = "Run the test suite with pytest"
+run = "uv run pytest \"$@\""
+
+[tasks.eval]
+alias = "e"
+description = "Run the ADK eval sets over the fixed dataset (Ch. 4.4; needs a provider key)"
+run = "uv run adk eval src/agent evals/ops.evalset.json --config_file_path evals/test_config.json"
+
+[tasks.mcp]
+description = "Run the Ops Copilot MCP server over stdio (Ch. 3.3)"
+run = "uv run python -m agent.mcp_server"
+
+[tasks.web]
+description = "Run the ADK developer web UI (needs a provider key in .env)"
+run = "uv run adk web src"
+
+[tasks.run]
+alias = "r"
+description = "Run the agent in the terminal (needs a provider key in .env)"
+run = "uv run adk run src/agent"
+
+[tasks.clean]
+alias = "n"
+description = "Remove caches and build artifacts"
+run = "rm -rf .pytest_cache .ruff_cache .ty_cache .coverage htmlcov dist"

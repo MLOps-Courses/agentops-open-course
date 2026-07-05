@@ -1,0 +1,23 @@
+# Traefik ingress (k3d) — routes http://agentops.localhost:8080 to the agent (Chapter 6.5).
+# kagent provisions the Deployment/Service from the Agent CR; this exposes it on a *.localhost host.
+# The Service kagent generates is named after the Agent (agentops-agent) and exposes the
+# A2A port 8080 as a port named "http" — verified in kagent's manifest builder
+# (go/core/internal/controller/translator/agent/manifest_builder.go: objectMeta uses the
+# agent name; ServicePort{Name: "http", Port: 8080}).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: agentops-agent
+  namespace: agentops
+spec:
+  rules:
+    - host: agentops.localhost
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: agentops-agent
+                port:
+                  number: 8080

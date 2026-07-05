@@ -1,0 +1,95 @@
+# yaml-language-server: $schema=https://agentgateway.dev/schema/config
+#
+# agentgateway v1.3.1 (AAIF) — run locally from this infra/ directory:
+#   agentgateway -f agentgateway/config.yaml      # admin UI on :15000
+#
+# ACTIVE config (Chapter 5.2 — MCP Gateway): front the Ops Copilot MCP server.
+# The gateway launches the Python `agent.mcp_server` over stdio and re-exposes its
+# tools as one secured HTTP endpoint (streamable HTTP under /mcp, SSE under /sse) —
+# the agents repoint their MCP transport here with no code change.
+#
+# The Ch. 5.3 (A2A), 5.4 (Model) and 5.5 (Security) blocks are kept as clearly
+# commented additions so the ACTIVE config stays minimal and valid. Uncomment and
+# adapt them as each chapter introduces the capability.
+binds:
+  - port: 3000
+    listeners:
+      - routes:
+          - policies:
+              cors:
+                allowOrigins: ["*"]
+                allowHeaders:
+                  - mcp-protocol-version
+                  - content-type
+                  - cache-control
+                  - mcp-session-id
+                exposeHeaders:
+                  - Mcp-Session-Id
+            backends:
+              # The Python MCP server (Ch. 3.3), launched over stdio. agentgateway has
+              # no working-dir field, so `uv --directory` runs it from agents/python
+              # (paths are relative to where the gateway binary runs — this infra/ dir).
+              - mcp:
+                  targets:
+                    - name: ops-copilot
+                      stdio:
+                        cmd: uv
+                        args: [run, --directory, ../agents/python, python, -m, agent.mcp_server]
+                    # Multiplex more MCP servers by adding targets, e.g.:
+                    # - name: time
+                    #   stdio:
+                    #     cmd: uvx
+                    #     args: [mcp-server-time]
+
+# --- Chapter 5.3 — Agent Gateway (A2A) ---------------------------------------
+# A2A is a route POLICY (`a2a: {}`), not a backend: it marks a route as A2A traffic
+# and forwards to the agent's own A2A server (the BYO container serves it on :8080).
+# Add this as another route under the listener above:
+#
+#      - policies:
+#          a2a: {}
+#          cors:
+#            allowOrigins: ["*"]
+#            allowHeaders: [content-type, cache-control]
+#        backends:
+#          - host: localhost:8080
+
+# --- Chapter 5.4 — Model Gateway (reach any provider, incl. local Ollama) -----
+# An `ai` backend proxies LLM calls, so you switch providers by pointing the agent's
+# model base URL at this route — no SDK change. Ollama exposes an OpenAI-compatible
+# API at http://localhost:11434/v1, so use the openAI provider and override the host.
+# (For plain-HTTP Ollama, add a `policies.backendTLS` opt-out; drop hostOverride to
+# reach api.openai.com directly.) Add as its own listener/route:
+#
+#      - ai:
+#          name: ollama
+#          hostOverride: localhost:11434
+#          pathOverride: /v1/chat/completions
+#          provider:
+#            openAI:
+#              model: llama3.2
+
+# --- Chapter 5.5 — Secure Gateway (rate limit + prompt guard) -----------------
+# Attach security policies to a route. `localRateLimit` caps request rate on any
+# route; `mcpAuthorization` gates individual MCP tool calls (CEL rules); the
+# `ai.promptGuard` block rejects PII in prompts/responses on `ai` backends:
+#
+#        policies:
+#          localRateLimit:
+#            - maxTokens: 60
+#              tokensPerFill: 60
+#              fillInterval: 60s
+#          mcpAuthorization:
+#            rules:
+#              # only these MCP tools reach this caller; the gateway filters the rest of
+#              # the read-only tool list out and denies them. (The state-changing actions
+#              # are never exposed over MCP — they stay in-process and HITL-guarded, 4.5.)
+#              - 'mcp.tool.name == "list_incidents"'
+#              - 'mcp.tool.name == "get_service_status"'
+#          ai:
+#            promptGuard:
+#              request:
+#                - regex:
+#                    action: reject
+#                    rules:
+#                      - builtin: email      # built-in PII detector; or `pattern: SSN` for a regex

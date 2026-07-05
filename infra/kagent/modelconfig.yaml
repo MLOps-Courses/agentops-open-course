@@ -1,0 +1,20 @@
+# kagent v0.10.0-beta3 (CNCF) — ModelConfig (Chapter 6.3).
+# Declares native Gemini for kagent, keyed off the shared kagent-gemini Secret. Create it first, e.g.:
+#   kubectl -n agentops create secret generic kagent-gemini --from-literal=GOOGLE_API_KEY=$GOOGLE_API_KEY
+# NOTE: a `type: BYO` Agent (agent.yaml) does NOT consume a ModelConfig — its model comes from the
+# image (the gemini-3.5-flash default + GOOGLE_API_KEY env). This ModelConfig is what kagent's UI and
+# *declarative* agents use, and it documents the shared secret; the only real coupling to the BYO agent
+# is that same kagent-gemini Secret. See docs 6.3.
+# Fields verified against go/api/config/crd/bases/kagent.dev_modelconfigs.yaml v1alpha2
+# (required: model; provider enum includes Gemini; the v1alpha2 secret field is `apiKeySecret`,
+# NOT the v1alpha1 `apiKeySecretRef` — a CEL rule rejects apiKeySecretKey without apiKeySecret).
+apiVersion: kagent.dev/v1alpha2
+kind: ModelConfig
+metadata:
+  name: gemini
+  namespace: agentops
+spec:
+  provider: Gemini
+  model: gemini-3.5-flash # pin an explicit version (not a -latest alias), matching the agent's default
+  apiKeySecret: kagent-gemini
+  apiKeySecretKey: GOOGLE_API_KEY

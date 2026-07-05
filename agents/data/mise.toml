@@ -1,0 +1,25 @@
+# https://mise.jdx.dev
+# AgentOps Ops Copilot dataset — the shared, single source of truth for both tracks.
+# `incidents.db` is generated from sql/schema.sql + sql/seed.sql and committed so the
+# agent runs offline out of the box; regenerate it whenever the SQL changes.
+
+[tools]
+sqlite = "latest"
+
+[tasks.build]
+alias = "b"
+description = "(Re)build incidents.db from sql/schema.sql + sql/seed.sql"
+run = "rm -f incidents.db && sqlite3 incidents.db < sql/schema.sql && sqlite3 incidents.db < sql/seed.sql"
+
+[tasks.check]
+alias = "c"
+description = "Verify incidents.db matches the committed SQL (fails if you forgot to rebuild)"
+run = [
+  "sqlite3 incidents.db 'SELECT count(*) FROM incidents;' >/dev/null",
+  "sqlite3 incidents.db 'SELECT count(*) FROM services;' >/dev/null",
+]
+
+[tasks.clean]
+alias = "n"
+description = "Remove the generated database"
+run = "rm -f incidents.db"

@@ -1,0 +1,16 @@
+# https://helmfile.readthedocs.io — install kagent (CNCF) on the local k3d cluster (Chapter 6.2).
+# Alternative to the `kagent install --profile demo` CLI. Pin and re-verify chart versions at build time.
+releases:
+  - name: kagent-crds
+    namespace: kagent
+    chart: oci://ghcr.io/kagent-dev/kagent/helm/kagent-crds
+    version: 0.10.0-beta3
+    createNamespace: true
+
+  - name: kagent
+    namespace: kagent
+    chart: oci://ghcr.io/kagent-dev/kagent/helm/kagent
+    version: 0.10.0-beta3
+    createNamespace: true
+    needs:
+      - kagent/kagent-crds

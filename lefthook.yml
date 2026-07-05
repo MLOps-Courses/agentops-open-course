@@ -1,0 +1,31 @@
+# https://lefthook.dev
+# Thin hooks: every command delegates to a `mise run` task so local hooks and CI stay identical.
+# lefthook, dprint, actionlint, and gitleaks are provided on PATH by mise (see mise.toml [tools]).
+pre-commit:
+  parallel: false # formatters must restage before check reads the files
+  commands:
+    format-dprint:
+      glob: "*.{json,md,toml,yaml,yml}"
+      run: dprint fmt {staged_files}
+      stage_fixed: true
+    format-python:
+      root: agents/python/
+      glob: "*.py"
+      run: mise run format:python {staged_files}
+      stage_fixed: true
+    format-go:
+      root: agents/go/
+      glob: "*.go"
+      run: mise run format:go {staged_files}
+      stage_fixed: true
+    check:
+      run: mise run check
+    actionlint:
+      glob: ".github/workflows/*.{yml,yaml}"
+      run: actionlint {staged_files}
+    secrets:
+      run: gitleaks git --staged --verbose
+pre-push:
+  commands:
+    test:
+      run: mise run test

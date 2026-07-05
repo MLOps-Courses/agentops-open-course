@@ -1,0 +1,78 @@
+# https://mise.jdx.dev
+# Root orchestrator: builds the docs (Zensical) and fans out to the two agent tracks
+# (agents/python, agents/go), each a self-contained project with its own mise.toml.
+# Git hooks (lefthook.yml) and CI (.github/workflows) call these same tasks.
+
+[tools]
+uv = "latest"
+dprint = "latest"
+go = "1.26"
+lefthook = "latest"
+gitleaks = "latest"
+actionlint = "latest"
+
+[settings.task]
+run_auto_install = false # fail fast in hooks instead of silently installing a missing tool
+
+[[env]]
+_.file = ".env" # load the global .env (GOOGLE_API_KEY, AGENT_MODEL) for every task, repo-wide
+
+[tasks.install]
+alias = "i"
+description = "Install docs deps, git hooks, and both agent tracks"
+run = [
+  "uv sync",
+  "lefthook install",
+  "cd agents/python && mise run install",
+  "cd agents/go && mise run install",
+]
+
+[tasks.serve]
+alias = "s"
+description = "Serve the documentation locally with live reload (Zensical)"
+run = "uv run zensical serve"
+
+[tasks.build]
+alias = "b"
+description = "Build the static documentation site (Zensical → site/)"
+run = "uv run zensical build"
+
+[tasks.deploy]
+description = "Build the site for release (GitHub Pages publishes it in CI)"
+run = "uv run zensical build"
+
+[tasks.format]
+alias = "f"
+description = "Format docs, config, and both agent tracks"
+run = [
+  "dprint fmt ${@:-.}",
+  "cd agents/python && mise run format:python .",
+  "cd agents/go && mise run format:go .",
+]
+
+[tasks.check]
+alias = "c"
+description = "Check formatting, docs build, and both agent tracks"
+run = [
+  "dprint check",
+  "uv run zensical build",
+  "cd agents/python && mise run check",
+  "cd agents/go && mise run check",
+]
+
+[tasks.test]
+alias = "t"
+description = "Run the test suites for both agent tracks"
+run = [
+  "cd agents/python && mise run test",
+  "cd agents/go && mise run test",
+]
+
+[tasks.scan]
+description = "Scan git history for leaked secrets (the local .env is gitignored, never committed)"
+run = "gitleaks git --verbose"
+
+[tasks.clean]
+alias = "n"
+description = "Remove build artifacts"
+run = "rm -rf site/ .venv/"

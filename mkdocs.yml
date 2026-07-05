@@ -1,0 +1,64 @@
+# https://www.mkdocs.org/user-guide/configuration/
+# Read natively by Zensical (https://zensical.org). We keep the config in mkdocs.yml
+# while Zensical is alpha; migrate to zensical.toml once it reaches 1.0.
+
+# Project information
+site_author: MLOps Courses
+site_name: AgentOps Open Course
+site_url: https://agentops-open-course.fmind.dev/
+site_description: Learn to build, secure, deploy, and operate AI agents — the AgentOps lifecycle — with Google ADK, agentgateway, and kagent.
+
+# Repository
+repo_name: MLOps-Courses/agentops-open-course
+repo_url: https://github.com/MLOps-Courses/agentops-open-course
+
+# Copyright
+copyright: Copyright &copy; MLOps Courses
+
+# Configs
+strict: true
+use_directory_urls: false
+
+# Theme
+theme:
+  name: material
+  palette:
+    scheme: default
+    primary: indigo
+  features:
+    - content.code.copy
+    - content.tabs.link # sync Python/Go tab choice site-wide (the two-track engine)
+    - navigation.footer
+    - navigation.indexes
+    - navigation.tabs
+
+# Extra
+extra:
+  social:
+    - icon: fontawesome/solid/paper-plane
+      link: mailto:agentops-open-course@fmind.dev
+    - icon: fontawesome/brands/github
+      link: https://github.com/MLOps-Courses/agentops-open-course
+    - icon: fontawesome/brands/x-twitter
+      link: https://twitter.com/fmind_dev
+    - icon: fontawesome/brands/linkedin
+      link: https://www.linkedin.com/in/fmind-dev/
+extra_css:
+  - stylesheets/extra.css
+
+# Extensions
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true

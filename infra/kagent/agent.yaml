@@ -1,0 +1,29 @@
+# kagent Agent, `type: BYO` — deploys our own built ADK agent image (Chapter 6.3).
+# The image is built and pushed to the k3d local registry (Chapter 6.1); kagent provisions
+# the Deployment and Service (both named `agentops-agent`) from it and expects the image to
+# serve the agent over A2A on port 8080 (agents/python/Dockerfile and the Go ko build both do).
+# Fields verified against go/api/config/crd/bases/kagent.dev_agents.yaml
+# (type BYO requires spec.byo; byo.deployment.image + standard core/v1 env vars).
+apiVersion: kagent.dev/v1alpha2
+kind: Agent
+metadata:
+  name: agentops-agent
+  namespace: agentops
+spec:
+  description: The AgentOps Open Course reference agent.
+  type: BYO
+  byo:
+    deployment:
+      image: k3d-registry.localhost:5050/agentops-agent:latest
+      env:
+        # Native Gemini for the ADK agent — same secret the ModelConfig references.
+        - name: GOOGLE_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: kagent-gemini
+              key: GOOGLE_API_KEY
+        # The course's provided key is a Vertex AI express key, which requires the Vertex
+        # backend (see docs 2.3) — without this the pod gets 403 API_KEY_SERVICE_BLOCKED.
+        # Using a plain AI Studio (AIza…) key instead? Set this to "false" or remove it.
+        - name: GOOGLE_GENAI_USE_VERTEXAI
+          value: "true"

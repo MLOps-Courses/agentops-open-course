@@ -1,0 +1,23 @@
+# https://skaffold.dev — local build→deploy inner loop (Chapter 6.6).
+# Builds the Go agent with ko (distroless, no Dockerfile) and pushes to the k3d local registry.
+apiVersion: skaffold/v4beta11
+kind: Config
+metadata:
+  name: agentops
+build:
+  local:
+    push: true
+  artifacts:
+    - image: k3d-registry.localhost:5050/agentops-agent
+      context: ../agents/go
+      ko:
+        main: ./cmd/agent
+manifests:
+  rawYaml:
+    - k8s/namespace.yaml
+    - kagent/modelconfig.yaml
+    - kagent/agent.yaml
+    - k8s/ingress.yaml
+    # kagent/toolserver.yaml (RemoteMCPServer) is intentionally omitted: it targets an
+    # in-cluster agentgateway Service this course does not ship (Ch. 6.4/6.5). The BYO
+    # agent carries its tools in-process, so the deploy is complete without it.
