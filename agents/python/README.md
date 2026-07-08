@@ -1,6 +1,6 @@
 # AgentOps Reference Agent — Python
 
-The reference agent for the [AgentOps Open Course](https://agentops-open-course.fmind.dev/), built with **Google ADK 2.0** (Python). Its Go counterpart lives in [`../go`](../go).
+The reference agent for the [AgentOps Open Course](https://agentops-open-course.fmind.dev/), built with **Google ADK 2.0** (Python).
 
 ## Quickstart
 
@@ -17,6 +17,7 @@ mise run run                # run in the terminal   (adk run src/agent)
 - `src/agent/config.py` — typed settings (model, data dir).
 - `src/agent/tools.py` — function tools (Ch. 3.1).
 - `src/agent/memory.py` — long-term memory / RAG (Ch. 3.4).
-- `tests/` — unit and integration tests. `evals/` — evaluation datasets (`adk eval`, Ch. 4.4).
+- `src/agent/guardrails.py`/`pii.py` — input-validation + Presidio PII-redaction guardrails (Ch. 4.5).
+- `tests/` — unit and integration tests. `evals/` — `adk eval` datasets + `mlflow_eval.py` (Ch. 4.4).
 
-Tasks: `mise run format`, `mise run check`, `mise run test`.
+Tasks: `mise run format`, `mise run check`, `mise run test`. Eval/security (need a key): `mise run eval` (`adk eval`), `mise run eval:mlflow` (MLflow judges + prompt registry), `mise run redteam` (garak, via `uvx`).

@@ -13,11 +13,6 @@ pre-commit:
       glob: "*.py"
       run: mise run format:python {staged_files}
       stage_fixed: true
-    format-go:
-      root: agents/go/
-      glob: "*.go"
-      run: mise run format:go {staged_files}
-      stage_fixed: true
     check:
       run: mise run check
     actionlint:

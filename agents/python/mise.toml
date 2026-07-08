@@ -59,6 +59,18 @@ alias = "e"
 description = "Run the ADK eval sets over the fixed dataset (Ch. 4.4; needs a provider key)"
 run = "uv run adk eval src/agent evals/ops.evalset.json --config_file_path evals/test_config.json"
 
+[tasks."eval:mlflow"]
+description = "Run the MLflow GenAI eval — judges + prompt registry (Ch. 4.4/7.0; needs a provider key)"
+run = "uv run python evals/mlflow_eval.py"
+
+[tasks.redteam]
+description = "Red-team the agent's model with garak (Ch. 4.6; needs GEMINI_API_KEY; garak runs via uvx)"
+# garak is a CLI scanner, not a library the agent imports — run it ephemerally with uvx so it never
+# bloats the agent's locked dependencies. It reaches Gemini through litellm (a dev-time transport, like
+# MLflow's judge); the agent itself never uses litellm. Three fast, representative probe families:
+# jailbreaks (dan), prompt injection (promptinject), and encoding-based bypasses (encoding).
+run = "uvx --from garak garak --model_type litellm --model_name gemini/${AGENT_MODEL:-gemini-3.5-flash} --probes dan,promptinject,encoding"
+
 [tasks.mcp]
 description = "Run the Ops Copilot MCP server over stdio (Ch. 3.3)"
 run = "uv run python -m agent.mcp_server"

@@ -1,4 +1,4 @@
-"""The Ops Copilot — the AgentOps Open Course reference agent (Python track).
+"""The Ops Copilot — the AgentOps Open Course reference agent.
 
 An on-call assistant that helps engineers triage and resolve incidents for a fictional
 platform, using a 100% local, bundled dataset. It grows chapter by chapter: tools (3.1),
@@ -13,6 +13,7 @@ from .actions import ACTION_TOOLS
 from .config import settings
 from .guardrails import validate_actions
 from .memory import KNOWLEDGE_TOOLS
+from .pii import redact_request_pii
 from .tools import ALL_TOOLS
 
 # The persona and operating rules. Kept explicit so behavior is reproducible and evaluable.
@@ -38,5 +39,6 @@ root_agent = Agent(
     description="An on-call Ops Copilot that triages and resolves incidents from a local dataset.",
     instruction=INSTRUCTION,
     tools=[*ALL_TOOLS, *KNOWLEDGE_TOOLS, *ACTION_TOOLS],
-    before_tool_callback=validate_actions,
+    before_model_callback=redact_request_pii,  # mask PII before it reaches the model (4.5)
+    before_tool_callback=validate_actions,  # reject malformed write-action inputs (4.5)
 )

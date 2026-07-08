@@ -3,7 +3,7 @@
 Sub-agents are how one agent hands work to another: the coordinator triages, then *delegates*
 a deep root-cause analysis to a specialist by transferring control (ADK routes to the named
 sub-agent, which shares the session). The same wiring underpins the A2A protocol — expose the
-specialist over A2A (``adk api_server`` / the Go ``a2a`` launcher) and the coordinator can call
+specialist over A2A (``adk api_server``) and the coordinator can call
 it across the network as a ``RemoteA2aAgent`` instead of an in-process sub-agent.
 """
 

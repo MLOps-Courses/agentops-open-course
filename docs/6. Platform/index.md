@@ -9,9 +9,9 @@ Run agents as Kubernetes workloads with [kagent](https://kagent.dev/) — a CNCF
 This chapter covers:
 
 - **[6.0. Platform](./6.0. Platform.md)**: Agents as Kubernetes workloads, and a kagent overview.
-- **[6.1. Containers](./6.1. Containers.md)**: Build and publish agent images with ko and distroless.
+- **[6.1. Containers](./6.1. Containers.md)**: Build and publish agent images with a multi-stage Dockerfile.
 - **[6.2. Platform Install](./6.2. Platform Install.md)**: Install kagent on k3d with the `kagent` CLI or Helm.
-- **[6.3. Platform Agents](./6.3. Platform Agents.md)**: The `Agent` (`type: BYO`), `AgentHarness`, and `ModelConfig` CRDs; deploy the ADK agent.
+- **[6.3. Platform Agents](./6.3. Platform Agents.md)**: The `Agent` (`type: BYO`) and `ModelConfig` CRDs; deploy the ADK agent.
 - **[6.4. Platform Tools](./6.4. Platform Tools.md)**: The `ToolServer` and `RemoteMCPServer` CRDs, plus `MCPServer` via bundled kmcp.
 - **[6.5. Platform Gateway](./6.5. Platform Gateway.md)**: Integrate agentgateway as the platform data plane.
-- **[6.6. Platform Delivery](./6.6. Platform Delivery.md)**: CI/CD, GitOps, and helmfile/skaffold.
+- **[6.6. Platform Delivery](./6.6. Platform Delivery.md)**: CI/CD, GitOps, and helmfile.

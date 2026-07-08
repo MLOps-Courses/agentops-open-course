@@ -6,7 +6,7 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# The bundled dataset lives at agents/data (shared by both tracks). This file is
+# The bundled dataset lives at agents/data. This file is
 # agents/python/src/agent/config.py, so the repo's agents/ dir is three parents up.
 _DEFAULT_DATA_DIR = Path(__file__).resolve().parents[3] / "data"
 

@@ -1,7 +1,7 @@
 # kagent Agent, `type: BYO` — deploys our own built ADK agent image (Chapter 6.3).
 # The image is built and pushed to the k3d local registry (Chapter 6.1); kagent provisions
 # the Deployment and Service (both named `agentops-agent`) from it and expects the image to
-# serve the agent over A2A on port 8080 (agents/python/Dockerfile and the Go ko build both do).
+# serve the agent over A2A on port 8080 (as agents/python/Dockerfile does).
 # Fields verified against go/api/config/crd/bases/kagent.dev_agents.yaml
 # (type BYO requires spec.byo; byo.deployment.image + standard core/v1 env vars).
 apiVersion: kagent.dev/v1alpha2

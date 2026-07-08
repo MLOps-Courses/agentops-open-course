@@ -8,7 +8,8 @@ Run the AgentOps agent locally, then on Kubernetes. Everything here is covered i
 - `kagent/` — [kagent](https://kagent.dev) (CNCF) custom resources: `ModelConfig`, `Agent` (`type: BYO`), and a `RemoteMCPServer` (in `toolserver.yaml`) that registers the gateway's MCP endpoint. See **Chapter 6.3–6.4**.
 - `k8s/` — cluster `Namespace` and `*.localhost` `Ingress`. kagent provisions the agent's Deployment and Service (both named `agentops-agent`, A2A on port 8080) from the `Agent` CR, so they are not duplicated here.
 - `helmfile.yaml` — install kagent via Helm (alternative to `kagent install --profile demo`).
-- `skaffold.yaml` — local build→deploy inner loop (Go `ko` image → k3d registry → apply manifests). The Python track builds its image from [`../agents/python/Dockerfile`](../agents/python/Dockerfile) (distroless-spirit, non-root, serves A2A on `:8080`).
+- `skaffold.yaml` — local build→deploy inner loop (Python image → k3d registry → apply manifests). The image is built from [`../agents/python/Dockerfile`](../agents/python/Dockerfile) (slim, non-root, serving A2A on `:8080`), with build context `../agents` so the shared dataset is included.
+- `observability/` — an optional, 100% open-source [OpenTelemetry Collector → Jaeger/Prometheus/Grafana](./observability/README.md) stack (`compose.yaml`) for **Chapter 7**: `docker compose -f observability/compose.yaml up -d`, then point the agent at `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318`.
 
 ## Quickstart (Chapter 6)
 
@@ -17,10 +18,10 @@ dot cluster start                                   # shared local k3d cluster (
 kubectl apply -f k8s/namespace.yaml
 kubectl -n agentops create secret generic kagent-gemini --from-literal=GOOGLE_API_KEY="$GOOGLE_API_KEY"
 helmfile apply                                      # or: kagent install --profile demo
-skaffold run                                        # Go track: build (ko) + deploy the agent
+skaffold run                                        # build (Docker) + deploy the agent
 ```
 
-Python track image (build context is `../agents`, so the shared dataset is included):
+Prefer to build and deploy by hand (without skaffold)? The build context is `../agents`, so the shared dataset is included:
 
 ```bash
 docker build -f ../agents/python/Dockerfile -t k3d-registry.localhost:5050/agentops-agent:latest ../agents

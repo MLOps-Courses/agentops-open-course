@@ -26,9 +26,7 @@ jobs:
         uses: jdx/mise-action@v4
 
       - name: Build the site
-        run: |
-          uv sync
-          uv run zensical build
+        run: mise run deploy # same mise task the local flow uses (uv run auto-syncs from the lock)
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

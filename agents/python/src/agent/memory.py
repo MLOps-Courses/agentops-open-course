@@ -54,7 +54,7 @@ def search_runbooks(query: str, limit: int = 3) -> dict[str, Any]:
     Returns:
         A dict with ``count`` and a ``runbooks`` list (slug + markdown content), best match first.
     """
-    if limit <= 0:  # a non-positive limit falls back to the default (matches the Go track)
+    if limit <= 0:  # a non-positive limit falls back to the default
         limit = 3
     terms = _terms(query)
     contents = {slug: (data.read_runbook(slug) or "") for slug in data.list_runbook_slugs()}
@@ -74,7 +74,9 @@ def search_runbooks(query: str, limit: int = 3) -> dict[str, Any]:
                 score += total * 5  # the slug names the failure mode: a strong signal
         if score > 0:
             scored.append((score, slug, content))
-    scored.sort(key=lambda row: row[0], reverse=True)
+    # Score descending, then slug ascending — the slug tie-break keeps ordering deterministic
+    # for equal scores, which matters for reproducible evals.
+    scored.sort(key=lambda row: (-row[0], row[1]))
     top = scored[:limit]
     return {"count": len(top), "runbooks": [{"slug": slug, "content": content} for _, slug, content in top]}
 

@@ -2,7 +2,7 @@
 # https://packaging.python.org/en/latest/guides/writing-pyproject-toml/
 #
 # This project builds the COURSE DOCUMENTATION only (Zensical). The agent code
-# lives in `agents/python` and `agents/go`, each a self-contained project.
+# lives in `agents/python`, a self-contained project.
 
 [project]
 name = "agentops-open-course"
@@ -13,7 +13,7 @@ readme = "README.md"
 requires-python = ">=3.13"
 license = { file = "LICENSE.txt" }
 dependencies = [
-  "zensical>=0.0.46", # alpha: reads mkdocs.yml natively; pin exactly and re-verify at build time
+  "zensical==0.0.46", # alpha: reads mkdocs.yml natively; pin exactly (== on an alpha) and re-verify on upgrade
 ]
 
 [tool.uv]

@@ -1,5 +1,5 @@
 ---
-description: Learn to build, secure, deploy, and operate AI agents — the AgentOps lifecycle — with 100% open-source technology, in Python and Go.
+description: Learn to build, secure, deploy, and operate AI agents — the AgentOps lifecycle — with 100% open-source technology, in Python.
 ---
 
 # AgentOps Open Course
@@ -8,7 +8,7 @@ description: Learn to build, secure, deploy, and operate AI agents — the Agent
     *Learn to build, secure, deploy, and operate AI agents — the AgentOps lifecycle — with 100% open-source technology.*
 </center>
 
-Welcome to the **AgentOps Open Course**. You will build a real AI agent end to end with **Google ADK 2.0** — in **Python and Go** — then operate it like production software: give it tools, memory, and multi-agent workflows; evaluate and guard it; secure and connect it with **agentgateway**; deploy it to **Kubernetes with kagent**; and observe its behavior and cost. Everything runs **locally**, on the model provider of your choice.
+Welcome to the **AgentOps Open Course**. You will build a real AI agent end to end with **Google ADK 2.0** in **Python**, then operate it like production software: give it tools, memory, and multi-agent workflows; evaluate and guard it; secure and connect it with **agentgateway**; deploy it to **Kubernetes with kagent**; and observe its behavior and cost. Everything runs **locally**, on the model provider of your choice.
 
 - **GitHub Repository**: [MLOps-Courses/agentops-open-course](https://github.com/MLOps-Courses/agentops-open-course)
 - **Sibling Course**: [MLOps Coding Course](https://mlops-coding-course.fmind.dev/)
@@ -16,11 +16,11 @@ Welcome to the **AgentOps Open Course**. You will build a real AI agent end to e
 
 ## [Chapter 0: Overview](./0. Overview/)
 
-Understand what agents and the AgentOps lifecycle are, meet the open-source ecosystem (ADK, agentgateway, kagent, MCP, A2A), and learn how to follow the Python or Go track.
+Understand what agents and the AgentOps lifecycle are, meet the open-source ecosystem (ADK, agentgateway, kagent, MCP, A2A), and choose your model provider.
 
 ## [Chapter 1: Setup](./1. Setup/)
 
-Set up a professional local environment: Python (uv) or Go, containers, a local Kubernetes cluster with k3d, provider keys, and your workspace.
+Set up a professional local environment: Python (uv), containers, a local Kubernetes cluster with k3d, provider keys, and your workspace.
 
 ## [Chapter 2: Agents](./2. Agents/)
 
@@ -52,4 +52,4 @@ Share and sustain your agent: repository, licensing, releases, templates, docume
 
 ## Let's build together
 
-By the end, you will be able to design, build, evaluate, secure, deploy, and operate agents professionally — and reason about the trade-offs between languages, providers, and architectures. Let's begin!
+By the end, you will be able to design, build, evaluate, secure, deploy, and operate agents professionally — and reason about the trade-offs between providers and architectures. Let's begin!

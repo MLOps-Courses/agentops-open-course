@@ -3,7 +3,7 @@
 A *skill* is a folder with a ``SKILL.md`` (name + description front-matter, then instructions,
 plus optional ``assets``/``references``). The model first sees only each skill's name and
 description; it loads the full body on demand — progressive disclosure that keeps the context
-small. Skills live in ``agents/data/skills`` so both tracks share them. This mirrors the
+small. Skills live in ``agents/data/skills`` alongside the shared dataset. This mirrors the
 open **Agent Skills** standard used by AI coding assistants.
 """
 

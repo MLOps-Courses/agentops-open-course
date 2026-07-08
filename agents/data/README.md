@@ -1,6 +1,6 @@
 # Ops Copilot Dataset
 
-The **shared, single source of truth** for the AgentOps Open Course reference agent (the "Ops Copilot"). Both tracks — [`../python`](../python) and [`../go`](../go) — read this directory, so the agent behaves identically and runs **fully offline**. Every action is mock and local: nothing here touches real infrastructure.
+The **single source of truth** for the AgentOps Open Course reference agent (the "Ops Copilot"). The [`../python`](../python) agent reads this directory and runs **fully offline**. Every action is mock and local: nothing here touches real infrastructure.
 
 ## Contents
 
@@ -19,6 +19,6 @@ mise run build      # rm -f incidents.db && sqlite3 incidents.db < sql/{schema,s
 mise run check      # sanity-check row counts
 ```
 
-## How the tracks locate this data
+## How the agent locates this data
 
-Each track resolves the data directory from the `AGENT_DATA_DIR` environment variable, falling back to this folder (resolved relative to the source). When the agent is containerized (Ch. 6), the image copies this directory in and sets `AGENT_DATA_DIR`.
+The agent resolves the data directory from the `AGENT_DATA_DIR` environment variable, falling back to this folder (resolved relative to the source). When the agent is containerized (Ch. 6), the image copies this directory in and sets `AGENT_DATA_DIR`.

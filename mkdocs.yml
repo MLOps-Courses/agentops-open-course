@@ -27,7 +27,6 @@ theme:
     primary: indigo
   features:
     - content.code.copy
-    - content.tabs.link # sync Python/Go tab choice site-wide (the two-track engine)
     - navigation.footer
     - navigation.indexes
     - navigation.tabs
@@ -60,5 +59,3 @@ markdown_extensions:
         - name: mermaid
           class: mermaid
           format: !!python/name:pymdownx.superfences.fence_code_format
-  - pymdownx.tabbed:
-      alternate_style: true

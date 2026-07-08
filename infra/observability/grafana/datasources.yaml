@@ -1,0 +1,16 @@
+# Grafana datasource provisioning for the Ops Copilot's local stack (Chapter 7).
+# Both backends are wired automatically so Grafana is useful the moment it starts —
+# build panels over Prometheus (metrics/SLOs) and pivot to Jaeger for the matching traces.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+
+  - name: Jaeger
+    type: jaeger
+    access: proxy
+    url: http://jaeger:16686

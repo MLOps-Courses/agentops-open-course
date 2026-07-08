@@ -15,6 +15,13 @@ def test_get_runbook_unknown_lists_available() -> None:
     assert "high-latency" in result["error"]
 
 
+def test_get_runbook_rejects_path_traversal() -> None:
+    # The slug is model-controlled: a traversal payload must be refused, not read off disk.
+    result = memory.get_runbook("../../../../etc/passwd")
+    assert "error" in result
+    assert "root:" not in result["error"]
+
+
 def test_search_runbooks_ranks_relevant_first() -> None:
     result = memory.search_runbooks("service is completely down and returning 503")
     assert result["count"] >= 1

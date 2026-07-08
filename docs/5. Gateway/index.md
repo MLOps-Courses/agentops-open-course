@@ -4,7 +4,7 @@ description: Secure and connect the agent with agentgateway — the flagship AAI
 
 # 5. Gateway
 
-Secure and connect the agent with **[agentgateway](https://agentgateway.dev)** — the flagship AAIF project — running locally first, then promoted to Kubernetes in Chapter 6. The gateway sits between the agent and everything it talks to (MCP tools, other agents, and models) and centralises the production concerns — auth, rate limits, safety, and observability — in one config, for both the Python and Go tracks.
+Secure and connect the agent with **[agentgateway](https://agentgateway.dev)** — the flagship AAIF project — running locally first, then promoted to Kubernetes in Chapter 6. The gateway sits between the agent and everything it talks to (MCP tools, other agents, and models) and centralises the production concerns — auth, rate limits, safety, and observability — in one config.
 
 !!! info "AAIF project"
 

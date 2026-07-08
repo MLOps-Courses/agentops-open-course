@@ -1,5 +1,6 @@
 # https://skaffold.dev — local build→deploy inner loop (Chapter 6.6).
-# Builds the Go agent with ko (distroless, no Dockerfile) and pushes to the k3d local registry.
+# Builds the Python agent image from ../agents/python/Dockerfile and pushes to the k3d local
+# registry. The build context is ../agents so the shared dataset (agents/data) is included.
 apiVersion: skaffold/v4beta11
 kind: Config
 metadata:
@@ -9,9 +10,11 @@ build:
     push: true
   artifacts:
     - image: k3d-registry.localhost:5050/agentops-agent
-      context: ../agents/go
-      ko:
-        main: ./cmd/agent
+      # Context is ../agents (not ../agents/python) so the Dockerfile can COPY both
+      # python/ and the shared data/. It serves A2A on :8080 (kagent's BYO contract).
+      context: ../agents
+      docker:
+        dockerfile: python/Dockerfile
 manifests:
   rawYaml:
     - k8s/namespace.yaml

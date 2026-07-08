@@ -2,13 +2,13 @@
 
 **Welcome to the [AgentOps Open Course](https://agentops-open-course.fmind.dev/)!**
 
-Learn to build, secure, deploy, and operate AI agents — the **AgentOps lifecycle** — with **100% open-source** technology. You will build a real agent end to end with **Google ADK 2.0** in **Python and Go**, give it tools, memory, and multi-agent workflows, evaluate and guard it, secure and connect it with **agentgateway** (AAIF), deploy it to **Kubernetes with kagent** (CNCF), and observe its behavior and cost — all runnable **locally**, on the model provider of your choice.
+Learn to build, secure, deploy, and operate AI agents — the **AgentOps lifecycle** — with **100% open-source** technology. You will build a real agent end to end with **Google ADK 2.0** in **Python**, give it tools, memory, and multi-agent workflows, evaluate and guard it, secure and connect it with **agentgateway** (AAIF), deploy it to **Kubernetes with kagent** (CNCF), and observe its behavior and cost — all runnable **locally**, on the model provider of your choice.
 
 This is the agent-focused sibling of the [MLOps Coding Course](https://mlops-coding-course.fmind.dev/).
 
 ## Key Features
 
-- **Hands-on, two languages**: every capability is shown in **Python** and **Go**, side by side.
+- **Hands-on, Python-first**: every capability is shown in **Python** with runnable, self-contained code.
 - **100% open source**: Google ADK, agentgateway, kagent, MCP, A2A, and AGENTS.md — no proprietary lock-in.
 - **Local-first**: run everything on your machine, from a first agent to a Kubernetes deployment.
 - **Provider-neutral**: start on native Gemini, then reach any provider (incl. local Ollama) via the gateway.
@@ -17,7 +17,7 @@ This is the agent-focused sibling of the [MLOps Coding Course](https://mlops-cod
 ## Course Content
 
 1. **Overview**: what agents and AgentOps are, the ecosystem, languages, and providers.
-1. **Setup**: a professional local environment (Python/Go, containers, k3d, providers).
+1. **Setup**: a professional local environment (Python, containers, k3d, providers).
 1. **Agents**: your first ADK 2.0 agent, models, instructions, sessions, and the dev loop.
 1. **Capabilities**: tools, skills, MCP, memory/RAG, workflows, and A2A.
 1. **Quality**: typing, linting, testing, metrics, evaluations, guardrails, and security.
@@ -29,20 +29,20 @@ This is the agent-focused sibling of the [MLOps Coding Course](https://mlops-cod
 ## Repository Layout
 
 - `docs/` — the course content (one folder per lifecycle phase), published with [Zensical](https://zensical.org).
-- `agents/python` and `agents/go` — the reference agent, one self-contained project per language track (MIT).
+- `agents/python` — the reference agent, a self-contained project (MIT).
 - `agents/data` — the shared, local dataset the agent runs on (SQLite incidents, runbooks, skills).
-- `infra/` — agentgateway, kagent, and Kubernetes manifests (MIT).
+- `infra/` — agentgateway, kagent, and Kubernetes manifests, the `helmfile`/`skaffold` deploy loop, and an optional local observability stack (MIT).
 
 ## Installation
 
 This project uses [mise](https://mise.jdx.dev) as its task runner and [uv](https://docs.astral.sh/uv/) for Python.
 
 ```bash
-mise run install   # sync docs deps, install git hooks, and set up both agent tracks
+mise run install   # sync docs deps, install git hooks, and set up the Python agent
 mise run serve     # serve the documentation locally at http://localhost:8000/
 ```
 
-Common tasks: `mise run build` (build the site), `mise run format`, `mise run check`, `mise run test`.
+Common tasks: `mise run build` (build the site), `mise run format`, `mise run check`, `mise run test`. The same tasks run in [GitHub Actions](./.github/workflows) — CI (lint/type/test the Python agent), docs (build and publish to GitHub Pages), and security scanning (gitleaks + Trivy).
 
 ## Contributions
 

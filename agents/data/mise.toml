@@ -1,5 +1,5 @@
 # https://mise.jdx.dev
-# AgentOps Ops Copilot dataset — the shared, single source of truth for both tracks.
+# AgentOps Ops Copilot dataset — the single source of truth for the reference agent.
 # `incidents.db` is generated from sql/schema.sql + sql/seed.sql and committed so the
 # agent runs offline out of the box; regenerate it whenever the SQL changes.
 
@@ -13,10 +13,12 @@ run = "rm -f incidents.db && sqlite3 incidents.db < sql/schema.sql && sqlite3 in
 
 [tasks.check]
 alias = "c"
-description = "Verify incidents.db matches the committed SQL (fails if you forgot to rebuild)"
+# A row-count probe, not a drift diff: it confirms incidents.db is present and seeded (catches a
+# missing or empty DB), but does not prove it matches the current SQL — rebuild after SQL edits.
+description = "Sanity-check incidents.db is present and seeded (rebuild with `mise run build` after SQL edits)"
 run = [
-  "sqlite3 incidents.db 'SELECT count(*) FROM incidents;' >/dev/null",
-  "sqlite3 incidents.db 'SELECT count(*) FROM services;' >/dev/null",
+  "test \"$(sqlite3 incidents.db 'SELECT count(*) FROM incidents;')\" -gt 0",
+  "test \"$(sqlite3 incidents.db 'SELECT count(*) FROM services;')\" -gt 0",
 ]
 
 [tasks.clean]

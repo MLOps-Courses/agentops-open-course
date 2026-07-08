@@ -1,7 +1,7 @@
 """The Ops Copilot tools, exposed as an MCP server (Chapter 3.3).
 
 The Model Context Protocol (MCP) lets tools live in their own process and be consumed by *any*
-MCP client — so this one server backs **both** agent tracks and, later, the gateway (Ch. 5.2).
+MCP client — so this one server backs the agent and, later, the gateway (Ch. 5.2).
 It re-exposes the read-only tools over stdio; the guarded write actions stay in-process. Run it
 with ``mise run mcp`` (``python -m agent.mcp_server``).
 """

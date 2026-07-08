@@ -6,6 +6,7 @@ tool functions so it can be unit-tested directly against ``agents/data/incidents
 
 from __future__ import annotations
 
+import re
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -14,6 +15,11 @@ from pathlib import Path
 from typing import Any
 
 from .config import settings
+
+# Runbook slugs are lowercase kebab-case (e.g. "high-latency"). The slug is model-controlled,
+# so it is validated against this pattern before building a filesystem path — refusing any
+# path-traversal payload (a slug containing "/", "\" or ".." never matches). See read_runbook.
+_SLUG = re.compile(r"^[a-z0-9-]+$")
 
 
 def db_path() -> Path:
@@ -37,7 +43,13 @@ def list_runbook_slugs() -> list[str]:
 
 
 def read_runbook(slug: str) -> str | None:
-    """Return the full markdown of a runbook by slug, or ``None`` if it does not exist."""
+    """Return the full markdown of a runbook by slug, or ``None`` if it does not exist.
+
+    The slug is model-controlled, so it is validated against ``_SLUG`` before touching the
+    filesystem: a malformed or path-traversal slug is treated as "not found" rather than read.
+    """
+    if not _SLUG.match(slug):
+        return None
     path = runbook_path(slug)
     return path.read_text(encoding="utf-8") if path.is_file() else None
 

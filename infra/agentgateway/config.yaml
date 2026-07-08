@@ -58,16 +58,21 @@ binds:
 # An `ai` backend proxies LLM calls, so you switch providers by pointing the agent's
 # model base URL at this route — no SDK change. Ollama exposes an OpenAI-compatible
 # API at http://localhost:11434/v1, so use the openAI provider and override the host.
-# (For plain-HTTP Ollama, add a `policies.backendTLS` opt-out; drop hostOverride to
-# reach api.openai.com directly.) Add as its own listener/route:
+# The gateway assumes TLS to upstreams, so a plain-HTTP local Ollama needs the
+# `backendTLS: { insecure: true }` opt-out below (drop both it and hostOverride to reach
+# api.openai.com directly). Add as its own route under the listener:
 #
-#      - ai:
-#          name: ollama
-#          hostOverride: localhost:11434
-#          pathOverride: /v1/chat/completions
-#          provider:
-#            openAI:
-#              model: llama3.2
+#      - policies:
+#          backendTLS:
+#            insecure: true # plain-HTTP local backend: skip the default upstream TLS
+#        backends:
+#          - ai:
+#              name: ollama
+#              hostOverride: localhost:11434
+#              pathOverride: /v1/chat/completions
+#              provider:
+#                openAI:
+#                  model: llama3.2
 
 # --- Chapter 5.5 — Secure Gateway (rate limit + prompt guard) -----------------
 # Attach security policies to a route. `localRateLimit` caps request rate on any
