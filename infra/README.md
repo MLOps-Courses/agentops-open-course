@@ -1,6 +1,6 @@
 # Infrastructure
 
-Run the AgentOps agent locally, then on Kubernetes. Everything here is covered in Chapters 5–6. Licensed under the [MIT License](./LICENSE).
+Run the AgentOps agent locally, then on Kubernetes. Most of this is covered in Chapters 5–6, plus the optional Chapter 7 observability stack. Licensed under the [MIT License](./LICENSE).
 
 ## Layout
 

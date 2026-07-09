@@ -1,5 +1,5 @@
 -- AgentOps Open Course — Ops Copilot dataset schema (SQLite).
--- Single source of truth shared by both agent tracks (agents/python, agents/go).
+-- Single source of truth for the AgentOps Open Course reference agent (agents/python).
 -- Rebuild incidents.db from this file + seed.sql with `mise run build` (see ../mise.toml).
 
 PRAGMA foreign_keys = ON;

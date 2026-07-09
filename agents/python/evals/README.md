@@ -13,7 +13,7 @@ mise run eval:mlflow # MLflow GenAI eval — same cases, adds LLM-judge answer s
 
 - `ops.evalset.json` — recorded eval cases. Each case fixes a user prompt, the expected **tool trajectory** (which tools with which arguments), and a reference final response.
 - `test_config.json` — the pass criteria. We gate on **`tool_trajectory_avg_score: 1.0`**: the agent must call exactly the right tools with the right arguments — a deterministic, meaningful contract over the fixed dataset.
-- `mlflow_eval.py` — the **[MLflow](https://mlflow.org/)** GenAI eval (Apache-2.0, self-hosted). Reuses `ops.evalset.json`, adds a code-only trajectory scorer plus optional LLM-as-judge scoring (`Correctness`, `Guidelines`) and a versioned prompt registry. Browse results with `uv run mlflow ui`. See [7.0. Reproducibility](../../../docs/7.%20Observability/7.0.%20Reproducibility.md).
+- `mlflow_eval.py` — the **[MLflow](https://mlflow.org/)** GenAI eval (Apache-2.0, self-hosted). Reuses `ops.evalset.json`, adds a code-only trajectory scorer plus optional LLM-as-judge scoring (`Correctness`, `Guidelines`) and a versioned prompt registry. Browse results with `uv run mlflow ui --backend-store-uri sqlite:///evals/mlflow.db` (from `agents/python/`, so the store path resolves). See [7.0. Reproducibility](../../../docs/7.%20Observability/7.0.%20Reproducibility.md).
 
 `response_match_score` (ROUGE overlap with the reference text) is intentionally **not** a gate: generative wording varies run to run, so it is a soft signal, not a pass/fail criterion.
 

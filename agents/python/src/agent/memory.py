@@ -15,7 +15,7 @@ from google.adk.agents.llm_agent import ToolUnion
 
 from . import data
 
-# Words this short carry no signal for retrieval (a tiny, explicit stop-list).
+# Terms shorter than this carry little retrieval signal, so drop them (a length filter, not a stop-list).
 _MIN_TERM_LENGTH = 3
 
 

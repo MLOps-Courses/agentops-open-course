@@ -40,7 +40,7 @@ def redact_pii(text: str) -> str:
     """Return ``text`` with any detected PII replaced by ``<ENTITY_TYPE>`` placeholders.
 
     Fully local and deterministic; a string with no PII is returned unchanged. This is a pure
-    function, so it is trivially unit-testable ([4.2. Testing](../../../docs/4.%20Quality/4.2.%20Testing.md)).
+    function, so it is trivially unit-testable ([4.2. Testing](../../../../docs/4.%20Quality/4.2.%20Testing.md)).
     """
     if not text.strip():
         return text

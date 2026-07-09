@@ -46,6 +46,12 @@ def test_resolve_already_resolved_errors() -> None:
     assert "error" in result
 
 
+def test_resolve_unknown_incident_errors() -> None:
+    result = actions.resolve_incident("INC-999")  # not in the seeded dataset
+    assert "error" in result
+    assert "INC-999" in result["error"]
+
+
 def test_action_tools_require_confirmation() -> None:
     for tool in actions.ACTION_TOOLS:
         assert tool.name in {"restart_service", "resolve_incident"}
@@ -62,6 +68,18 @@ def test_guardrail_blocks_bad_incident_id() -> None:
 def test_guardrail_allows_valid_incident_id() -> None:
     tool = _ACTIONS_BY_NAME["resolve_incident"]
     assert guardrails.validate_actions(tool, {"incident_id": "INC-002"}, _NO_CONTEXT) is None
+
+
+def test_guardrail_blocks_empty_service_name() -> None:
+    tool = _ACTIONS_BY_NAME["restart_service"]
+    blocked = guardrails.validate_actions(tool, {"name": "   "}, _NO_CONTEXT)
+    assert blocked is not None
+    assert "error" in blocked
+
+
+def test_guardrail_allows_valid_service_name() -> None:
+    tool = _ACTIONS_BY_NAME["restart_service"]
+    assert guardrails.validate_actions(tool, {"name": "inventory"}, _NO_CONTEXT) is None
 
 
 def test_guardrail_ignores_read_tools() -> None:

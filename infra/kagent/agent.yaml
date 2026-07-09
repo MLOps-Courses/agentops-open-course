@@ -23,7 +23,7 @@ spec:
               name: kagent-gemini
               key: GOOGLE_API_KEY
         # The course's provided key is a Vertex AI express key, which requires the Vertex
-        # backend (see docs 2.3) — without this the pod gets 403 API_KEY_SERVICE_BLOCKED.
+        # backend (see docs 2.2) — without this the pod gets 403 API_KEY_SERVICE_BLOCKED.
         # Using a plain AI Studio (AIza…) key instead? Set this to "false" or remove it.
         - name: GOOGLE_GENAI_USE_VERTEXAI
           value: "true"

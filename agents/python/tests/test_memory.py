@@ -37,3 +37,11 @@ def test_search_runbooks_no_match_is_empty() -> None:
     result = memory.search_runbooks("zzzznomatchzzzz")
     assert result["count"] == 0
     assert result["runbooks"] == []
+
+
+def test_search_runbooks_non_positive_limit_falls_back_to_default() -> None:
+    # A non-positive limit is treated as the default (3), not "return nothing".
+    query = "service down latency errors disk deploy"
+    default = memory.search_runbooks(query)
+    assert memory.search_runbooks(query, limit=0) == default
+    assert memory.search_runbooks(query, limit=-5) == default

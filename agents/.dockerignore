@@ -9,12 +9,8 @@
 **/.coverage
 **/htmlcov/
 
-# The Go track is built separately with ko (see infra/skaffold.yaml), not this image.
-go/
-
 # Build artifacts and local env.
 **/bin/
 **/dist/
-**/coverage.out
 **/.env
 **/.adk/
