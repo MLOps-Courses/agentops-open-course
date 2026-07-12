@@ -83,6 +83,10 @@ class Settings(BaseSettings):
     semantic_retrieval: bool = False
     embeddings_url: str = Field(default="http://127.0.0.1:11434", min_length=1)
     embedding_model: str = Field(default="nomic-embed-text", min_length=1)
+    # A cold local embedding model can take substantially longer to load than
+    # an ordinary tool call. Keep that startup bounded without forcing every
+    # read tool to inherit the same generous deadline.
+    embedding_timeout_s: float = Field(default=120.0, gt=0, le=600)
 
     # Token budgeting and cost attribution (Chapter 7.3). ``None`` disables the
     # budget; prices default to 0 because the reference path is local Ollama.

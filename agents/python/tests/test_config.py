@@ -28,6 +28,7 @@ def test_default_settings_are_valid() -> None:
     settings = Settings()
     assert settings.gateway_enabled is False
     assert settings.mcp_url is None
+    assert settings.embedding_timeout_s == 120.0
 
 
 def test_gateway_requires_base_url() -> None:
