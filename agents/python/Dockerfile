@@ -1,12 +1,10 @@
 # syntax=docker/dockerfile:1
 # Ops Copilot — Python track container image (Chapter 6.1).
 #
-# A minimal, non-root, multi-stage build: uv resolves the locked
-# dependencies into a self-contained virtualenv, and a slim runtime carries only
-# that venv, the agent source, and the bundled dataset. Distroless (gcr.io/distroless/python3)
-# tracks Debian's Python 3.11, but this agent needs 3.13 (see pyproject `requires-python`),
-# so the runtime is python:3.13-slim — the closest "distroless-spirit" base that matches.
-# Both tools and Python are version-and-digest pinned for reproducible multi-arch builds.
+# A minimal, non-root, multi-stage build: uv resolves the locked dependencies
+# into a self-contained virtualenv, and a Python 3.13 distroless runtime carries
+# only that venv, the bundled dataset, and an empty state directory. Build and
+# runtime bases are digest-pinned for reproducible multi-arch builds.
 #
 # The image serves the agent over A2A on :8080 — the contract kagent's `type: BYO`
 # Agent expects (it deploys this image and probes /.well-known/agent-card.json).
@@ -41,17 +39,15 @@ COPY python/README.md ./README.md
 COPY python/src ./src
 RUN uv sync --frozen --no-dev --no-editable
 
-# --- Stage 2: slim, non-root runtime -----------------------------------------
-FROM python:3.13.13-slim-trixie@sha256:aa938a849bcb82dce8f49480f056ab82bf5c1c3ebc294f0430f37b6820e7f286 AS runtime
+# The build image installs Python under /usr/local, while distroless exposes it
+# under /usr/bin. Repoint the venv after the last build-stage Python invocation.
+RUN ln -sfn /usr/bin/python3 /app/.venv/bin/python \
+ && ln -sfn /usr/bin/python3 /app/.venv/bin/python3 \
+ && ln -sfn /usr/bin/python3 /app/.venv/bin/python3.13 \
+ && install -d -o 10001 -g 10001 /app/state
 
-# Apply Debian security fixes published after the pinned base snapshot, then run
-# as an unprivileged user. CI scans fail if a later fixed HIGH/CRITICAL remains.
-ARG DEBIAN_FRONTEND=noninteractive
-RUN apt-get update \
- && apt-get upgrade --yes --no-install-recommends \
- && rm -rf /var/lib/apt/lists/* \
- && groupadd --gid 10001 app \
- && useradd --uid 10001 --gid app --no-create-home --shell /usr/sbin/nologin app
+# --- Stage 2: distroless, non-root runtime -----------------------------------
+FROM gcr.io/distroless/python3-debian13:nonroot@sha256:828da6b298ecebf90580c84476c29b847b6432b46dbfaa642726b87ac527ee22 AS runtime
 
 ENV PATH=/app/.venv/bin:$PATH \
     PYTHONUNBUFFERED=1 \
@@ -64,10 +60,10 @@ WORKDIR /app
 
 # The resolved venv (including the agent package) and bundled Ops Copilot data.
 COPY --from=build /app/.venv /app/.venv
-COPY data /app/data
-RUN install -d -o 10001 -g 10001 /app/state
+COPY --chown=10001:10001 data /app/data
+COPY --from=build --chown=10001:10001 /app/state /app/state
 
-USER app
+USER 10001:10001
 EXPOSE 8080
 
 # Serve A2A on :8080 (0.0.0.0 so kagent/the ingress can reach it).

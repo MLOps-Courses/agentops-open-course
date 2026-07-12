@@ -96,13 +96,13 @@ run = "dprint fmt"
 description = "Format the Python reference agent"
 run = [
   "cd agents/python && mise run format:python .",
-  "cd agents/python && uv run ruff check --select=I --fix ../../infra/mlflow/initialize.py ../../load/fake_model.py",
-  "cd agents/python && uv run ruff format ../../infra/mlflow/initialize.py ../../load/fake_model.py",
+  "cd agents/python && uv run ruff check --select=I --fix ../../infra/mlflow/entrypoint.py ../../load/fake_model.py",
+  "cd agents/python && uv run ruff format ../../infra/mlflow/entrypoint.py ../../load/fake_model.py",
 ]
 
 [tasks."format:shell"]
 description = "Format repository shell scripts"
-run = "shfmt -w scripts infra/scripts infra/mlflow/entrypoint.sh"
+run = "shfmt -w scripts infra/scripts"
 
 [tasks."format:tofu"]
 description = "Format the OpenTofu GCP module"
@@ -149,16 +149,16 @@ run = "lychee --offline README.md CONTRIBUTING.md SECURITY.md CODE_OF_CONDUCT.md
 description = "Lint, type-check, and audit the Python reference agent"
 run = [
   "cd agents/python && mise run check",
-  "cd agents/python && uv run ruff format --check ../../infra/mlflow/initialize.py ../../load/fake_model.py",
-  "cd agents/python && uv run ruff check ../../infra/mlflow/initialize.py ../../load/fake_model.py",
-  "cd agents/python && uv run ty check ../../infra/mlflow/initialize.py ../../load/fake_model.py",
+  "cd agents/python && uv run ruff format --check ../../infra/mlflow/entrypoint.py ../../load/fake_model.py",
+  "cd agents/python && uv run ruff check ../../infra/mlflow/entrypoint.py ../../load/fake_model.py",
+  "cd agents/python && uv run ty check ../../infra/mlflow/entrypoint.py ../../load/fake_model.py",
 ]
 
 [tasks."check:shell"]
 description = "Lint repository shell scripts"
 run = [
-  "shfmt -d scripts infra/scripts infra/mlflow/entrypoint.sh",
-  "shellcheck scripts/*.sh infra/scripts/*.sh infra/mlflow/entrypoint.sh",
+  "shfmt -d scripts infra/scripts",
+  "shellcheck scripts/*.sh infra/scripts/*.sh",
 ]
 
 [tasks."check:workflows"]

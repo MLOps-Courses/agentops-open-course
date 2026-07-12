@@ -82,7 +82,6 @@ mcp_liveness="$(yq -r 'select(.kind == "Deployment" and .metadata.name == "agent
 helmfile --file infra/helmfile.yaml --quiet lint --args '--quiet'
 
 uv lock --directory infra/mlflow --check
-shellcheck infra/mlflow/entrypoint.sh
 
 tofu -chdir=infra/gcp fmt -check -recursive
 tofu -chdir=infra/gcp init -backend=false -input=false -lockfile=readonly

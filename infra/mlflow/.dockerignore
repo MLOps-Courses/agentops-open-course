@@ -1,6 +1,5 @@
 *
 !Dockerfile
-!entrypoint.sh
-!initialize.py
+!entrypoint.py
 !pyproject.toml
 !uv.lock
