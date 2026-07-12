@@ -8,8 +8,6 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: docs-${{ github.ref }}
@@ -29,13 +27,22 @@ jobs:
         run: mise run check:docs
 
       - name: Upload Pages artifact
+        if: ${{ github.event.repository.has_pages }}
         uses: actions/upload-pages-artifact@v3
         with:
           path: site
 
+      - name: Explain why deployment is skipped
+        if: ${{ !github.event.repository.has_pages }}
+        run: echo "::notice::Docs validated; Pages deployment is disabled for this repository."
+
   deploy:
     needs: build
+    if: ${{ github.event.repository.has_pages }}
     runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
