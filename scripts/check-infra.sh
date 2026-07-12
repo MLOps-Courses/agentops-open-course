@@ -40,6 +40,13 @@ infra/scripts/check-state.sh
 
 infra/scripts/gateway-tls.sh
 infra/scripts/gateway-jwt.sh >/dev/null
+openssl verify \
+	-CAfile "${gateway_auth_dir}/ca-cert.pem" \
+	"${gateway_auth_dir}/tls-cert.pem"
+openssl x509 \
+	-in "${gateway_auth_dir}/tls-cert.pem" \
+	-checkhost localhost \
+	-noout
 
 for gateway_config in infra/agentgateway/host/config.yaml infra/agentgateway/host/config-auth.yaml infra/agentgateway/k3d/config.yaml infra/agentgateway/gke/config.yaml; do
 	agentgateway --validate-only -f "${gateway_config}"
