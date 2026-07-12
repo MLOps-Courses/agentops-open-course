@@ -1,55 +1,61 @@
 ---
-description: Learn to build, secure, deploy, and operate AI agents — the AgentOps lifecycle — with 100% open-source technology, in Python.
+description: Build, evaluate, secure, deploy, and operate one production-shaped AI agent with an open-source AgentOps stack.
 ---
 
 # AgentOps Open Course
 
-<center>
-    *Learn to build, secure, deploy, and operate AI agents — the AgentOps lifecycle — with 100% open-source technology.*
-</center>
+Build one **Ops Copilot** from its first model call to an observable Kubernetes workload. Every chapter changes the same runnable repository, so the concepts stay connected to code, tests, policy, and operations.
 
-Welcome to the **AgentOps Open Course**. You will build a real AI agent end to end with **Google ADK 2.0** in **Python**, then operate it like production software: give it tools, memory, and multi-agent workflows; evaluate and guard it; secure and connect it with **agentgateway**; deploy it to **Kubernetes with kagent**; and observe its behavior and cost. Everything runs **locally**, on the model provider of your choice.
+!!! tip "Start without an account"
 
-- **GitHub Repository**: [MLOps-Courses/agentops-open-course](https://github.com/MLOps-Courses/agentops-open-course)
-- **Sibling Course**: [MLOps Coding Course](https://mlops-coding-course.fmind.dev/)
-- **Foundation**: promotes [AAIF](https://aaif.io) open standards and projects — MCP, A2A, AGENTS.md, and agentgateway.
+    The complete local path uses Ollama and the Apache-2.0 Qwen3 model. Native Gemini is taught as ADK's direct provider path, and the final GKE lab uses Vertex AI as an optional proprietary substrate. The course software remains open source in both paths.
 
-## [Chapter 0: Overview](./0. Overview/)
+## What will you be able to do?
 
-Understand what agents and the AgentOps lifecycle are, meet the open-source ecosystem (ADK, agentgateway, kagent, MCP, A2A), and choose your model provider.
+- Design an agent only where model autonomy is worth its latency and risk.
+- Build typed ADK agents with tools, Agent Skills, MCP, memory, workflows, and A2A.
+- Test behavior offline, evaluate model-backed trajectories, redact PII, and require human approval for writes.
+- Route model, tool, and agent traffic through agentgateway with one stable application contract.
+- Run the same container on local k3d or a small GKE lab managed by kagent.
+- Trace the system in self-hosted MLflow and monitor it with OpenTelemetry, Prometheus, and Grafana.
 
-## [Chapter 1: Setup](./1. Setup/)
+## What is the system you will build?
 
-Set up a professional local environment: Python (uv), containers, a local Kubernetes cluster with k3d, provider keys, and your workspace.
+```mermaid
+flowchart LR
+    User[Engineer] --> Gateway[agentgateway]
+    Agent[Ops Copilot] --> Gateway
+    Gateway --> MCP[MCP tools]
+    Gateway --> Model[Qwen3 locally<br/>Gemini optionally]
+    Gateway --> Agent
+    Agent --> State[(SQLite state)]
+    Agent --> OTel[OpenTelemetry]
+    OTel --> MLflow[MLflow traces]
+    OTel --> Metrics[Prometheus + Grafana]
+```
 
-## [Chapter 2: Agents](./2. Agents/)
+The bundled incident, log, runbook, and skill data is immutable. A runtime copy receives mock state changes and append-only audit records, which keeps each exercise resettable and safe.
 
-Build and run your first ADK 2.0 agent end to end on a native Gemini model, then learn models, instructions, sessions, and the developer loop.
+## Where should you start?
 
-## [Chapter 3: Capabilities](./3. Capabilities/)
+New to agent systems? Read the chapters in order. Already shipping LLM applications? Use the outcomes below as a map:
 
-Give the agent real powers: function tools and OpenAPI toolsets, skills, MCP, memory and RAG, workflow agents, the 2.0 graph runtime, and A2A.
+| Chapter                                   | You will leave with                                                      |
+| ----------------------------------------- | ------------------------------------------------------------------------ |
+| [0. Overview](./0.%20Overview/)           | A clear AgentOps lifecycle, architecture, and provider choice.           |
+| [1. Setup](./1.%20Setup/)                 | A pinned local workspace and an offline verification checkpoint.         |
+| [2. Agents](./2.%20Agents/)               | A first ADK agent with explicit configuration and session semantics.     |
+| [3. Capabilities](./3.%20Capabilities/)   | Typed tools, least-privilege skills, MCP, retrieval, workflows, and A2A. |
+| [4. Quality](./4.%20Quality/)             | Branch-covered tests, evaluations, guardrails, and security regressions. |
+| [5. Gateway](./5.%20Gateway/)             | Governed MCP, A2A, and model traffic through agentgateway.               |
+| [6. Platform](./6.%20Platform/)           | Reproducible k3d and optional GKE deployments with kagent.               |
+| [7. Observability](./7.%20Observability/) | Self-hosted tracing, metrics, evaluation, feedback, and audit evidence.  |
+| [8. Community](./8.%20Community/)         | A maintainable, releasable, and welcoming open-source project.           |
 
-## [Chapter 4: Quality](./4. Quality/)
+## What does "open source" mean here?
 
-Make the agent correct and trustworthy with typing, linting, testing, quality metrics, evaluations, guardrails, and security.
+Google ADK, agentgateway, kagent, MLflow, OpenTelemetry, Prometheus, Grafana, Ollama, Qwen3 weights, and the course code are available under open-source licenses. The optional Gemini API, Vertex AI, GKE, and GitHub hosting are proprietary services. They are integrations, not hidden requirements for the local course path.
 
-## [Chapter 5: Gateway](./5. Gateway/)
+## How do you begin?
 
-Secure and connect the agent with agentgateway — the flagship AAIF project — for MCP, A2A, models, security, and observability.
-
-## [Chapter 6: Platform](./6. Platform/)
-
-Run agents as Kubernetes workloads with kagent — a CNCF project — from container image to deployed `Agent` custom resource.
-
-## [Chapter 7: Observability](./7. Observability/)
-
-Gain insight into your agent in production: reproducibility, tracing, monitoring, cost, feedback, online evaluation, and governance.
-
-## [Chapter 8: Community](./8. Community/)
-
-Share and sustain your agent: repository, licensing, releases, templates, documentation, contributions, and the AAIF.
-
-## Let's build together
-
-By the end, you will be able to design, build, evaluate, secure, deploy, and operate agents professionally — and reason about the trade-offs between providers and architectures. Let's begin!
+Start with [0.0. Course](./0.%20Overview/0.0.%20Course.md), or go directly to the repository's [local quickstart](https://github.com/MLOps-Courses/agentops-open-course#local-quickstart). Every chapter ends with a checkpoint; Chapters 5-7 also include explicit verification and teardown steps.

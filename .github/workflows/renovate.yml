@@ -1,0 +1,39 @@
+# Self-hosted Renovate: opens dependency-update pull requests on a weekly schedule.
+# What gets updated and how PRs are grouped lives in renovate.json5 at the repo root.
+#
+# Token: Renovate cannot run with the built-in GITHUB_TOKEN — the runner token cannot
+# author PRs that trigger CI, and renovatebot/github-action rejects it. Configure a
+# RENOVATE_TOKEN repository secret: a fine-grained PAT scoped to this repository with
+# read-write Contents, Pull requests, Workflows (to bump pinned actions), and Issues
+# (for the dependency dashboard).
+name: Renovate
+
+on:
+  schedule:
+    - cron: "0 5 * * 1" # weekly, Monday 05:00 UTC, before the Scan run
+  workflow_dispatch:
+
+permissions:
+  contents: read # Renovate itself authenticates with RENOVATE_TOKEN, not this token
+
+concurrency:
+  group: renovate-${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  renovate:
+    runs-on: ubuntu-latest
+    # Guard forks: they have no RENOVATE_TOKEN and must not open PRs here.
+    if: github.repository == 'MLOps-Courses/agentops-open-course'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Run Renovate
+        uses: renovatebot/github-action@b50d2ba2bd928235abdcc14d06dfafc217f1c565 # v46.1.18
+        with:
+          configurationFile: renovate.json5
+          token: ${{ secrets.RENOVATE_TOKEN }}
+        env:
+          RENOVATE_REPOSITORIES: ${{ github.repository }}
+          LOG_LEVEL: info

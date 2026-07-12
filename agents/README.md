@@ -1,36 +1,72 @@
-# Agents
+# Ops Copilot
 
-The AgentOps Open Course reference agent — the **Ops Copilot**, an on-call assistant that triages and resolves incidents over a 100% local, bundled dataset. It is implemented as a self-contained Python project plus a shared dataset.
+The course reference system combines a self-contained Google ADK application with an immutable local dataset:
 
-- [`python/`](./python) — Google ADK 2.0, Python (uv, ruff, ty, pytest).
-- [`data/`](./data) — the shared dataset: `incidents.db` (SQLite), `runbooks/`, `skills/`, logs.
+- [`python/`](./python) contains the typed agent, MCP and A2A servers, evaluations, and tests.
+- [`data/`](./data) contains the SQLite seed, service logs, runbooks, and least-privilege Agent Skills.
 
-The agent reads the shared `data/`, so it runs fully offline. It starts on **native Gemini** (API key or ADC) in Chapters 2–4, then reaches any provider — including local Ollama — through **agentgateway** in Chapter 5, with no SDK changes.
+The deterministic engineering path runs offline after dependencies are installed. Interactive model-backed runs use either local Qwen3 through Ollama and agentgateway or optional native Gemini credentials.
 
-## Capabilities (and where they live)
+## Architecture
 
-| Capability                        | Python (`python/src/agent/`)    | Chapter |
-| --------------------------------- | ------------------------------- | ------- |
-| Agent + persona + model           | `agent.py`, `config.py`         | 2       |
-| Data-access layer                 | `data.py`                       | 3.1     |
-| Function tools                    | `tools.py`                      | 3.1     |
-| Skills (progressive disclosure)   | `skills.py`                     | 3.2     |
-| MCP server + client               | `mcp_server.py`/`mcp_client.py` | 3.3     |
-| Memory / RAG (runbooks)           | `memory.py`                     | 3.4     |
-| Workflow (triage→diagnose→…)      | `workflow.py`                   | 3.5     |
-| Multi-agent delegation / A2A      | `delegation.py`                 | 3.6     |
-| Guardrails + HITL actions         | `guardrails.py`/`actions.py`    | 4.5     |
-| PII redaction (Presidio)          | `pii.py`                        | 4.5     |
-| Evaluations (`adk eval` + MLflow) | `../evals/`                     | 4.4     |
-| Telemetry (OpenTelemetry)         | `telemetry.py`                  | 7.1     |
-
-## Run it
-
-```bash
-cd python && mise run install && cp .env.example .env   # add your key
-mise run web            # ADK dev UI     ·  mise run run          (terminal)
-mise run test           # unit tests     ·  mise run eval         (adk eval)
-mise run eval:mlflow    # MLflow judges  ·  mise run redteam      (garak, via uvx)
+```mermaid
+flowchart LR
+    Client[A2A client] --> Server[A2A server]
+    Server --> Agent[ADK root agent]
+    Agent --> Read[Read tools]
+    Agent --> Skills[Skill tools]
+    Agent --> HITL[Approved write tools]
+    Read --> State[(Runtime SQLite copy)]
+    HITL --> State
+    Agent --> MCP[MCP client/server]
+    Agent --> Model[Native Gemini or gateway model]
+    Server --> OTel[OpenTelemetry]
 ```
 
-Licensed under the [MIT License](./LICENSE).
+## Capability map
+
+| Capability                                       | Source                               | Course               |
+| ------------------------------------------------ | ------------------------------------ | -------------------- |
+| Agent, instructions, callbacks                   | `python/src/agent/agent.py`          | Chapter 2            |
+| Typed configuration and model selection          | `config.py`, `model.py`, `models.py` | Chapters 2 and 5     |
+| Immutable seed and runtime state                 | `data.py`, `data/`                   | Chapter 3            |
+| Incident, service, and log tools                 | `tools.py`                           | Chapter 3.1          |
+| Least-privilege Agent Skills                     | `skills.py`                          | Chapter 3.2          |
+| MCP server and client                            | `mcp_server.py`, `mcp_client.py`     | Chapter 3.3          |
+| Runbook retrieval                                | `memory.py`                          | Chapter 3.4          |
+| Deterministic workflow                           | `workflow.py`                        | Chapter 3.5          |
+| Delegation and A2A                               | `delegation.py`, `server.py`         | Chapters 3.6 and 6   |
+| Approval, actions, append-only audit             | `guardrails.py`, `actions.py`        | Chapters 4.5 and 7.6 |
+| Request, response, and tool-output PII callbacks | `pii.py`                             | Chapters 4.5 and 4.6 |
+| ADK and MLflow evaluations                       | `python/evals/`                      | Chapters 4.4 and 7   |
+| OTLP telemetry                                   | `telemetry.py`                       | Chapter 7.1          |
+
+## Offline checkpoint
+
+From the repository root:
+
+```bash
+mise install
+mise run install
+mise run check
+mise run test
+```
+
+Tests enforce at least 95% branch coverage and do not call a model or cloud service.
+
+## Run a model-backed agent
+
+Native Gemini reads the repository-root `.env`:
+
+```bash
+cp .env.example .env
+# Set GOOGLE_API_KEY in .env, then:
+cd agents/python
+mise run web
+```
+
+The account-free path uses Ollama/Qwen3 behind agentgateway and is documented in [Chapter 5](../docs/5.%20Gateway/). It keeps provider switching, model policy, and telemetry outside the application.
+
+## Licenses
+
+Agent code is [MIT](./LICENSE). Model weights, SDKs, and services retain their own licenses and terms; see the course's provider chapter before redistributing an image or model.

@@ -1,0 +1,33 @@
+name: Documentation issue
+description: Report a broken command, stale snippet, unclear lesson, or reader-experience problem.
+title: "docs: "
+labels: [documentation]
+body:
+  - type: input
+    id: page
+    attributes:
+      label: Page or file
+      placeholder: docs/5. Gateway/5.2. MCP Gateway.md
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What is wrong or unclear?
+      description: For a broken command, include the command, working directory, and sanitized output.
+    validations:
+      required: true
+  - type: textarea
+    id: improvement
+    attributes:
+      label: Suggested improvement
+      description: Explain the smallest change that would unblock the reader.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I checked the current `main` branch and the rendered course.
+          required: true
+        - label: I removed credentials and personal data from this report.
+          required: true

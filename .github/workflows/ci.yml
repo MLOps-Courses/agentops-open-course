@@ -1,4 +1,4 @@
-# Lint, type-check, and test the Python agent. Same `mise run` tasks as the local git hooks.
+# Run the same quality gates used by local hooks.
 name: CI
 
 on:
@@ -14,35 +14,37 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  format:
+  validate:
     runs-on: ubuntu-latest
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Install tools using mise
+      - name: Install the pinned toolchain
         uses: jdx/mise-action@v4
 
-      - name: Check formatting (dprint) — mirrors the pre-commit hook
-        run: dprint check
+      - name: Install project dependencies
+        run: mise run install
 
-      - name: Lint GitHub Actions workflows (actionlint) — mirrors the pre-commit hook
-        run: actionlint
+      - name: Format sources
+        run: mise run format
 
-  python:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: agents/python
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
+      - name: Run static checks
+        run: mise run check
 
-      - name: Install tools using mise
-        uses: jdx/mise-action@v4
+      - name: Run offline tests
+        run: mise run test
 
-      - name: Install, check, and test
-        run: |
-          mise run install
-          mise run check
-          mise run test
+      # Both suites already run inside `mise run test`; these dedicated steps make
+      # a red-team or evalset regression a named merge-gate signal instead of one
+      # line in the full run. Both are deterministic and offline — no model, no key.
+      - name: Run the deterministic red-team suite
+        run: cd agents/python && mise run redteam
+
+      - name: Validate the evalset against the seed data
+        run: cd agents/python && mise run eval:validate
+
+      - name: Verify generated files are committed
+        run: test -z "$(git status --porcelain)"

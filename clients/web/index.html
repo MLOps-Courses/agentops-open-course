@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<!-- Ops Copilot web client — a single-file A2A (JSON-RPC over HTTP) browser client.
+     Teaching material first: every protocol shape is spelled out in the comments below.
+     No build step, no framework, no external requests (works offline). MIT licensed. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ops Copilot — A2A web client</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font: 15px/1.5 system-ui, sans-serif; max-width: 52rem; margin: 0 auto; padding: 1rem; }
+    header h1 { font-size: 1.2rem; margin: 0 0 .5rem; }
+    form { display: flex; gap: .5rem; margin: .5rem 0; }
+    input[type=url], input[type=text] { flex: 1; padding: .4rem .6rem; }
+    button { padding: .4rem .9rem; cursor: pointer; }
+    #card { border: 1px solid color-mix(in srgb, currentColor 25%, transparent); border-radius: .5rem; padding: .6rem .8rem; font-size: .85rem; }
+    #card ul { margin: .2rem 0 0; padding-left: 1.2rem; }
+    #log { display: flex; flex-direction: column; gap: .5rem; margin: 1rem 0; }
+    .msg { border-radius: .6rem; padding: .5rem .8rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .user { background: color-mix(in srgb, currentColor 12%, transparent); align-self: flex-end; max-width: 85%; }
+    .agent { border: 1px solid color-mix(in srgb, currentColor 25%, transparent); align-self: flex-start; max-width: 85%; }
+    .system { font-size: .8rem; opacity: .8; align-self: center; }
+    .error { color: #b3261e; align-self: center; font-size: .85rem; }
+    .tool { font-family: monospace; font-size: .8rem; opacity: .85; align-self: flex-start; }
+    /* One visually distinct badge per A2A task state. */
+    .state { align-self: center; font-size: .75rem; font-weight: 600; border-radius: 1rem; padding: .1rem .7rem; color: #fff; }
+    .state-submitted { background: #5f6368; }
+    .state-working { background: #1a73e8; }
+    .state-input-required, .state-auth-required { background: #b06000; }
+    .state-completed { background: #188038; }
+    .state-failed, .state-rejected { background: #b3261e; }
+    .state-canceled, .state-unknown { background: #5f6368; }
+    .confirm { border: 2px solid #b06000; border-radius: .6rem; padding: .6rem .8rem; align-self: stretch; }
+    .confirm pre { font-size: .78rem; overflow-x: auto; margin: .3rem 0; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Ops Copilot — A2A web client</h1>
+    <!-- Point at agentgateway :3001 (the governed data plane), never the raw agent :8080. -->
+    <form id="connect-form">
+      <input id="base-url" type="url" value="http://localhost:3001" aria-label="A2A base URL" required>
+      <button type="submit">Connect</button>
+    </form>
+    <div id="card" hidden></div>
+  </header>
+  <main id="log" aria-live="polite"></main>
+  <form id="chat-form">
+    <input id="chat-input" type="text" placeholder="Triage the open incidents." aria-label="Message" disabled required>
+    <button id="chat-send" type="submit" disabled>Send</button>
+  </form>
+
+  <script>
+    "use strict";
+    // ---------------------------------------------------------------------
+    // Client state: one A2A "context" is one agent session (the ADK server
+    // maps contextId to its session id). taskId is only set while a task is
+    // paused in `input-required`, waiting for a human approval.
+    // ---------------------------------------------------------------------
+    const state = { baseUrl: "", streaming: false, contextId: null, taskId: null, lastAgentText: "" };
+    const $ = (id) => document.getElementById(id);
+
+    // ------------------------- UI helpers ---------------------------------
+    function addBubble(cls, text) {
+      const div = document.createElement("div");
+      div.className = "msg " + cls;
+      div.textContent = text;
+      $("log").append(div);
+      div.scrollIntoView({ block: "end" });
+      return div;
+    }
+    function showState(taskState) {
+      addBubble("state state-" + taskState, taskState);
+    }
+    function setComposerEnabled(enabled) {
+      $("chat-input").disabled = !enabled;
+      $("chat-send").disabled = !enabled;
+    }
+
+    // --------------------- 1. Agent card discovery ------------------------
+    // A2A discovery is a plain GET on a well-known path. The card advertises
+    // the protocol version, transports, and capabilities (e.g. streaming).
+    $("connect-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      state.baseUrl = $("base-url").value.replace(/\/+$/, "");
+      try {
+        const response = await fetch(state.baseUrl + "/.well-known/agent-card.json");
+        if (!response.ok) throw new Error("HTTP " + response.status);
+        const card = await response.json();
+        state.streaming = Boolean(card.capabilities && card.capabilities.streaming);
+        const el = $("card");
+        el.hidden = false;
+        el.textContent = "";
+        const title = document.createElement("strong");
+        title.textContent = `${card.name} v${card.version} — ${card.description}`;
+        const skills = document.createElement("ul");
+        for (const skill of card.skills || []) {
+          const li = document.createElement("li");
+          li.textContent = `${skill.name}: ${skill.description}`;
+          skills.append(li);
+        }
+        el.append(title, ` (streaming: ${state.streaming})`, skills);
+        setComposerEnabled(true);
+      } catch (error) {
+        // The most common failure here is CORS: the gateway route must carry
+        // a `cors` policy allowing this page's origin (see the README).
+        addBubble("error", `Could not fetch the agent card: ${error}. If the URL is reachable with curl, the route is likely missing a CORS policy for this page's origin.`);
+      }
+    });
+
+    // ----------------------- 2. Sending messages --------------------------
+    // Both RPC methods take the same params. Shape of a user text message:
+    //   { "jsonrpc": "2.0", "id": "<uuid>", "method": "message/stream",
+    //     "params": { "message": { "kind": "message", "messageId": "<uuid>",
+    //       "role": "user", "parts": [{ "kind": "text", "text": "..." }],
+    //       "contextId": "<session>", "taskId": "<only when resuming>" } } }
+    async function sendParts(parts) {
+      const message = { kind: "message", messageId: crypto.randomUUID(), role: "user", parts };
+      if (state.contextId) message.contextId = state.contextId; // keep one session
+      if (state.taskId) message.taskId = state.taskId; // resume the paused task
+      state.lastAgentText = ""; // new turn: reset the duplicate-artifact filter
+      setComposerEnabled(false);
+      try {
+        if (state.streaming) {
+          await streamMessage(message); // SSE: incremental task events
+        } else {
+          await sendMessage(message); // single blocking JSON-RPC response
+        }
+      } catch (error) {
+        addBubble("error", String(error));
+      } finally {
+        setComposerEnabled(true);
+        $("chat-input").focus();
+      }
+    }
+
+    async function postRpc(method, message) {
+      return fetch(state.baseUrl + "/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: crypto.randomUUID(), method, params: { message } }),
+      });
+    }
+
+    // message/send: one JSON-RPC response whose result is the finished Task.
+    async function sendMessage(message) {
+      const response = await postRpc("message/send", message);
+      if (!response.ok) throw new Error("HTTP " + response.status);
+      const rpc = await response.json();
+      if (rpc.error) throw new Error(`A2A error ${rpc.error.code}: ${rpc.error.message}`);
+      handleResult(rpc.result);
+    }
+
+    // message/stream: an SSE response; every `data:` line is one JSON-RPC
+    // response whose result is a Task, Message, TaskStatusUpdateEvent, or
+    // TaskArtifactUpdateEvent. Falls back to message/send if SSE never starts.
+    async function streamMessage(message) {
+      const response = await postRpc("message/stream", message);
+      const contentType = response.headers.get("content-type") || "";
+      if (!response.ok || !contentType.includes("text/event-stream")) {
+        addBubble("system", "Streaming unavailable, falling back to message/send.");
+        return sendMessage(message);
+      }
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        // SSE frames are separated by a blank line; data lines start "data:".
+        const frames = buffer.split("\n\n");
+        buffer = frames.pop(); // keep the trailing partial frame
+        for (const frame of frames) {
+          const data = frame.split("\n").filter((l) => l.startsWith("data:")).map((l) => l.slice(5).trim()).join("\n");
+          if (!data) continue; // comments/pings such as ": ping"
+          const rpc = JSON.parse(data);
+          if (rpc.error) throw new Error(`A2A error ${rpc.error.code}: ${rpc.error.message}`);
+          handleResult(rpc.result);
+        }
+      }
+    }
+
+    // ----------------------- 3. Rendering results -------------------------
+    function handleResult(result) {
+      if (!result) return;
+      if (result.kind === "task") {
+        // Initial Task snapshot: remember ids, then render its current state.
+        state.contextId = result.contextId;
+        showState(result.status.state);
+        for (const artifact of result.artifacts || []) renderParts(artifact.parts);
+        if (result.status.message) renderParts(result.status.message.parts, result.status.state, result.id);
+        rememberPause(result.status.state, result.id);
+      } else if (result.kind === "status-update") {
+        state.contextId = result.contextId;
+        showState(result.status.state);
+        if (result.status.message) renderParts(result.status.message.parts, result.status.state, result.taskId);
+        rememberPause(result.status.state, result.taskId);
+      } else if (result.kind === "artifact-update") {
+        renderParts(result.artifact.parts);
+      } else if (result.kind === "message") {
+        renderParts(result.parts);
+      }
+    }
+
+    // A task pausing in input-required is waiting for a human; keep its id so
+    // the next message resumes it instead of starting a new task.
+    function rememberPause(taskState, taskId) {
+      state.taskId = taskState === "input-required" || taskState === "auth-required" ? taskId : null;
+    }
+
+    function renderParts(parts, taskState, taskId) {
+      for (const part of parts || []) {
+        if (part.kind === "text") {
+          if (part.text === state.lastAgentText) continue; // final artifact repeats the last update
+          state.lastAgentText = part.text;
+          addBubble("agent", part.text);
+        } else if (part.kind === "data") {
+          renderDataPart(part, taskState, taskId);
+        }
+      }
+    }
+
+    // ADK transports tool traffic as DataParts tagged with adk_* metadata:
+    //   metadata: { "adk_type": "function_call" | "function_response", "adk_is_long_running": true? }
+    // A guarded action surfaces as a *long-running* function call named
+    // "adk_request_confirmation" on a task paused in `input-required`.
+    function renderDataPart(part, taskState, taskId) {
+      const meta = part.metadata || {};
+      if (meta.adk_type === "function_call" && part.data.name === "adk_request_confirmation") {
+        renderConfirmation(part.data, taskId);
+      } else if (meta.adk_type === "function_call") {
+        addBubble("tool", `tool call: ${part.data.name}(${JSON.stringify(part.data.args)})`);
+      } else if (meta.adk_type === "function_response") {
+        addBubble("tool", `tool result: ${JSON.stringify(part.data.response)}`);
+      } else {
+        addBubble("tool", JSON.stringify(part.data));
+      }
+    }
+
+    // -------------------- 4. Human approval round-trip --------------------
+    // The pause carries the original call and a ToolConfirmation:
+    //   data: { "id": "<call-id>", "name": "adk_request_confirmation",
+    //           "args": { "originalFunctionCall": {...}, "toolConfirmation": { "hint": "...", "confirmed": false } } }
+    // The human answers by sending a FunctionResponse DataPart on the SAME
+    // task. The Ops Copilot refuses approvals without a rationale — that is
+    // the audit contract, so the form requires one.
+    function renderConfirmation(call, taskId) {
+      const original = call.args.originalFunctionCall || {};
+      const hint = (call.args.toolConfirmation || {}).hint || "The agent requests approval for a guarded action.";
+      const box = document.createElement("div");
+      box.className = "msg confirm";
+      const title = document.createElement("strong");
+      title.textContent = "Approval required: " + (original.name || "guarded action");
+      const details = document.createElement("pre");
+      details.textContent = JSON.stringify(original.args || {}, null, 2);
+      const hintP = document.createElement("p");
+      hintP.textContent = hint;
+      const form = document.createElement("form");
+      const rationale = document.createElement("input");
+      rationale.type = "text";
+      rationale.placeholder = "Rationale (required to approve)";
+      const approve = document.createElement("button");
+      approve.textContent = "Approve";
+      const deny = document.createElement("button");
+      deny.type = "button";
+      deny.textContent = "Deny";
+      form.append(rationale, approve, deny);
+      box.append(title, hintP, details, form);
+      $("log").append(box);
+      box.scrollIntoView({ block: "end" });
+
+      const answer = (confirmed) => {
+        form.querySelectorAll("input,button").forEach((el) => (el.disabled = true));
+        state.taskId = taskId; // resume this exact paused task
+        addBubble("user", (confirmed ? "Approved: " : "Denied. ") + rationale.value);
+        // Reply shape consumed by ADK's confirmation processor:
+        //   data: { "id": "<same call-id>", "name": "adk_request_confirmation",
+        //           "response": { "confirmed": true, "payload": { "rationale": "..." } } }
+        sendParts([{
+          kind: "data",
+          data: { id: call.id, name: call.name, response: { confirmed, payload: { rationale: rationale.value } } },
+          metadata: { adk_type: "function_response" },
+        }]);
+      };
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        if (rationale.value.trim()) answer(true);
+      });
+      deny.addEventListener("click", () => answer(false));
+    }
+
+    // --------------------------- Composer ----------------------------------
+    $("chat-form").addEventListener("submit", (event) => {
+      event.preventDefault();
+      const text = $("chat-input").value.trim();
+      if (!text) return;
+      addBubble("user", text);
+      $("chat-input").value = "";
+      sendParts([{ kind: "text", text }]);
+    });
+  </script>
+</body>
+</html>

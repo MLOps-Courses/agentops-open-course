@@ -5,21 +5,25 @@
 [tasks.install]
 alias = "i"
 description = "Install development dependencies"
-run = "uv sync"
+run = "uv sync --locked"
 
 [tasks.format]
 alias = "f"
 description = "Format Python source and imports"
-run = "mise run format:python ${@:-.}"
+run = "mise run format:python"
 
 [tasks."format:python"]
 description = "Sort imports and format with Ruff"
-run = "uv run ruff check --select=I --fix --force-exclude ${@:-.} && uv run ruff format --force-exclude ${@:-.}"
+run = "uv run ruff check --select=I --fix --force-exclude . && uv run ruff format --force-exclude ."
 
 [tasks.check]
 alias = "c"
 description = "Run code checks in parallel"
-depends = ["check:format", "check:lint", "check:types", "check:audit"]
+depends = ["check:format", "check:lint", "check:types", "check:vuln"]
+
+[tasks."config:check"]
+description = "Validate the resolved agent configuration and print it with secrets masked"
+run = "uv run python -m agent.config_check"
 
 [tasks."check:format"]
 alias = "cf"
@@ -33,26 +37,26 @@ run = [
 [tasks."check:lint"]
 alias = "cl"
 description = "Run the Ruff linter"
-run = "uv run ruff check --force-exclude ${@:-.}"
+run = "uv run ruff check --force-exclude ."
 
 [tasks."check:types"]
 alias = "ct"
 description = "Run the ty type checker"
 run = "uv run ty check"
 
-[tasks."check:audit"]
+[tasks."check:vuln"]
 alias = "ca"
 description = "Audit dependencies for known vulnerabilities"
 # PYSEC-2026-597: path traversal in nltk.data.load(). nltk is a dev-only transitive of
-# rouge-score (pulled by google-adk[eval] for `adk eval`); it is never imported by the agent
+# rouge-score (a minimal dependency for `adk eval`); it is never imported by the agent
 # runtime and receives no attacker-controlled resource names. No fixed release exists yet —
 # revisit when one ships. Documented, specific ignore (not a blanket suppression).
 run = "uv run pip-audit --ignore-vuln PYSEC-2026-597"
 
 [tasks.test]
 alias = "t"
-description = "Run the test suite with pytest"
-run = "uv run pytest \"$@\""
+description = "Run the offline test suite with branch coverage"
+run = "uv run pytest"
 
 [tasks.eval]
 alias = "e"
@@ -60,19 +64,28 @@ description = "Run the ADK eval sets over the fixed dataset (Ch. 4.4; needs a pr
 run = "uv run adk eval src/agent evals/ops.evalset.json --config_file_path evals/test_config.json"
 
 [tasks."eval:mlflow"]
-description = "Run the MLflow GenAI eval — judges + prompt registry (Ch. 4.4/7.0; needs a provider key)"
+description = "Run full-conversation MLflow evals + prompt registry (optional gateway judge)"
 run = "uv run python evals/mlflow_eval.py"
 
+[tasks."eval:retrieval"]
+description = "Compare keyword vs semantic runbook retrieval (needs local Ollama embeddings)"
+run = "uv run python evals/retrieval_eval.py"
+
+[tasks."eval:validate"]
+description = "Validate the evalset structure and seed references offline (no model)"
+run = "uv run pytest --no-cov tests/test_evalset.py"
+
 [tasks.redteam]
-description = "Red-team the agent's model with garak (Ch. 4.6; needs a provider key; garak runs via uvx)"
-# garak is a CLI scanner, not a library the agent imports — run it ephemerally with uvx so it never
-# bloats the agent's locked dependencies. It reaches Gemini through litellm (a dev-time transport, like
-# MLflow's judge); the agent itself never uses litellm. Three fast, representative probe families:
-# jailbreaks (dan), prompt injection (promptinject), and encoding-based bypasses (encoding).
-run = "uvx --from garak garak --model_type litellm --model_name gemini/${AGENT_MODEL:-gemini-3.5-flash} --probes dan,promptinject,encoding"
+description = "Run deterministic offline adversarial checks (not live model red-teaming)"
+run = "uv run pytest --no-cov tests/test_security.py"
 
 [tasks.mcp]
 description = "Run the Ops Copilot MCP server over stdio (Ch. 3.3)"
+run = "uv run python -m agent.mcp_server"
+
+[tasks."mcp:http"]
+description = "Run the Ops Copilot MCP server over streamable HTTP on :8000"
+env = { MCP_HOST = "127.0.0.1", MCP_PORT = "8000", MCP_TRANSPORT = "streamable-http" }
 run = "uv run python -m agent.mcp_server"
 
 [tasks.web]
@@ -83,6 +96,14 @@ run = "uv run adk web src"
 alias = "r"
 description = "Run the agent in the terminal (needs a provider key in .env)"
 run = "uv run adk run src/agent"
+
+[tasks.a2a]
+description = "Run the persistent A2A server on :8080"
+run = "uv run python -m agent.server"
+
+[tasks."data:reset"]
+description = "Reset the disposable runtime database from the committed seed"
+run = "rm -rf .state"
 
 [tasks.clean]
 alias = "n"

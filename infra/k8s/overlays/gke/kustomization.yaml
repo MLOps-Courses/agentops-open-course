@@ -1,0 +1,46 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+  - ../../../agentgateway/gke
+  - network-policies.yaml
+
+patches:
+  - path: workload-identity.yaml
+  # Vertex exception: Google API endpoints publish no stable CIDR, so the
+  # rule is port-scoped HTTPS. The metadata server rule keeps Workload
+  # Identity token exchange working under default-deny egress.
+  - target:
+      group: networking.k8s.io
+      version: v1
+      kind: NetworkPolicy
+      name: agentgateway-egress
+    patch: |-
+      - op: add
+        path: /spec/egress/-
+        value:
+          to:
+            - ipBlock:
+                cidr: 169.254.169.254/32
+          ports:
+            - port: 80
+              protocol: TCP
+      - op: add
+        path: /spec/egress/-
+        value:
+          to:
+            - ipBlock:
+                cidr: 0.0.0.0/0
+          ports:
+            - port: 443
+              protocol: TCP
+  - target:
+      group: apps
+      version: v1
+      kind: Deployment
+      name: mlflow
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/env/0/value
+        value: gs://agentops-open-course-mlflow-artifacts

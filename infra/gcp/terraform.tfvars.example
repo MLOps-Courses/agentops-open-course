@@ -1,0 +1,11 @@
+project_id = "agentops-open-course"
+region     = "europe-west1"
+zone       = "europe-west1-b"
+
+# Restrict the public control plane to your current public IPv4 /32.
+master_authorized_networks = [
+  {
+    cidr_block   = "203.0.113.10/32"
+    display_name = "operator"
+  },
+]

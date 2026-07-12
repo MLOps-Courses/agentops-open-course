@@ -1,0 +1,47 @@
+# Namespace guardrails for the shared local cluster: a runaway or duplicated
+# workload cannot starve other projects' namespaces.
+#
+# Quota sizing = declared steady state + rolling-update surge headroom.
+# Steady state (gateway, MCP, agent, MLflow, collector, Loki, plus the local
+# overlay's Prometheus and Alertmanager): requests 1050m/2112Mi, limits
+# 4700m/4992Mi. Skaffold rollouts surge one extra pod per RollingUpdate
+# deployment (MLflow, Loki, Prometheus, and Alertmanager are Recreate):
+# +550m/+1024Mi requests, +2500m/+2816Mi limits. The remainder covers one or
+# two LimitRange-defaulted debug pods.
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: agentops-compute
+  namespace: agentops
+  labels:
+    app.kubernetes.io/part-of: agentops-open-course
+spec:
+  hard:
+    requests.cpu: "2"
+    requests.memory: 4Gi
+    limits.cpu: "8"
+    limits.memory: 9Gi
+    pods: "12"
+---
+# With a compute ResourceQuota active, pods without explicit requests/limits
+# are rejected. These defaults keep ad-hoc pods (kubectl run diagnostics,
+# controller-created sidecars) schedulable and bounded.
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: agentops-defaults
+  namespace: agentops
+  labels:
+    app.kubernetes.io/part-of: agentops-open-course
+spec:
+  limits:
+    - type: Container
+      default:
+        cpu: 500m
+        memory: 512Mi
+      defaultRequest:
+        cpu: 100m
+        memory: 256Mi
+      max:
+        cpu: "1"
+        memory: 2Gi

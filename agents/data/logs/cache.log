@@ -1,0 +1,11 @@
+2026-07-07T09:15:02Z INFO  cache snapshot persisted to disk in 1.2s (rdb size 3.1GB)
+2026-07-07T09:30:11Z INFO  cache memory used 7.4GB/8.0GB policy=allkeys-lru
+2026-07-07T09:41:27Z WARN  cache TLS certificate for cache-internal expires in 21 days
+2026-07-07T09:47:55Z WARN  cache memory used 8.0GB/8.0GB maxmemory reached
+2026-07-07T09:48:02Z ERROR cache eviction storm: 412000 keys evicted in 60s (baseline 300)
+2026-07-07T09:48:30Z INFO  cache incident INC-007 opened severity=SEV2
+2026-07-07T09:52:18Z WARN  cache hit-rate 31% (baseline 92%)
+2026-07-07T10:06:40Z INFO  cache client connections 1840 (baseline 1900)
+2026-07-07T10:35:09Z WARN  cache memory used 8.0GB/8.0GB despite evictions; RSS grows ~90MB/h since v2026.07.06-1
+2026-07-07T11:35:12Z INFO  cache serializer buffer leak fix deployed v2026.07.07-2 (3/3 nodes ready)
+2026-07-07T12:28:44Z INFO  cache hit-rate 90% recovered; memory used 4.2GB/8.0GB

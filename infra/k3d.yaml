@@ -1,0 +1,27 @@
+apiVersion: k3d.io/v1alpha5
+kind: Simple
+metadata:
+  name: local
+servers: 1
+agents: 1
+image: docker.io/rancher/k3s:v1.35.5-k3s1
+kubeAPI:
+  hostIP: 127.0.0.1
+registries:
+  create:
+    name: registry.localhost
+    host: 127.0.0.1
+    hostPort: "5050"
+options:
+  k3d:
+    wait: true
+    timeout: 120s
+    disableLoadbalancer: true
+  k3s:
+    extraArgs:
+      - arg: --disable=traefik,servicelb
+        nodeFilters:
+          - server:*
+  kubeconfig:
+    updateDefaultKubeconfig: true
+    switchCurrentContext: true

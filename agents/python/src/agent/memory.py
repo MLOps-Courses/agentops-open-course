@@ -8,12 +8,19 @@ the course fully offline — swap in a vector store or ADK ``MemoryService`` for
 
 from __future__ import annotations
 
+import logging
 import re
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from google.adk.agents.llm_agent import ToolUnion
+if TYPE_CHECKING:
+    from google.adk.agents.llm_agent import ToolUnion
 
 from . import data
+from .config import settings
+from .models import normalize_slug
+from .resilience import with_resilience
+
+logger = logging.getLogger(__name__)
 
 # Terms shorter than this carry little retrieval signal, so drop them (a length filter, not a stop-list).
 _MIN_TERM_LENGTH = 3
@@ -33,19 +40,22 @@ def get_runbook(slug: str) -> dict[str, Any]:
     Returns:
         A dict with the ``slug`` and its markdown ``content``, or an ``error`` if unknown.
     """
+    normalized = normalize_slug(slug)
     content = data.read_runbook(slug)
     if content is None:
         known = ", ".join(data.list_runbook_slugs())
         return {"error": f"No runbook named {slug!r}. Available runbooks: {known}."}
-    return {"slug": slug, "content": content}
+    return {"slug": normalized, "content": content}
 
 
 def search_runbooks(query: str, limit: int = 3) -> dict[str, Any]:
     """Search the runbook knowledge base for guidance relevant to a free-text query.
 
-    Uses TF-IDF-style scoring: a term counts more when it is rare across runbooks (so
-    ubiquitous words like "service" don't dominate), and a term matching a runbook's slug
-    gets a strong boost. Deterministic and offline — a stepping stone to semantic RAG.
+    Uses TF-IDF-style scoring by default: a term counts more when it is rare across
+    runbooks (so ubiquitous words like "service" don't dominate), and a term matching
+    a runbook's slug gets a strong boost. Deterministic and offline. With
+    ``AGENT_SEMANTIC_RETRIEVAL=true`` it ranks by local-embedding similarity instead,
+    falling back to this keyword scorer when the embedding model is unavailable.
 
     Args:
         query: What you are trying to resolve, e.g. ``database connection pool exhausted``.
@@ -56,6 +66,20 @@ def search_runbooks(query: str, limit: int = 3) -> dict[str, Any]:
     """
     if limit <= 0:  # a non-positive limit falls back to the default
         limit = 3
+    if settings.semantic_retrieval:
+        # Imported lazily so the default offline path never touches the vector stack.
+        from .retrieval import EmbeddingUnavailableError, semantic_search
+
+        try:
+            matches = semantic_search(query, limit)
+            return {
+                "count": len(matches),
+                "retrieval": "semantic",
+                "runbooks": [{"slug": row["slug"], "content": row["content"]} for row in matches],
+            }
+        except EmbeddingUnavailableError as error:
+            # An explicit, logged fallback — never a silent degradation.
+            logger.warning("Semantic retrieval unavailable, falling back to keywords: %s", error)
     terms = _terms(query)
     contents = {slug: (data.read_runbook(slug) or "") for slug in data.list_runbook_slugs()}
     total = len(contents) or 1
@@ -81,5 +105,6 @@ def search_runbooks(query: str, limit: int = 3) -> dict[str, Any]:
     return {"count": len(top), "runbooks": [{"slug": slug, "content": content} for _, slug, content in top]}
 
 
-# The knowledge tools registered on the Ops Copilot (Ch. 3.4).
-KNOWLEDGE_TOOLS: list[ToolUnion] = [get_runbook, search_runbooks]
+# The knowledge tools registered on the Ops Copilot (Ch. 3.4), wrapped with the
+# same deadline/retry policy as the read tools — runbook reads are idempotent.
+KNOWLEDGE_TOOLS: list[ToolUnion] = [with_resilience(get_runbook), with_resilience(search_runbooks)]

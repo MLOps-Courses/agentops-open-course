@@ -1,0 +1,33 @@
+name: Course proposal
+description: Propose a new lesson, capability, or open-source integration.
+title: "feat: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Which learner problem does this solve?
+      description: Start with the missing outcome, not a preferred tool.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: Describe the course, code, tests, and infrastructure changes required.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Simpler alternatives considered
+    validations:
+      required: true
+  - type: input
+    id: license
+    attributes:
+      label: Upstream license
+      description: New tools must be genuinely open source and usable without a paid feature gate.
+      placeholder: Apache-2.0
+    validations:
+      required: true

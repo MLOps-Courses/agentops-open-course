@@ -1,0 +1,127 @@
+# Recording and alerting rules for the Ops Copilot platform. Every expression
+# uses metrics this stack verifiably exports (validated against the pinned
+# collector image):
+# - span_metrics connector: agentops_calls_total, agentops_duration_seconds_*
+#   (the collector's Prometheus exporter appends unit suffixes).
+# - Agent OTLP counters: agentops_tokens_token_total (unit "token" is also
+#   suffixed), agentops_guardrails_injections_neutralized_total, and
+#   agentops_triage_report_schema_failures_total.
+# Twin files: infra/observability/prometheus-rules.yml (host Compose) and
+# infra/k8s/overlays/local/prometheus-rules.yaml (in-cluster). Keep them
+# byte-identical.
+groups:
+  - name: agentops-slo
+    rules:
+      # Error ratio across all agent spans, the same series the dashboard
+      # plots. 0/0 yields NaN on an idle lab, so no alert fires without
+      # traffic instead of a false 0% or 100%.
+      - record: agentops:calls:error_ratio_rate5m
+        expr: |-
+          sum(rate(agentops_calls_total{status_code="STATUS_CODE_ERROR"}[5m]))
+            / sum(rate(agentops_calls_total[5m]))
+      - record: agentops:calls:error_ratio_rate1h
+        expr: |-
+          sum(rate(agentops_calls_total{status_code="STATUS_CODE_ERROR"}[1h]))
+            / sum(rate(agentops_calls_total[1h]))
+
+  - name: agentops-alerts
+    rules:
+      # Multiwindow burn rate for a 99% span-success SLO: both the fast (5m)
+      # and slow (1h) windows must burn the 30-day error budget at >= 14.4x.
+      # On sparse lab traffic a few consecutive failures cross the threshold
+      # immediately — intended, so stopping Ollama pages within minutes.
+      - alert: AgentErrorBudgetBurn
+        expr: |-
+          agentops:calls:error_ratio_rate5m > (14.4 * 0.010)
+            and agentops:calls:error_ratio_rate1h > (14.4 * 0.010)
+        for: 2m
+        labels:
+          severity: page
+        annotations:
+          summary: Agent spans are burning the 99% success error budget
+          description: >-
+            More than 14.4% of agent spans failed over both the last 5m and
+            1h. The usual causes are a stopped model provider (Ollama), a
+            misconfigured gateway route, or a failing tool backend.
+          runbook: https://github.com/MLOps-Courses/agentops-open-course/blob/main/docs/7.%20Observability/7.2.%20Monitoring.md
+
+      # p95 across all agent spans (dashboard panel expression). The
+      # spanmetrics histogram tops out at 30s, so quantiles saturate there.
+      # 15s suits local qwen3:4b on a modest machine; tune it to your
+      # hardware rather than deleting the alert.
+      - alert: AgentTurnLatencyP95High
+        expr: |-
+          histogram_quantile(0.95, sum by (le) (rate(agentops_duration_seconds_bucket[10m]))) > 15
+        for: 5m
+        labels:
+          severity: ticket
+        annotations:
+          summary: Agent span p95 latency exceeds 15s
+          description: >-
+            The 95th percentile span duration stayed above 15s for 5 minutes.
+            Check for model reloads, CPU contention, or oversized contexts.
+          runbook: https://github.com/MLOps-Courses/agentops-open-course/blob/main/docs/7.%20Observability/7.2.%20Monitoring.md
+
+      # The collector is the single telemetry entry point: when its scrape
+      # fails, traces, metrics, and logs all go dark at once (observability
+      # of the observability).
+      - alert: ObservabilityCollectorDown
+        expr: up{job="otel-collector"} == 0
+        for: 2m
+        labels:
+          severity: page
+        annotations:
+          summary: Prometheus cannot scrape the OpenTelemetry Collector
+          description: >-
+            The otel-collector scrape target has been down for 2 minutes.
+            All traces, metrics, and logs are being dropped in the meantime.
+          runbook: https://github.com/MLOps-Courses/agentops-open-course/blob/main/docs/7.%20Observability/7.2.%20Monitoring.md
+
+      # Spans keep arriving but the token counter stalls: the budget callback
+      # or the metrics pipeline broke silently. A bare absent() would also
+      # fire on an idle lab, so the alert gates on real span traffic.
+      - alert: AgentTokenTelemetryMissing
+        expr: |-
+          sum(rate(agentops_calls_total[15m])) > 0
+            unless sum(rate(agentops_tokens_token_total[15m])) > 0
+        for: 10m
+        labels:
+          severity: ticket
+        annotations:
+          summary: Spans are flowing but no token counters are recorded
+          description: >-
+            Agent spans were observed in the last 15m without any
+            agentops_tokens_token_total increase. The token budget callback
+            or the OTLP metrics pipeline is likely broken.
+          runbook: https://github.com/MLOps-Courses/agentops-open-course/blob/main/docs/7.%20Observability/7.2.%20Monitoring.md
+
+      # A couple of neutralized markers is the offline red-team suite; a
+      # sustained burst means something is actively probing tool-output
+      # injection paths.
+      - alert: AgentInjectionNeutralizedSpike
+        expr: sum(increase(agentops_guardrails_injections_neutralized_total[15m])) > 3
+        for: 2m
+        labels:
+          severity: ticket
+        annotations:
+          summary: Guardrails neutralized an unusual number of injections
+          description: >-
+            More than 3 injection markers were neutralized in tool output
+            within 15 minutes. Inspect the offending traces and the incident
+            seed data feeding the tools.
+          runbook: https://github.com/MLOps-Courses/agentops-open-course/blob/main/docs/7.%20Observability/7.2.%20Monitoring.md
+
+      # Structured triage reports failed validation even after the built-in
+      # retry — a model-quality regression (model swap, prompt drift).
+      - alert: AgentTriageSchemaFailures
+        expr: sum(increase(agentops_triage_report_schema_failures_total[15m])) > 0
+        for: 2m
+        labels:
+          severity: ticket
+        annotations:
+          summary: Triage reports are failing schema validation
+          description: >-
+            At least one triage report failed schema validation after retry
+            in the last 15 minutes. Re-run the offline evaluation and check
+            the pinned model and prompt.
+          runbook: https://github.com/MLOps-Courses/agentops-open-course/blob/main/docs/7.%20Observability/7.2.%20Monitoring.md

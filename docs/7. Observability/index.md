@@ -4,16 +4,20 @@ description: Gain insight into the agent in production: reproducibility, tracing
 
 # 7. Observability
 
-Your Ops Copilot now builds, runs, and deploys ([Chapter 6](../6. Platform/)). This chapter is the last turn of the [AgentOps loop](../0. Overview/0.2. AgentOps.md): keeping it healthy in production. You make runs reproducible, trace them with OpenTelemetry, monitor SLOs, track token cost, capture user feedback, evaluate live traffic, and govern the actions the agent takes.
+## How will you operate the agent after deployment?
 
-Observability closes the loop back to the start: what you learn here — a regressed eval, a cost spike, a thumbs-down — becomes the next change to the prompt, the tools, or the guardrails. An agent that acts in the world is only trustworthy if you can see what it did and why.
+Your Ops Copilot now runs as a private Kubernetes workload ([Chapter 6](../6. Platform/)). This chapter closes the [AgentOps loop](../0. Overview/0.2. AgentOps.md) with evidence: release lineage, OpenTelemetry traces, span-derived/gateway metrics, explicit cost assumptions, trace-linked human feedback, a safe online-evaluation design, and auditable approved actions.
+
+The shipped OSS stack is MLflow, OpenTelemetry Collector, Prometheus, Alertmanager, Loki, and Grafana. Pages distinguish implemented signals from desired production extensions: there is no fake dollar-cost panel, automatic live judge, external paging integration (alerts stop at the local Alertmanager), cryptographically immutable audit store, or HA claim.
 
 This chapter covers:
 
-- **[7.0. Reproducibility](./7.0. Reproducibility.md)**: Pin the version, model, and prompt; replay runs deterministically.
-- **[7.1. Tracing](./7.1. Tracing.md)**: OpenTelemetry spans, `adk web` traces, and exporting to a collector.
-- **[7.2. Monitoring](./7.2. Monitoring.md)**: Metrics, alerting, and SLOs for a tool-using agent.
-- **[7.3. Costs](./7.3. Costs.md)**: Token and cost tracking, budgets, and KPIs.
-- **[7.4. Feedback](./7.4. Feedback.md)**: Capture and route user feedback back into evals, skills, and runbooks.
-- **[7.5. Online Evaluation](./7.5. Online Evaluation.md)**: Production evals, sampling live traffic, and drift detection.
-- **[7.6. Governance](./7.6. Governance.md)**: Human-in-the-loop approvals, policy, the audit log, safety, and compliance.
+- **[7.0. Reproducibility](./7.0. Reproducibility.md)**: Version code, images, model path, prompt, data, tools, and evaluation evidence together.
+- **[7.1. Tracing](./7.1. Tracing.md)**: Export privacy-preserving ADK/gateway spans through OTel into MLflow.
+- **[7.2. Monitoring](./7.2. Monitoring.md)**: Query the shipped RED/gateway metrics, Loki agent logs, and provisioned Grafana dashboard, and respond to the shipped alerts.
+- **[7.3. Costs](./7.3. Costs.md)**: Bound model work and state conditional local/GKE cost assumptions honestly.
+- **[7.4. Feedback](./7.4. Feedback.md)**: Attach human MLflow assessments to concrete traces and promote regressions safely.
+- **[7.5. Online Evaluation](./7.5. Online Evaluation.md)**: Inspect bounded trace samples and design, but do not pretend to run, live scoring.
+- **[7.6. Governance](./7.6. Governance.md)**: Connect identity, confirmation, transactions, append-only evidence, persistence, and residual risk.
+
+The chapter checkpoint uses local or already-running lab telemetry. It does not deploy GCP or call a model unless the learner explicitly chooses that step.

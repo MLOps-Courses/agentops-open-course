@@ -1,0 +1,23 @@
+cff-version: 1.2.0
+message: If you use this course in teaching, research, or practice, please cite it using this metadata.
+title: AgentOps Open Course
+type: software
+version: 0.1.0
+authors:
+  - family-names: Hurier
+    given-names: Médéric
+    alias: fmind
+    email: agentops-open-course@fmind.dev
+repository-code: https://github.com/MLOps-Courses/agentops-open-course
+url: https://agentops-open-course.fmind.dev/
+license: CC-BY-4.0
+keywords:
+  - AgentOps
+  - AI agents
+  - Google ADK
+  - agentgateway
+  - kagent
+  - MLflow
+  - Kubernetes
+  - OpenTelemetry
+abstract: A local-first, open-source course for building, evaluating, securing, deploying, and operating a production-shaped AI agent.

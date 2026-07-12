@@ -4,14 +4,18 @@ description: Make the agent correct and trustworthy: typing, linting, testing, m
 
 # 4. Quality
 
-Make the agent correct and trustworthy: typing, linting, testing, metrics, evaluations, guardrails, and security. A working agent is not a finished one — this chapter is the discipline that turns a demo into something you would put on call. It moves from the deterministic foundations (types, lint, tests) to agent-specific quality (the metrics that matter and the evals that gate them) and finally to safety (guardrails and security). Every gate runs through the same `mise run` tasks that git hooks and CI use, so quality is enforced automatically, not by hope.
+## How will you make the agent trustworthy?
+
+Make the agent correct and trustworthy with layers of evidence. Start with trusted types, warning-free checks, isolated state, and branch-covered tests. Add live model trajectory evaluation separately. Then enforce PII boundaries, human confirmation, transactional writes, deterministic adversarial regressions, and repository security scans.
 
 This chapter covers:
 
 - **[4.0. Typing](./4.0. Typing.md)**: Python typing with ty, parsing tool I/O at the boundary.
 - **[4.1. Linting](./4.1. Linting.md)**: Lint and format with ruff and dprint.
 - **[4.2. Testing](./4.2. Testing.md)**: Fast, offline unit tests with pytest, against an isolated dataset copy.
-- **[4.3. Metrics](./4.3. Metrics.md)**: The metrics that define agent quality — task success, tool trajectory, groundedness, latency, cost, and safety.
-- **[4.4. Evaluations](./4.4. Evaluations.md)**: `adk eval` and tool-trajectory gating over a fixed dataset.
-- **[4.5. Guardrails](./4.5. Guardrails.md)**: Safety callbacks, input validation, and human-in-the-loop approval.
-- **[4.6. Security](./4.6. Security.md)**: Secrets, prompt injection, and dependency and container scanning.
+- **[4.3. Metrics](./4.3. Metrics.md)**: A concrete scorecard of release gates and observed operational indicators.
+- **[4.4. Evaluations](./4.4. Evaluations.md)**: ADK trajectories plus full-conversation MLflow lineage and optional judge evidence.
+- **[4.5. Guardrails](./4.5. Guardrails.md)**: Boundary redaction, stable errors, confirmation, transactions, and audit evidence.
+- **[4.6. Security](./4.6. Security.md)**: Threat modeling, offline adversarial regressions, identity, and supply-chain scanning.
+
+The chapter remains model-free until the evaluation page explicitly asks for a configured provider. A green interactive demo cannot substitute for these gates.
