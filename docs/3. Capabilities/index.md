@@ -19,5 +19,6 @@ This chapter covers:
 - **[3.4. Memory](./3.4. Memory.md)**: Conversation, state, and deterministic runbook retrieval without conflating them.
 - **[3.5. Workflows](./3.5. Workflows.md)**: The `triage -> diagnose -> recommend` graph with per-node least privilege.
 - **[3.6. A2A](./3.6. A2A.md)**: In-process delegation versus the persistent networked agent contract.
+- **[3.7. Multi-Agent](./3.7. Multi-Agent.md)**: A coordinator with least-privilege specialists, and when one agent is better.
 
 The chapter checkpoint is the offline test suite for tools, skills, MCP, retrieval, workflows, delegation, and A2A server construction. Model-backed behavior remains a separate evaluation gate.

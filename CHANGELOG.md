@@ -4,8 +4,11 @@ All notable changes to the AgentOps Open Course are documented here. The format 
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-07-12
+
 ### Added
 
+- Initial AgentOps course structure, Python Ops Copilot, local dataset, documentation site, and infrastructure examples.
 - Local Qwen3/Ollama and optional GKE/Vertex learning paths behind one agentgateway contract.
 - Persistent A2A sessions, immutable seed data, disposable runtime state, and append-only action auditing.
 - Self-hosted MLflow and OpenTelemetry observability for local and Kubernetes labs.
@@ -18,8 +21,5 @@ All notable changes to the AgentOps Open Course are documented here. The format 
 - Course chapters now distinguish open-source software from optional proprietary model and cloud substrates.
 - Gateway, platform, and observability material now tracks runnable repository resources.
 
-## [0.1.0]
-
-### Added
-
-- Initial AgentOps course structure, Python Ops Copilot, local dataset, documentation site, and infrastructure examples.
+[unreleased]: https://github.com/MLOps-Courses/agentops-open-course/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/MLOps-Courses/agentops-open-course/releases/tag/v0.1.0

@@ -8,7 +8,7 @@ description: Build and run your first Google ADK 2.0 agent, end to end, on a nat
 
 This is where you build the **Ops Copilot**, the reference agent carried through the whole course. You start from the runtime concepts, compose the real root agent, then make model selection, instructions, persistent sessions, and the development loop explicit.
 
-Read [2.0. Concepts](./2.0. Concepts.md) first, then [2.1. First Agent](./2.1. First Agent.md), then work through the following sections:
+Work through the sections in order — the concepts come first, then the build:
 
 - **[2.0. Concepts](./2.0. Concepts.md)**: The ADK 2.0 building blocks — Agent, Runner, Session, Events, Tools, and the graph Workflow.
 - **[2.1. First Agent](./2.1. First Agent.md)**: Build and run the Ops Copilot end to end.

@@ -16,3 +16,4 @@ This chapter covers:
 - **[0.3. Ecosystem](./0.3. Ecosystem.md)**: Ownership boundaries across ADK, agentgateway, kagent, MLflow, OTel, MCP, A2A, AAIF, and CNCF.
 - **[0.4. Providers](./0.4. Providers.md)**: Choose local Qwen3, native Gemini, or the optional Vertex/GKE path explicitly.
 - **[0.5. Resources](./0.5. Resources.md)**: Primary documentation, OSS development tools, community routes, and a glossary.
+- **[0.6. Troubleshooting](./0.6. Troubleshooting.md)**: Symptom-first fixes for the most common setup and runtime failures.

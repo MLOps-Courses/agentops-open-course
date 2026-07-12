@@ -168,4 +168,4 @@ This deletes the course PVCs and their data, but leaves the shared `local` clust
 
 ## Contributing and reuse
 
-Course prose is [CC BY 4.0](./LICENSE.txt); code in `agents/` and `infra/` is [MIT](./agents/LICENSE). See [CONTRIBUTING.md](./CONTRIBUTING.md), [SECURITY.md](./SECURITY.md), and [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md) before opening a change. Release-facing changes are tracked in [CHANGELOG.md](./CHANGELOG.md), and academic/technical citations are available in [CITATION.cff](./CITATION.cff).
+Course prose is [CC BY 4.0](./LICENSE.txt); code in `agents/`, `clients/`, `infra/`, and `load/` is [MIT](./agents/LICENSE). See [CONTRIBUTING.md](./CONTRIBUTING.md), [SECURITY.md](./SECURITY.md), and [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md) before opening a change. Release-facing changes are tracked in [CHANGELOG.md](./CHANGELOG.md), and academic/technical citations are available in [CITATION.cff](./CITATION.cff).
