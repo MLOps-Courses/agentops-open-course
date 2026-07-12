@@ -39,6 +39,15 @@ binds:
         routes:
           - policies:
               a2a: {}
+              cors:
+                allowOrigins:
+                  - "http://localhost:8001"
+                allowMethods:
+                  - GET
+                  - POST
+                  - OPTIONS
+                allowHeaders:
+                  - content-type
               localRateLimit:
                 - maxTokens: 60
                   tokensPerFill: 60

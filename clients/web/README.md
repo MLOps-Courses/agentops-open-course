@@ -13,14 +13,14 @@ A single-file A2A browser client for the course's Ops Copilot: one `index.html` 
 
 1. Start the A2A server: `cd agents/python && mise run a2a` (raw `:8080`).
 1. Start the host gateway: `mise run gateway:host` from the repository root (A2A route on `:3001`).
-1. Serve this directory: `python3 -m http.server 8001 --directory clients/web` from the repository root.
+1. Serve this directory: `mise run client:web` from the repository root.
 1. Open `http://localhost:8001`, keep the base URL `http://localhost:3001`, and press Connect.
 
 Point the client at agentgateway `:3001` — the governed data plane — not the raw application port `:8080`.
 
 ## CORS: why the browser needs a gateway policy
 
-The page runs on origin `http://localhost:8001` and calls `http://localhost:3001`, so the browser enforces CORS. Neither the raw A2A server (Starlette, no CORS middleware: `OPTIONS` returns `405`, no `Access-Control-Allow-Origin`) nor the a2a/rate-limit policies alone emit CORS headers. agentgateway `1.3.1` provides a route-level `cors` policy; add it to the `:3001` route in `infra/agentgateway/host/config.yaml` alongside the existing policies:
+The page runs on origin `http://localhost:8001` and calls `http://localhost:3001`, so the browser enforces CORS. Neither the raw A2A server (Starlette, no CORS middleware: `OPTIONS` returns `405`, no `Access-Control-Allow-Origin`) nor the a2a/rate-limit policies alone emit CORS headers. The checked-in host and Kubernetes gateway profiles therefore include this route policy:
 
 ```yaml
 cors:
@@ -34,7 +34,7 @@ cors:
     - content-type
 ```
 
-With this policy the gateway answers the preflight itself (`200` with `access-control-allow-*` headers) and stamps `access-control-allow-origin` on card, RPC, and SSE responses. `allowOrigins` is an exact-match list: open the page on the exact origin you allow (`http://localhost:8001`, not `http://127.0.0.1:8001`).
+The gateway answers the preflight itself (`200` with `access-control-allow-*` headers) and stamps `access-control-allow-origin` on card, RPC, and SSE responses. `allowOrigins` is an exact-match list: open the page on the checked-in origin (`http://localhost:8001`, not `http://127.0.0.1:8001`). Do not replace it with a wildcard when adding credentials.
 
 ## Limitations
 

@@ -52,6 +52,18 @@ for gateway_config in infra/agentgateway/host/config.yaml infra/agentgateway/hos
 	agentgateway --validate-only -f "${gateway_config}"
 done
 
+# The browser client is served from one fixed loopback origin. Keep every
+# port-forwardable A2A profile usable without opening CORS to arbitrary sites.
+for gateway_config in infra/agentgateway/host/config.yaml infra/agentgateway/k3d/config.yaml infra/agentgateway/gke/config.yaml; do
+	cors='.binds[] | select(.port == 3001) | .listeners[].routes[].policies.cors'
+	cors_origins=$(yq -r "${cors} | .allowOrigins | join(\",\")" "${gateway_config}")
+	cors_methods=$(yq -r "${cors} | .allowMethods | join(\",\")" "${gateway_config}")
+	cors_headers=$(yq -r "${cors} | .allowHeaders | join(\",\")" "${gateway_config}")
+	[[ "${cors_origins}" == "http://localhost:8001" ]]
+	[[ "${cors_methods}" == "GET,POST,OPTIONS" ]]
+	[[ "${cors_headers}" == "content-type" ]]
+done
+
 docker compose -f infra/observability/compose.yaml config --quiet
 (cd infra && skaffold diagnose --yaml-only -f skaffold.yaml -p local) >"${tmp_dir}/skaffold-local.yaml"
 (cd infra && skaffold diagnose --yaml-only -f skaffold.yaml -p gke) >"${tmp_dir}/skaffold-gke.yaml"
