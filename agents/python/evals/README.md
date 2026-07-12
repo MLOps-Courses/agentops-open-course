@@ -10,6 +10,7 @@ The evaluation layer separates deterministic engineering gates from model-backed
 | Adversarial regression | `mise run redteam`       | No              | Deterministic injection, boundary, and policy cases.                                        |
 | Evalset consistency    | `mise run eval:validate` | No              | Cases reference committed seed entities; strict in-order trajectory criteria.               |
 | ADK trajectory         | `mise run eval`          | Yes             | Expected tools and arguments over the fixed seed.                                           |
+| Structured report      | `mise run eval:report`   | Yes             | `TriageReport` schema enforcement plus its required read-tool trajectory.                   |
 | MLflow evaluation      | `mise run eval:mlflow`   | Yes             | Complete turn/part capture, code scorers, prompt/model lineage, and optional judge scorers. |
 
 ## Run the live evaluations
@@ -18,6 +19,7 @@ From `agents/python/`, configure native Gemini or an OpenAI-compatible agentgate
 
 ```bash
 mise run eval
+mise run eval:report
 mise run eval:mlflow
 ```
 
@@ -40,6 +42,7 @@ Treat judge output as evidence, not truth. Record the judge model and prompt, in
 ## Files
 
 - `ops.evalset.json` contains prompts, expected tool trajectories, and reference answers over the fixed dataset — happy paths plus deliberate negative and adversarial cases.
+- `triage-report.evalset.json` runs the dedicated structured-output entry point; ADK enforces `TriageReport` while the eval checks the evidence-gathering trajectory.
 - `test_config.json` defines ADK pass criteria; the tool-trajectory score with `IN_ORDER` matching is the behavioral gate.
 - `mlflow_eval.py` preserves every turn and part, registers the prompt, links prompt/model lineage to the run, applies deterministic scorers (same `IN_ORDER` semantics), and adds optional judge scorers.
 - `../tests/test_evalset.py` is the offline consistency check behind `mise run eval:validate`: every referenced incident/service/runbook must exist in the committed seed, and the deliberate negatives (`INC-999`, `warehouse`) must stay missing.

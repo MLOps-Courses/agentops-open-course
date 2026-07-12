@@ -63,6 +63,10 @@ alias = "e"
 description = "Run the ADK eval sets over the fixed dataset (Ch. 4.4; needs a provider key)"
 run = "uv run adk eval src/agent evals/ops.evalset.json --config_file_path evals/test_config.json"
 
+[tasks."eval:report"]
+description = "Validate the structured TriageReport path with the configured model"
+run = "uv run python evals/report_eval.py"
+
 [tasks."eval:mlflow"]
 description = "Run full-conversation MLflow evals + prompt registry (optional gateway judge)"
 run = "uv run python evals/mlflow_eval.py"

@@ -9,6 +9,7 @@ from pydantic import ValidationError
 
 from agent import report
 from agent.models import TriageReport
+from agent.structured_report.agent import root_agent as report_eval_agent
 
 _VALID = {
     "incident_id": "INC-002",
@@ -92,5 +93,6 @@ def test_double_violation_degrades_to_prose_and_counts(monkeypatch, caplog) -> N
 
 def test_report_agent_enforces_the_schema() -> None:
     assert report.triage_report_agent.output_schema is TriageReport
+    assert report_eval_agent is report.triage_report_agent
     tool_names = {getattr(tool, "__name__", "") for tool in report.triage_report_agent.tools}
     assert "restart_service" not in tool_names  # structured path stays read-only
