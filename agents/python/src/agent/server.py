@@ -11,14 +11,18 @@ from typing import cast
 
 import uvicorn
 from a2a.server.agent_execution import RequestContext
+from a2a.server.events import Event as A2AEvent
 from a2a.server.tasks import DatabaseTaskStore, TaskStore
-from a2a.types import AgentCapabilities, AgentCard, AgentSkill
+from a2a.types import AgentCapabilities, AgentCard, AgentSkill, TaskStatusUpdateEvent
 from google.adk.a2a.converters.part_converter import A2APartToGenAIPartConverter
 from google.adk.a2a.converters.request_converter import AgentRunRequest, convert_a2a_request_to_agent_run_request
 from google.adk.a2a.executor.a2a_agent_executor import A2aAgentExecutor, A2aAgentExecutorConfig
+from google.adk.a2a.executor.config import ExecuteInterceptor
+from google.adk.a2a.executor.executor_context import ExecutorContext
 from google.adk.a2a.utils.agent_to_a2a import to_a2a
-from google.adk.agents import RunConfig
+from google.adk.agents import BaseAgent, RunConfig
 from google.adk.agents.run_config import StreamingMode
+from google.adk.events import Event
 from google.adk.runners import Runner
 from google.adk.sessions import DatabaseSessionService
 from sqlalchemy import text
@@ -102,8 +106,51 @@ def _bounded_request(
 
 
 def _agent_executor(runner: Runner) -> A2aAgentExecutor:
-    """Create the A2A executor with the course's bounded request policy."""
-    return A2aAgentExecutor(runner=runner, config=A2aAgentExecutorConfig(request_converter=_bounded_request))
+    """Create the maintained A2A executor with the bounded request policy."""
+    return A2aAgentExecutor(
+        runner=runner,
+        config=A2aAgentExecutorConfig(
+            request_converter=_bounded_request,
+            execute_interceptors=[_error_code_interceptor()],
+        ),
+        # ADK's legacy result aggregator mutates terminal failures back to
+        # ``working`` before enqueueing them. The maintained executor preserves
+        # the A2A terminal state and emits partial model output as artifacts.
+        force_new_version=True,
+    )
+
+
+def _error_code_interceptor() -> ExecuteInterceptor:
+    """Carry ADK's structured error code onto the final A2A event.
+
+    The maintained executor replaces error-event metadata with invocation
+    metadata immediately before enqueueing the terminal update. Task-keyed
+    state keeps concurrent streams isolated while retaining both contracts.
+    """
+    error_codes: dict[str, str] = {}
+
+    async def remember(
+        executor_context: ExecutorContext,
+        a2a_event: A2AEvent,
+        adk_event: Event,
+    ) -> A2AEvent:
+        del executor_context
+        task_id = getattr(a2a_event, "task_id", None)
+        if adk_event.error_code and task_id:
+            error_codes[task_id] = str(adk_event.error_code)
+        return a2a_event
+
+    async def restore(
+        executor_context: ExecutorContext,
+        final_event: TaskStatusUpdateEvent,
+    ) -> TaskStatusUpdateEvent:
+        del executor_context
+        error_code = error_codes.pop(final_event.task_id, None)
+        if error_code:
+            final_event.metadata = {**(final_event.metadata or {}), "adk_error_code": error_code}
+        return final_event
+
+    return ExecuteInterceptor(after_event=remember, after_agent=restore)
 
 
 def _health_routes(runtime: Runtime) -> tuple[Callable[[Request], Awaitable[JSONResponse]], ...]:
@@ -136,13 +183,13 @@ def _health_routes(runtime: Runtime) -> tuple[Callable[[Request], Awaitable[JSON
     return healthz, livez
 
 
-def create_app() -> Starlette:
+def create_app(agent: BaseAgent = root_agent) -> Starlette:
     """Build an A2A app whose SQLite resources have an explicit owner."""
     settings.state_dir.mkdir(parents=True, exist_ok=True)
     database_url = f"sqlite+aiosqlite:///{settings.state_dir / 'runtime.db'}"
 
     session_service = DatabaseSessionService(db_url=database_url)
-    runner = Runner(agent=root_agent, app_name=_APP_NAME, session_service=session_service)
+    runner = Runner(agent=agent, app_name=_APP_NAME, session_service=session_service)
     task_engine = create_async_engine(database_url)
     runtime = Runtime(
         runner=runner,
@@ -159,7 +206,7 @@ def create_app() -> Starlette:
             await runtime.close()
 
     app = to_a2a(
-        root_agent,
+        agent,
         host=settings.a2a_host,
         port=settings.a2a_port,
         protocol=settings.a2a_protocol,

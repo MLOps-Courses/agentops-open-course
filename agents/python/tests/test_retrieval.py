@@ -1,6 +1,7 @@
 """Unit tests for semantic retrieval (fake embedder) and the keyword fallback (Ch. 3.4)."""
 
 import logging
+import zlib
 
 import pytest
 
@@ -15,7 +16,7 @@ _DIMENSIONS = 32
 def _fake_vector(text: str) -> list[float]:
     vector = [0.0] * _DIMENSIONS
     for token in text.lower().split():
-        vector[hash(token) % _DIMENSIONS] += 1.0
+        vector[zlib.crc32(token.encode()) % _DIMENSIONS] += 1.0
     norm = sum(value * value for value in vector) ** 0.5 or 1.0
     return [value / norm for value in vector]
 

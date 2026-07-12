@@ -1,17 +1,67 @@
 """Offline contract tests for the tracked A2A server."""
 
 import asyncio
-from typing import cast
+import json
+from typing import Any, cast
 
 from a2a.server.agent_execution import RequestContext
 from google.adk.a2a.converters.part_converter import A2APartToGenAIPartConverter
 from google.adk.a2a.converters.request_converter import AgentRunRequest
-from google.adk.agents import RunConfig
+from google.adk.agents import Agent, RunConfig
+from google.adk.models import BaseLlm, LlmRequest, LlmResponse
+from google.genai import types
 from sqlalchemy.ext.asyncio import create_async_engine
 from starlette.testclient import TestClient
 
 from agent import server
 from agent.config import settings
+from agent.guardrails import handle_model_error
+
+
+class _StreamingLlm(BaseLlm):
+    """Deterministic model double that emits two chunks or interrupts after one."""
+
+    fail_after_first: bool = False
+
+    async def generate_content_async(self, llm_request: LlmRequest, stream: bool = False):
+        del llm_request
+        assert stream is True
+        yield LlmResponse(
+            content=types.Content(role="model", parts=[types.Part(text="first ")]),
+            partial=True,
+        )
+        if self.fail_after_first:
+            raise RuntimeError("stream interrupted")
+        yield LlmResponse(
+            content=types.Content(role="model", parts=[types.Part(text="first second")]),
+            partial=False,
+        )
+
+
+def _stream_events(*, fail_after_first: bool) -> list[dict[str, Any]]:
+    agent = Agent(
+        name="stream_test_agent",
+        instruction="Reply using the fake model.",
+        model=_StreamingLlm(model="stream-test", fail_after_first=fail_after_first),
+        on_model_error_callback=handle_model_error,
+    )
+    payload = {
+        "jsonrpc": "2.0",
+        "id": "stream-test",
+        "method": "message/stream",
+        "params": {
+            "message": {
+                "kind": "message",
+                "messageId": "stream-message",
+                "role": "user",
+                "parts": [{"kind": "text", "text": "Stream a reply."}],
+            }
+        },
+    }
+    with TestClient(server.create_app(agent)) as client, client.stream("POST", "/", json=payload) as response:
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("text/event-stream")
+        return [json.loads(line.removeprefix("data: ")) for line in response.iter_lines() if line.startswith("data: ")]
 
 
 def test_agent_card_is_public_and_does_not_expose_instruction() -> None:
@@ -118,3 +168,29 @@ def test_a2a_streaming_is_an_explicit_opt_in(monkeypatch) -> None:
     assert converted.run_config is not None
     assert converted.run_config.streaming_mode is server.StreamingMode.SSE
     assert converted.run_config.max_llm_calls == 12  # the budget survives the streaming override
+
+
+def test_a2a_sse_delivers_incremental_events(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "a2a_streaming", True)
+    events = _stream_events(fail_after_first=False)
+    results = [event["result"] for event in events]
+
+    artifacts = [result for result in results if result.get("kind") == "artifact-update"]
+    assert len(artifacts) >= 2  # a final-only response would produce one artifact
+    assert artifacts[0]["artifact"]["parts"][0]["text"] == "first "
+    assert results[-1]["kind"] == "status-update"
+    assert results[-1]["status"]["state"] == "completed"
+    assert results[-1]["final"] is True
+
+
+def test_a2a_sse_interruption_emits_terminal_failure(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "a2a_streaming", True)
+    events = _stream_events(fail_after_first=True)
+    terminal = events[-1]["result"]
+
+    assert terminal["kind"] == "status-update"
+    assert terminal["status"]["state"] == "failed", json.dumps(events, indent=2)
+    assert terminal["final"] is True
+    assert terminal["metadata"]["adk_error_code"] == "MODEL_UNAVAILABLE"
+    assert terminal["status"]["message"]["parts"][0]["text"] == "Model request failed safely."
+    assert "stream interrupted" not in json.dumps(events)
