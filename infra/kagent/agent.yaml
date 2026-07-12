@@ -1,29 +1,75 @@
-# kagent Agent, `type: BYO` — deploys our own built ADK agent image (Chapter 6.3).
-# The image is built and pushed to the k3d local registry (Chapter 6.1); kagent provisions
-# the Deployment and Service (both named `agentops-agent`) from it and expects the image to
-# serve the agent over A2A on port 8080 (as agents/python/Dockerfile does).
-# Fields verified against go/api/config/crd/bases/kagent.dev_agents.yaml
-# (type BYO requires spec.byo; byo.deployment.image + standard core/v1 env vars).
 apiVersion: kagent.dev/v1alpha2
 kind: Agent
 metadata:
   name: agentops-agent
   namespace: agentops
+  labels:
+    app.kubernetes.io/name: agentops-agent
+    app.kubernetes.io/part-of: agentops-open-course
 spec:
-  description: The AgentOps Open Course reference agent.
+  description: Production-shaped Google ADK Ops Copilot served over A2A.
   type: BYO
   byo:
     deployment:
-      image: k3d-registry.localhost:5050/agentops-agent:latest
+      image: agentops-agent:dev
+      imagePullPolicy: IfNotPresent
+      replicas: 1
+      serviceAccountName: agentops-agent
       env:
-        # Native Gemini for the ADK agent — same secret the ModelConfig references.
-        - name: GOOGLE_API_KEY
-          valueFrom:
-            secretKeyRef:
-              name: kagent-gemini
-              key: GOOGLE_API_KEY
-        # The course's provided key is a Vertex AI express key, which requires the Vertex
-        # backend (see docs 2.2) — without this the pod gets 403 API_KEY_SERVICE_BLOCKED.
-        # Using a plain AI Studio (AIza…) key instead? Set this to "false" or remove it.
-        - name: GOOGLE_GENAI_USE_VERTEXAI
+        - name: AGENT_MODEL
+          value: gemini-3.5-flash
+        - name: AGENT_GATEWAY_ENABLED
           value: "true"
+        - name: AGENT_MCP_URL
+          value: http://agentgateway:3000/mcp
+        - name: AGENT_DATA_DIR
+          value: /app/data
+        - name: AGENT_STATE_DIR
+          value: /app/state
+        - name: AGENT_A2A_HOST
+          value: agentops-agent.agentops.svc.cluster.local
+        - name: AGENT_A2A_PORT
+          value: "8080"
+        - name: AGENT_A2A_PROTOCOL
+          value: http
+        - name: OPENAI_BASE_URL
+          value: http://agentgateway:4000/v1
+        - name: OPENAI_API_KEY
+          value: agentgateway
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: http://otel-collector:4318
+        - name: OTEL_SERVICE_NAME
+          value: ops-copilot
+        - name: OTEL_RESOURCE_ATTRIBUTES
+          value: service.namespace=agentops,deployment.environment=kubernetes
+      resources:
+        requests:
+          cpu: 250m
+          memory: 512Mi
+        limits:
+          cpu: "1"
+          memory: 1536Mi
+      podSecurityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      volumeMounts:
+        - name: state
+          mountPath: /app/state
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+        - name: state
+          persistentVolumeClaim:
+            claimName: agentops-agent-state
+        - name: tmp
+          emptyDir:
+            sizeLimit: 128Mi

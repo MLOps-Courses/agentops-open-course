@@ -4,11 +4,33 @@
 # Git hooks (lefthook.yml) and CI (.github/workflows) call these same tasks.
 
 [tools]
-uv = "latest"
-dprint = "latest"
-lefthook = "latest"
-gitleaks = "latest"
-actionlint = "latest"
+uv = "0.11.28"
+dprint = "0.55.1"
+lefthook = "2.1.10"
+gitleaks = "8.30.1"
+actionlint = "1.7.12"
+k3d = "5.9.0"
+kubectl = "1.36.2"
+helm = "4.2.3"
+helmfile = "1.7.0"
+skaffold = "2.23.0"
+kustomize = "5.8.1"
+kubeconform = "0.8.0"
+kube-linter = "0.8.3"
+opentofu = "1.12.3"
+tflint = "0.63.1"
+trivy = "0.72.0"
+sqlite = "3.53.3"
+shellcheck = "0.11.0"
+shfmt = "3.13.1"
+sops = "3.13.2" # SOPS-encrypted secrets in git (Chapter 6); only needed to run infra/scripts/secrets.sh
+age = "1.3.1" # age recipients/keys for SOPS; ships age-keygen
+ripgrep = "15.1.0"
+lychee = "0.24.2"
+jq = "1.8.2"
+gh = "2.96.0"
+"github:mikefarah/yq" = "4.53.3"
+"github:agentgateway/agentgateway" = "1.3.1"
 
 [settings.task]
 run_auto_install = false # fail fast in hooks instead of silently installing a missing tool
@@ -20,20 +42,42 @@ _.file = ".env" # load the global .env (GOOGLE_API_KEY, AGENT_MODEL) for every t
 alias = "i"
 description = "Install docs deps, git hooks, and the Python agent"
 run = [
-  "uv sync",
+  "uv sync --locked",
+  "./scripts/install-helm-diff.sh",
   "lefthook install",
   "cd agents/python && mise run install",
 ]
+
+[tasks.doctor]
+description = "Verify the local toolchain and host prerequisites"
+run = "./scripts/doctor.sh"
+
+[tasks."config:check"]
+description = "Validate the agent configuration and print it with secrets masked"
+run = "cd agents/python && mise run config:check"
 
 [tasks.serve]
 alias = "s"
 description = "Serve the documentation locally with live reload (Zensical)"
 run = "uv run zensical serve"
 
+[tasks.watch]
+alias = "w"
+description = "Serve the documentation locally with live reload"
+run = "uv run zensical serve"
+
 [tasks.build]
 alias = "b"
 description = "Build the static documentation site (Zensical → site/)"
 run = "uv run zensical build"
+
+[tasks."build:agent-image"]
+description = "Build the non-root Ops Copilot image"
+run = "docker build --file agents/python/Dockerfile --tag agentops-agent:dev agents"
+
+[tasks."build:mlflow-image"]
+description = "Build the locked self-hosted MLflow image"
+run = "docker build --file infra/mlflow/Dockerfile --tag agentops-mlflow:3.14.0 infra/mlflow"
 
 [tasks.deploy]
 description = "Build the site for release (GitHub Pages publishes it in CI)"
@@ -42,28 +86,178 @@ run = "uv run zensical build"
 [tasks.format]
 alias = "f"
 description = "Format docs, config, and the Python agent"
+depends = ["format:dprint", "format:python", "format:shell", "format:tofu"]
+
+[tasks."format:dprint"]
+description = "Format Markdown and configuration files"
+run = "dprint fmt"
+
+[tasks."format:python"]
+description = "Format the Python reference agent"
 run = [
-  "dprint fmt ${@:-.}",
   "cd agents/python && mise run format:python .",
+  "cd agents/python && uv run ruff check --select=I --fix ../../infra/mlflow/initialize.py ../../load/fake_model.py",
+  "cd agents/python && uv run ruff format ../../infra/mlflow/initialize.py ../../load/fake_model.py",
 ]
+
+[tasks."format:shell"]
+description = "Format repository shell scripts"
+run = "shfmt -w scripts infra/scripts infra/mlflow/entrypoint.sh"
+
+[tasks."format:tofu"]
+description = "Format the OpenTofu GCP module"
+run = "tofu -chdir=infra/gcp fmt -recursive"
 
 [tasks.check]
 alias = "c"
-description = "Check formatting, docs build, and the Python agent"
-run = [
-  "dprint check",
-  "uv run zensical build",
-  "cd agents/python && mise run check",
+description = "Run all static validation"
+depends = [
+  "check:data",
+  "check:docs",
+  "check:format",
+  "check:infra",
+  "check:links",
+  "check:python",
+  "check:shell",
+  "check:workflows",
 ]
+
+[tasks."check:data"]
+description = "Verify the committed offline dataset"
+run = "cd agents/data && mise run check"
+
+[tasks."check:docs"]
+description = "Build the course site"
+run = [
+  "./scripts/check-docs.sh",
+  "uv run zensical build",
+]
+
+[tasks."check:format"]
+description = "Check Markdown and configuration formatting"
+run = "dprint check"
+
+[tasks."check:infra"]
+description = "Render and validate the local and GKE infrastructure"
+run = "./scripts/check-infra.sh"
+
+[tasks."check:links"]
+description = "Check repository-local Markdown links without network access"
+run = "lychee --offline README.md CONTRIBUTING.md SECURITY.md CODE_OF_CONDUCT.md CHANGELOG.md 'docs/**/*.md' 'agents/**/*.md' 'infra/**/*.md'"
+
+[tasks."check:python"]
+description = "Lint, type-check, and audit the Python reference agent"
+run = [
+  "cd agents/python && mise run check",
+  "cd agents/python && uv run ruff format --check ../../infra/mlflow/initialize.py ../../load/fake_model.py",
+  "cd agents/python && uv run ruff check ../../infra/mlflow/initialize.py ../../load/fake_model.py",
+  "cd agents/python && uv run ty check ../../infra/mlflow/initialize.py ../../load/fake_model.py",
+]
+
+[tasks."check:shell"]
+description = "Lint repository shell scripts"
+run = [
+  "shfmt -d scripts infra/scripts infra/mlflow/entrypoint.sh",
+  "shellcheck scripts/*.sh infra/scripts/*.sh infra/mlflow/entrypoint.sh",
+]
+
+[tasks."check:workflows"]
+description = "Lint GitHub Actions workflows"
+run = "actionlint .github/workflows/*.yml"
 
 [tasks.test]
 alias = "t"
 description = "Run the Python agent test suite"
 run = "cd agents/python && mise run test"
 
+[tasks."gateway:host"]
+description = "Run the host agentgateway profile on ports 3000, 3001, 4000, and 15020"
+run = "agentgateway -f infra/agentgateway/host/config.yaml"
+
+[tasks."gateway:host:auth"]
+description = "Run the secured host gateway profile (JWT + API key + TLS); generate demo material first"
+run = [
+  "./infra/scripts/gateway-tls.sh",
+  "./infra/scripts/gateway-jwt.sh >/dev/null",
+  "agentgateway -f infra/agentgateway/host/config-auth.yaml",
+]
+
+[tasks."client:web"]
+description = "Serve the minimal A2A web client (offline, no build step) on :8001"
+run = "python3 -m http.server 8001 --directory clients/web"
+
+[tasks."load:health"]
+description = "Load-test the health endpoints with k6 (own stack only)"
+run = "k6 run load/health.js"
+
+[tasks."load:mcp"]
+description = "Load-test the MCP read path through the gateway with k6"
+run = "k6 run load/mcp-read.js"
+
+[tasks."load:a2a"]
+description = "Load-test one A2A turn with k6 (1 VU — each turn spends model tokens)"
+run = "k6 run load/a2a-send.js"
+
+[tasks."model:fake"]
+description = "Run a deterministic OpenAI-compatible fake model on :11434 for platform-only load tests"
+run = "uv run --script load/fake_model.py"
+
+[tasks."observability:up"]
+description = "Start local MLflow, OpenTelemetry, Prometheus, and Grafana"
+run = "docker compose -f infra/observability/compose.yaml up --build --detach --wait"
+
+[tasks."observability:down"]
+description = "Stop local observability services while preserving their volumes"
+run = "docker compose -f infra/observability/compose.yaml down"
+
+[tasks."cluster:start"]
+description = "Create or resume the shared k3d local cluster and registry"
+run = "./scripts/cluster-start.sh"
+
+[tasks."platform:install"]
+description = "Install the pinned kagent control plane into k3d-local"
+run = [
+  "test \"$(kubectl config current-context)\" = k3d-local",
+  "kubectl apply --filename infra/k8s/base/namespace.yaml",
+  "helmfile --file infra/helmfile.yaml apply",
+]
+
+[tasks."platform:dev"]
+description = "Build, push, and continuously reconcile the local platform"
+run = [
+  "test \"$(kubectl config current-context)\" = k3d-local",
+  "cd infra && SKAFFOLD_DEFAULT_REPO=registry.localhost:5050 skaffold dev --filename skaffold.yaml --profile local",
+]
+
+[tasks."state:backup"]
+description = "Snapshot the agent SQLite state online-safely (VACUUM INTO)"
+run = "./infra/scripts/backup-state.sh"
+
+[tasks."state:restore"]
+description = "Restore agent SQLite state from a snapshot (stop the A2A/MCP writers first)"
+run = "./infra/scripts/restore-state.sh"
+
+[tasks."state:drill"]
+description = "Run the offline backup+restore drill against throwaway state"
+run = "./infra/scripts/backup-drill.sh"
+
 [tasks.scan]
-description = "Scan git history for leaked secrets (the local .env is gitignored, never committed)"
-run = "gitleaks git --verbose"
+description = "Run the full repository security scan"
+depends = ["secure"]
+
+[tasks.secure]
+description = "Scan git history, dependencies, secrets, and infrastructure"
+run = [
+  "gitleaks git --verbose",
+  "trivy fs --scanners vuln,secret,misconfig --severity HIGH,CRITICAL --exit-code 1 --tf-vars infra/gcp/terraform.tfvars.example --skip-dirs .agents --skip-dirs .git --skip-dirs .venv --skip-dirs agents/python/.venv --skip-dirs infra/mlflow/.venv --skip-dirs site --skip-files .env --skip-files agents/python/.env .",
+]
+
+[tasks."secure:staged"]
+description = "Scan staged changes and infrastructure before commit"
+run = [
+  "gitleaks git --staged --verbose",
+  "trivy config --severity HIGH,CRITICAL --exit-code 1 --tf-vars infra/gcp/terraform.tfvars.example .",
+]
 
 [tasks.clean]
 alias = "n"

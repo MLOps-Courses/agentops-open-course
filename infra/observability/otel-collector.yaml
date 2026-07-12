@@ -1,8 +1,6 @@
-# OpenTelemetry Collector config for the Ops Copilot's local stack (Chapter 7).
-# Receives OTLP from the agent, then fans out: traces → Jaeger, metrics → Prometheus.
-# This is the "one pipeline, many backends" the docs describe — the agent only ever
-# talks OTLP to this collector; where the data lands is decided here, not in the agent.
-
+# One vendor-neutral OTLP entry point. MLflow stores traces, Loki stores logs,
+# and Prometheus scrapes both native metrics and RED metrics derived by
+# spanmetrics.
 receivers:
   otlp:
     protocols:
@@ -10,34 +8,51 @@ receivers:
         endpoint: 0.0.0.0:4317
       http:
         endpoint: 0.0.0.0:4318
-
 processors:
-  batch: {} # batch exports for efficiency; defaults are fine for a local stack
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 400
+    spike_limit_mib: 100
+  batch: {}
+
+connectors:
+  span_metrics:
+    namespace: agentops
+    metrics_flush_interval: 5s
+    histogram:
+      unit: s
+      explicit:
+        buckets: [100ms, 250ms, 500ms, 1s, 2s, 5s, 10s, 30s]
+    dimensions:
+      - name: gen_ai.operation.name
+      - name: gen_ai.request.model
+      - name: error.type
 
 exporters:
-  # Traces → Jaeger over OTLP/gRPC (plain HTTP inside the compose network).
-  otlp/jaeger:
-    endpoint: jaeger:4317
-    tls:
-      insecure: true
-  # Metrics → a Prometheus scrape endpoint the prometheus service pulls from.
+  otlp_http/mlflow:
+    endpoint: http://mlflow:5000
+    headers:
+      x-mlflow-experiment-id: "0"
+  otlp_http/loki:
+    endpoint: http://loki:3100/otlp
   prometheus:
     endpoint: 0.0.0.0:8889
-  # Everything also to stdout so `docker compose logs otel-collector` shows the flow.
-  debug:
-    verbosity: basic
+    enable_open_metrics: true
 
 service:
+  telemetry:
+    logs:
+      level: info
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [batch]
-      exporters: [otlp/jaeger, debug]
+      processors: [memory_limiter, batch]
+      exporters: [otlp_http/mlflow, span_metrics]
     metrics:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [prometheus, debug]
+      receivers: [otlp, span_metrics]
+      processors: [memory_limiter, batch]
+      exporters: [prometheus]
     logs:
       receivers: [otlp]
-      processors: [batch]
-      exporters: [debug]
+      processors: [memory_limiter, batch]
+      exporters: [otlp_http/loki]

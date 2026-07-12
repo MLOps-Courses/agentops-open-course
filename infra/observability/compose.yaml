@@ -1,59 +1,120 @@
-# Local observability stack for the Ops Copilot (Chapter 7).
-#
-# One OTLP pipeline, three backends — exactly the story of 7.1–7.3:
-#   agent --(OTLP :4318)--> otel-collector --> Jaeger (traces)   http://localhost:16686
-#                                          \--> Prometheus (metrics) http://localhost:9090
-#                                                     Grafana (dashboards)  http://localhost:3001
-#
-# Everything here is 100% open source (Apache-2.0 / AGPLv3), self-hosted, no accounts.
-# Bring it up, point the agent at the collector, and the whole chapter lights up:
-#   docker compose -f infra/observability/compose.yaml up -d
-#   # then in your .env (the agent reads it):
-#   OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
-#   OTEL_SERVICE_NAME=ops-copilot
-#
-# Image tags are pinned for reproducibility — re-verify/bump at setup time (these move fast).
 services:
-  # The single OTLP entrypoint. Receives the agent's spans/metrics/logs and fans them out.
+  mlflow:
+    image: agentops-mlflow:3.14.0
+    build:
+      context: ../mlflow
+      dockerfile: Dockerfile
+    environment:
+      MLFLOW_ALLOWED_HOSTS: mlflow:*,localhost:*,127.0.0.1:*
+      MLFLOW_ARTIFACTS_DESTINATION: /var/lib/mlflow/artifacts
+      MLFLOW_DEFAULT_ARTIFACT_ROOT: mlflow-artifacts:/
+      MLFLOW_EXPERIMENT_NAME: ops-copilot
+    volumes:
+      - mlflow-data:/var/lib/mlflow
+    ports:
+      - "127.0.0.1:${MLFLOW_PORT:-5000}:5000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:5000/health', timeout=2)",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  loki:
+    # Distroless image (no shell), so no Compose healthcheck; the collector
+    # retries failed exports and Grafana proxies queries on demand.
+    image: grafana/loki:3.7.3@sha256:70b9f699fc9bb868b62f1cfd4f787dfa50242f1fd92e6089787d5d7daea75fe8
+    command: ["-config.file=/etc/loki/config.yaml"]
+    volumes:
+      - ./loki.yaml:/etc/loki/config.yaml:ro
+      - loki-data:/loki
+    ports:
+      - "127.0.0.1:${LOKI_PORT:-3100}:3100"
+
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.116.0
+    image: otel/opentelemetry-collector-contrib:0.156.0@sha256:125bdbeb7590cc1952c5b3430ecf14063568980c2c93d5b38676cc0446ed8108
     command: ["--config=/etc/otelcol/config.yaml"]
     volumes:
       - ./otel-collector.yaml:/etc/otelcol/config.yaml:ro
     ports:
-      - "4318:4318" # OTLP/HTTP — the endpoint the agent targets
-      - "4317:4317" # OTLP/gRPC — the alternative transport
+      - "127.0.0.1:${OTEL_GRPC_PORT:-4317}:4317"
+      - "127.0.0.1:${OTEL_HTTP_PORT:-4318}:4318"
     depends_on:
-      - jaeger
+      loki:
+        condition: service_started
+      mlflow:
+        condition: service_healthy
 
-  # Traces backend + UI. COLLECTOR_OTLP_ENABLED lets it receive OTLP straight from the collector.
-  jaeger:
-    image: jaegertracing/all-in-one:1.62.0
-    environment:
-      COLLECTOR_OTLP_ENABLED: "true"
+  alertmanager:
+    image: prom/alertmanager:v0.33.1@sha256:9e082985f56f4c8c9f724e18f2288c6708f472e56a5286b8863d080434ea065d
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+    # Lets the placeholder webhook reach a receiver on the Docker host.
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    volumes:
+      - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager-data:/alertmanager
     ports:
-      - "16686:16686" # Jaeger UI — the trace tree from 7.1
+      - "127.0.0.1:${ALERTMANAGER_PORT:-9093}:9093"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9093/-/healthy"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
-  # Metrics backend. Scrapes the collector's Prometheus exporter (see otel-collector.yaml).
   prometheus:
-    image: prom/prometheus:v3.0.1
-    command: ["--config.file=/etc/prometheus/prometheus.yml"]
+    image: prom/prometheus:v3.13.0@sha256:c6b27ea434f8389bfe233fbc7be381cf50587c286e871bc842008f5a1b1908a7
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+    extra_hosts:
+      - host.docker.internal:host-gateway
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus-rules.yml:/etc/prometheus/rules/agentops.yml:ro
+      - prometheus-data:/prometheus
     ports:
-      - "9090:9090" # Prometheus UI — the SLIs from 7.2
+      - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
+    depends_on:
+      - otel-collector
+      - alertmanager
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
-  # Dashboards over Prometheus + Jaeger (both auto-provisioned as datasources).
   grafana:
-    image: grafana/grafana:11.4.0
+    image: grafana/grafana:13.1.0@sha256:121a7a9ece6dc10b969f1f96eed64b4f07dfac0d0b8abc070f7cb83bbde86f63
     environment:
-      GF_AUTH_ANONYMOUS_ENABLED: "true" # local-only convenience: no login for the course
-      GF_AUTH_ANONYMOUS_ORG_ROLE: "Admin"
-      GF_SECURITY_ADMIN_PASSWORD: "admin"
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_SECURITY_DISABLE_INITIAL_ADMIN_CREATION: "true"
     volumes:
       - ./grafana/datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml:ro
+      - ./grafana/dashboards.yaml:/etc/grafana/provisioning/dashboards/dashboards.yaml:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
     ports:
-      - "3001:3000" # Grafana UI on :3001 (3000 is the gateway's, Ch. 5)
+      - "127.0.0.1:${GRAFANA_PORT:-3002}:3000"
     depends_on:
-      - prometheus
-      - jaeger
+      loki:
+        condition: service_started
+      prometheus:
+        condition: service_healthy
+
+volumes:
+  alertmanager-data: {}
+  grafana-data: {}
+  loki-data: {}
+  mlflow-data: {}
+  prometheus-data: {}

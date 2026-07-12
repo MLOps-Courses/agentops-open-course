@@ -6,20 +6,16 @@ pre-commit:
   commands:
     format-dprint:
       glob: "*.{json,md,toml,yaml,yml}"
-      run: dprint fmt {staged_files}
+      run: mise run format:dprint {staged_files}
       stage_fixed: true
     format-python:
-      root: agents/python/
-      glob: "*.py"
-      run: mise run format:python {staged_files}
+      glob: "**/*.py"
+      run: mise run format:python
       stage_fixed: true
     check:
       run: mise run check
-    actionlint:
-      glob: ".github/workflows/*.{yml,yaml}"
-      run: actionlint {staged_files}
-    secrets:
-      run: gitleaks git --staged --verbose
+    secure:
+      run: mise run secure:staged
 pre-push:
   commands:
     test:

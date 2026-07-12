@@ -1,42 +1,35 @@
-# Local Observability Stack
+# Local observability
 
-An optional, 100% open-source backend for the agent's telemetry — the runnable companion to **Chapter 7**. It stands up the "one OTLP pipeline, many backends" story from [7.1](../../docs/7.%20Observability/7.1.%20Tracing.md)–[7.3](../../docs/7.%20Observability/7.3.%20Costs.md):
+The optional local stack is self-hosted and account-free: MLflow 3.14 stores traces and artifacts, OpenTelemetry Collector receives OTLP and derives RED metrics with `spanmetrics`, Prometheus stores metrics and evaluates the course alert rules, Alertmanager groups the fired alerts, Loki stores logs, and Grafana queries both. Every host port is bound to loopback.
 
-```
-agent --(OTLP :4318)--> otel-collector ──> Jaeger      (traces)   http://localhost:16686
-                                       └──> Prometheus  (metrics)  http://localhost:9090
-                                                  Grafana (dashboards)  http://localhost:3001
-```
-
-Everything is self-hosted with no accounts: the [OpenTelemetry Collector](https://opentelemetry.io/docs/collector/) (Apache-2.0), [Jaeger](https://www.jaegertracing.io/) (Apache-2.0), [Prometheus](https://prometheus.io/) (Apache-2.0), and [Grafana](https://grafana.com/oss/grafana/) (AGPLv3). Nothing here is required to build or run the agent — it is the sink the agent exports to when you want to _see_ the telemetry.
-
-## Run it
+From `infra/`:
 
 ```bash
-docker compose -f infra/observability/compose.yaml up -d
+docker compose -f observability/compose.yaml up --build -d
 ```
 
-Then point the agent at the collector (the agent reads the repo-root `.env`):
+Point the agent at `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318`, then use:
+
+- MLflow traces: <http://localhost:5000>
+- Grafana dashboard: <http://localhost:3002/d/agentops-overview>
+- Prometheus: <http://localhost:9090>
+- Alertmanager: <http://localhost:9093>
+- Loki logs API: <http://localhost:3100>
+
+Prometheus loads `prometheus-rules.yml` (SLO burn rate, latency, collector health, token/guardrail/schema signals) and routes fired alerts to Alertmanager. The `alertmanager.yml` webhook receiver points at a placeholder host endpoint: replace it with a real notification bridge or read alerts from the UI/API.
+
+When agentgateway runs in Kubernetes, forward its internal metrics listener so Compose Prometheus can scrape the same policy traffic:
 
 ```bash
-# .env
-OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
-OTEL_SERVICE_NAME=ops-copilot
+kubectl -n agentops port-forward svc/agentgateway 15020:15020
 ```
 
-Run the agent (`cd agents/python && mise run web`), ask the Ops Copilot a question, then:
+The in-cluster collector scrapes `agentgateway:15020` directly and needs no port-forward.
 
-- **Traces** — open Jaeger at <http://localhost:16686>, pick service `ops-copilot`, and read the span tree (model calls, tool calls, workflow nodes) from [7.1](../../docs/7.%20Observability/7.1.%20Tracing.md).
-- **Metrics** — open Prometheus at <http://localhost:9090> to query latency/token/tool-call series from [7.2](../../docs/7.%20Observability/7.2.%20Monitoring.md).
-- **Dashboards** — open Grafana at <http://localhost:3001> (anonymous admin; Prometheus + Jaeger are pre-provisioned) and build the SLO panels from 7.2.
+Stop the stack while preserving data:
 
-Tear it down with `docker compose -f infra/observability/compose.yaml down` (add `-v` to drop volumes).
+```bash
+docker compose -f observability/compose.yaml down
+```
 
-## Files
-
-- `compose.yaml` — the four services and their host ports.
-- `otel-collector.yaml` — the collector pipeline (OTLP in; Jaeger + Prometheus out).
-- `prometheus.yml` — scrapes the collector's Prometheus exporter.
-- `grafana/datasources.yaml` — auto-provisions the Prometheus and Jaeger datasources.
-
-> Image tags are pinned in `compose.yaml` for reproducibility; bump and re-verify them at setup time.
+Adding `-v` intentionally deletes the local MLflow, Prometheus, Loki, and Grafana data.

@@ -1,0 +1,27 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - namespace.yaml
+  - serviceaccounts.yaml
+  - agentgateway-client.yaml
+  - agent-state.yaml
+  - state-backup.yaml
+  - agentgateway.yaml
+  - mcp.yaml
+  - mlflow.yaml
+  - loki.yaml
+  - otel-collector.yaml
+  - network-policies.yaml
+  - resource-quota.yaml
+  - ../../kagent
+
+configMapGenerator:
+  - name: otel-collector-config
+    namespace: agentops
+    files:
+      - config.yaml=otel-collector-config.yaml
+  - name: loki-config
+    namespace: agentops
+    files:
+      - config.yaml=loki-config.yaml

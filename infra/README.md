@@ -1,32 +1,101 @@
 # Infrastructure
 
-Run the AgentOps agent locally, then on Kubernetes. Most of this is covered in Chapters 5–6, plus the optional Chapter 7 observability stack. Licensed under the [MIT License](./LICENSE).
+The same container images run on a local k3d cluster and a small GKE Standard cluster. The software data plane is OSS: Google ADK, agentgateway, kagent, MLflow, OpenTelemetry, Prometheus, and Grafana. GKE, Vertex AI, Artifact Registry, and GCS are optional managed Google Cloud services, not OSS.
 
 ## Layout
 
-- `agentgateway/config.yaml` — [agentgateway](https://agentgateway.dev) (AAIF), run standalone from this dir: `agentgateway -f agentgateway/config.yaml` (admin UI on `:15000`). Fronts the Ops Copilot MCP server; Chapter 5.3–5.5 extras are commented by chapter. See **Chapter 5**.
-- `kagent/` — [kagent](https://kagent.dev) (CNCF) custom resources: `ModelConfig`, `Agent` (`type: BYO`), and a `RemoteMCPServer` (in `toolserver.yaml`) that registers the gateway's MCP endpoint. See **Chapter 6.3–6.4**.
-- `k8s/` — cluster `Namespace` and `*.localhost` `Ingress`. kagent provisions the agent's Deployment and Service (both named `agentops-agent`, A2A on port 8080) from the `Agent` CR, so they are not duplicated here.
-- `helmfile.yaml` — install kagent via Helm (alternative to `kagent install --profile demo`).
-- `skaffold.yaml` — local build→deploy inner loop (Python image → k3d registry → apply manifests). The image is built from [`../agents/python/Dockerfile`](../agents/python/Dockerfile) (slim, non-root, serving A2A on `:8080`), with build context `../agents` so the shared dataset is included.
-- `observability/` — an optional, 100% open-source [OpenTelemetry Collector → Jaeger/Prometheus/Grafana](./observability/README.md) stack (`compose.yaml`) for **Chapter 7**: `docker compose -f observability/compose.yaml up -d`, then point the agent at `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318`.
+- `agentgateway/{host,k3d,gke}/config.yaml` declares separate MCP `:3000`, A2A `:3001`, and OpenAI-compatible LLM `:4000` listeners. Metrics stay internal on `:15020`.
+- `agentgateway/host/config-auth.yaml` is the opt-in secured host profile: strict JWT on MCP/A2A, an enforced API key on the model route, and TLS on all three listeners, backed by demo material from `scripts/gateway-{tls,jwt}.sh` (gitignored under `agentgateway/host/auth/`).
+- `k8s/base` and `k8s/overlays/{local,gke}` are the Kustomize deployment.
+- `k8s/base/secrets/` holds SOPS-encrypted Secret manifests (age recipient in the root `.sops.yaml`). `scripts/secrets.sh` generates the gitignored age key under `infra/secrets/`, then encrypts, decrypts, or edits manifests; deploy one with `scripts/secrets.sh decrypt <file> | kubectl apply -f -`. Encrypted files stay out of the Kustomize overlays so rendering never needs the private key.
+- `kagent` contains the BYO `Agent`, gateway `ModelConfig`, MCP registration, and a slim stable-chart values file.
+- `mlflow` builds a locked MLflow 3.14 image that runs as UID 10002.
+- `observability` is the loopback-only host stack for running the agent outside Kubernetes.
+- `gcp` is an OpenTofu module. It never runs kubectl or gcloud provisioners.
 
-## Quickstart (Chapter 6)
+## Host gateway
 
-```bash
-dot cluster start                                   # shared local k3d cluster (k8s-local standard)
-kubectl apply -f k8s/namespace.yaml
-kubectl -n agentops create secret generic kagent-gemini --from-literal=GOOGLE_API_KEY="$GOOGLE_API_KEY"
-helmfile apply                                      # or: kagent install --profile demo
-skaffold run                                        # build (Docker) + deploy the agent
-```
-
-Prefer to build and deploy by hand (without skaffold)? The build context is `../agents`, so the shared dataset is included:
+The pre-Kubernetes profile expects host processes on MCP `:8000`, A2A `:8080`, Ollama `:11434`, and OTLP/gRPC `:4317`:
 
 ```bash
-docker build -f ../agents/python/Dockerfile -t k3d-registry.localhost:5050/agentops-agent:latest ../agents
-docker push k3d-registry.localhost:5050/agentops-agent:latest
-kubectl apply -f kagent/modelconfig.yaml -f kagent/agent.yaml -f k8s/ingress.yaml
+agentgateway --validate-only -f agentgateway/host/config.yaml
+agentgateway -f agentgateway/host/config.yaml
 ```
 
-> Versions are pinned (kagent `v0.10.0-beta3`, agentgateway `v1.3.1`) — **re-verify at build time**; these projects move fast and APIs are still `v1alpha*`.
+The `host`, `k3d`, and `gke` files carry the same policies; only their upstream endpoints and model provider differ, and the Kubernetes profiles enforce the demo API key on the model listener. The secured profile must start from the repository root so its relative auth-material paths resolve:
+
+```bash
+infra/scripts/gateway-tls.sh
+infra/scripts/gateway-jwt.sh >/dev/null
+agentgateway -f infra/agentgateway/host/config-auth.yaml
+```
+
+## Local Kubernetes
+
+Prerequisites are Docker, k3d, kubectl, Helm, Helmfile, Skaffold, Kustomize, and Ollama. From `infra/`:
+
+```bash
+k3d cluster create --config k3d.yaml
+kubectl apply -f k8s/base/namespace.yaml
+helmfile apply
+```
+
+Bind Ollama only to the k3d bridge, then pull the Apache-2.0 Qwen model in a second shell with the same `OLLAMA_HOST` value:
+
+```bash
+export OLLAMA_HOST="$(docker network inspect k3d-local --format '{{(index .IPAM.Config 0).Gateway}}'):11434"
+ollama serve
+```
+
+```bash
+export OLLAMA_HOST="$(docker network inspect k3d-local --format '{{(index .IPAM.Config 0).Gateway}}'):11434"
+ollama pull qwen3:4b
+SKAFFOLD_DEFAULT_REPO=registry.localhost:5050 skaffold dev -p local
+```
+
+No Ingress or LoadBalancer is created. Open only the path being tested:
+
+```bash
+kubectl -n agentops port-forward svc/agentops-agent 8080:8080
+kubectl -n agentops port-forward svc/agentgateway 3000:3000 3001:3001 4000:4000 15020:15020
+kubectl -n agentops port-forward svc/mlflow 5000:5000
+```
+
+The local overlay sends the agent through agentgateway to `qwen3:4b`; it does not need a provider key. `OPENAI_API_KEY=agentgateway` is a non-secret marker that the gateway's model listener now enforces as a demo API key. The direct `agentops-mcp:8000` Service is reachable only behind the gateway.
+
+The agent and MCP server share one RWO `agentops-agent-state` claim so SQLite reads and guarded writes stay coherent. The claim constrains both consumers to a compatible node. This is a single-replica course architecture, not horizontally scalable SQLite.
+
+## Host observability
+
+Use the Compose stack when running the agent directly on the host, not at the same time as the in-cluster MLflow/collector on the same ports:
+
+```bash
+docker compose -f observability/compose.yaml up --build -d
+```
+
+Set `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318`. MLflow is at <http://localhost:5000>, the provisioned Grafana dashboard at <http://localhost:3002/d/agentops-overview>, Prometheus at <http://localhost:9090>, and Alertmanager at <http://localhost:9093>. See `observability/README.md` for gateway metrics and the shipped alert rules. In the local Kubernetes overlay, the same rules run in an in-cluster Prometheus/Alertmanager pair reachable via `kubectl -n agentops port-forward`.
+
+## GKE
+
+The OpenTofu defaults use project `agentops-open-course`, one zonal Spot `e2-standard-2` node, public node IPs instead of a chargeable NAT, and no public application endpoint. Review `gcp/README.md`, authenticate ADC, and plan first:
+
+```bash
+cd gcp
+tofu init
+tofu validate
+tofu plan -out=tfplan
+```
+
+After a separately approved apply, retrieve credentials using the command in `tofu output -raw get_credentials_command`. Then return to `infra/`:
+
+```bash
+kubectl apply -f k8s/base/namespace.yaml
+helmfile apply
+SKAFFOLD_DEFAULT_REPO="$(cd gcp && tofu output -raw artifact_registry_repository)" skaffold run -p gke
+```
+
+GKE agentgateway obtains a Vertex access token from ambient Workload Identity; MLflow uses its own identity for GCS. Neither workload has a static cloud key.
+
+## Teardown
+
+`skaffold delete -p local` or `skaffold delete -p gke` also deletes the course PVCs and their data. `docker compose -f observability/compose.yaml down` preserves named volumes; adding `-v` deletes them. The `local` cluster and kagent control plane can be shared by other projects, so `helmfile destroy` and `k3d cluster delete local` are dedicated-lab operations, not routine course cleanup. GCP destruction is likewise separate and must be confirmed from a reviewed plan.

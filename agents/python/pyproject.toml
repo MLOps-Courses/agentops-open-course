@@ -10,28 +10,37 @@ requires-python = ">=3.13"
 license = "MIT" # the code license text lives at agents/LICENSE
 authors = [{ name = "Médéric HURIER", email = "agentops-open-course@fmind.dev" }]
 dependencies = [
-  "google-adk>=2.3.0", # native Gemini in Ch. 2–4; other providers via agentgateway in Ch. 5 (no LiteLLM)
-  "mcp>=1.16.0", # Model Context Protocol server (FastMCP) + client (McpToolset), Ch. 3.3
-  "pydantic-settings>=2.7.1",
-  "presidio-analyzer>=2.2.360", # PII detection guardrail (MIT, fully local), Ch. 4.5
-  "presidio-anonymizer>=2.2.360", # PII redaction to pair with the analyzer, Ch. 4.5
+  "google-adk[a2a,db]>=2.4.0", # locked A2A serving + persistent SQLite sessions for the BYO runtime
+  "mcp>=1.28.1", # Model Context Protocol server (FastMCP) + client (McpToolset), Ch. 3.3
+  "openai>=2.45.0", # OSS SDK used by ADK OpenAILlm to send governed requests through agentgateway
+  "opentelemetry-exporter-otlp-proto-http>=1.42.0,<=1.42.1", # match ADK's OTel cap; export to Collector/MLflow
+  "pydantic-settings>=2.14.2",
+  "presidio-analyzer==2.2.362", # paired release; 2.2.363 caps cryptography below the security floor
+  "presidio-anonymizer==2.2.362", # PII redaction paired exactly with the analyzer
   "spacy>=3.8,<3.9", # Presidio's NLP engine; pinned to match the en_core_web_sm model below
   "en-core-web-sm", # small English spaCy model for Presidio (URL-pinned in [tool.uv.sources])
-  "cryptography>=48.0.1", # security floor: GHSA-537c-gmf6-5ccf (transitive via google-adk); drop once the tree resolves it
+  "cryptography>=48.0.1,<49", # latest MLflow-compatible line and floor for GHSA-537c-gmf6-5ccf
+  "sqlite-vec>=0.1.6",
 ]
 
 [dependency-groups]
 dev = [
   "anyio>=4.8.0",
-  "google-adk[eval]>=2.3.0", # `adk eval` extras (rouge/pandas/…) for the Ch. 4.4 eval sets
+  # Minimal `adk eval` dependencies. Avoid its broad `eval` extra, which pulls
+  # Vertex's LiteLLM-backed evaluator even though this course does not use it.
+  "hypothesis>=6.100",
+  "jinja2>=3.1.4,<4",
   "lefthook>=2.1.9",
   "mlflow>=3.14", # GenAI eval (LLM judges) + prompt registry + experiment tracking, Ch. 4.4 / 7.0
+  "pandas>=2.2.3",
   "pip-audit>=2.7.3",
-  "pyarrow>=23.0.1", # security floor: PYSEC-2026-113 (transitive via mlflow); drop once mlflow requires it
+  "pyarrow>=24.0.0", # security floor for the MLflow dependency tree
   "pytest>=9.1.1",
   "pytest-cov>=7.1.0",
-  "ruff>=0.15.18",
-  "ty>=0.0.51,<0.1", # pre-1.0: pin a compatible range until it stabilizes
+  "rouge-score>=0.1.2",
+  "ruff>=0.15.21",
+  "tabulate>=0.9",
+  "ty>=0.0.58,<0.1", # pre-1.0: pin a compatible range until it stabilizes
   "validate-pyproject>=0.25",
 ]
 
@@ -91,6 +100,9 @@ select = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
+"src/agent/config_check.py" = [
+  "T201", # the config:check CLI prints its report to stdout by design
+]
 "tests/**" = [
   "S101", # assert
   "T201", # print statement allowed in tests
@@ -101,7 +113,15 @@ python-version = "3.13"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = ["-ra", "--strict-config", "--strict-markers"]
+addopts = [
+  "-ra",
+  "--strict-config",
+  "--strict-markers",
+  "--cov=agent",
+  "--cov-branch",
+  "--cov-report=term-missing:skip-covered",
+  "--cov-fail-under=95",
+]
 pythonpath = ["src"]
 xfail_strict = true
 

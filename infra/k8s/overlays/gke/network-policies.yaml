@@ -1,0 +1,24 @@
+# MLflow writes artifacts to GCS through Workload Identity: HTTPS to Google
+# APIs (no stable CIDR is published, so the rule is port-scoped) plus the GKE
+# metadata server for ambient token exchange.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mlflow-egress
+  namespace: agentops
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: mlflow
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 169.254.169.254/32
+      ports:
+        - { port: 80, protocol: TCP }
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - { port: 443, protocol: TCP }

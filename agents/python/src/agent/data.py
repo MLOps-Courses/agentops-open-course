@@ -6,25 +6,59 @@ tool functions so it can be unit-tested directly against ``agents/data/incidents
 
 from __future__ import annotations
 
-import re
+import os
+import shutil
 import sqlite3
+import tempfile
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 
 from .config import settings
+from .models import AuditEntry, Incident, IncidentStatus, Service, normalize_slug
 
-# Runbook slugs are lowercase kebab-case (e.g. "high-latency"). The slug is model-controlled,
-# so it is validated against this pattern before building a filesystem path — refusing any
-# path-traversal payload (a slug containing "/", "\" or ".." never matches). See read_runbook.
-_SLUG = re.compile(r"^[a-z0-9-]+$")
+
+class DataAccessError(RuntimeError):
+    """Dataset access failed after crossing the trusted-data boundary."""
 
 
 def db_path() -> Path:
-    """Return the path to the SQLite database inside the configured data directory."""
-    return settings.data_dir / "incidents.db"
+    """Return a writable runtime copy of the committed SQLite seed."""
+    destination = settings.state_dir / "incidents.db"
+    if destination.exists():
+        return destination
+    source = settings.data_dir / "incidents.db"
+    if not source.is_file():
+        raise DataAccessError(f"Seed database is missing: {source}")
+    settings.state_dir.mkdir(parents=True, exist_ok=True)
+    temporary: Path | None = None
+    try:
+        # Publish a complete copy atomically. Two workers can race safely: the
+        # hard link is an exclusive create, so neither can overwrite live state.
+        with (
+            source.open("rb") as seed,
+            tempfile.NamedTemporaryFile(
+                dir=settings.state_dir,
+                prefix=".incidents-",
+                suffix=".tmp",
+                delete=False,
+            ) as target,
+        ):
+            temporary = Path(target.name)
+            shutil.copyfileobj(seed, target)
+            target.flush()
+            os.fsync(target.fileno())
+        os.link(temporary, destination)
+    except FileExistsError:
+        # Another local worker initialized the same state directory first.
+        pass
+    except OSError as error:
+        raise DataAccessError(f"Could not initialize runtime database: {destination}") from error
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+    return destination
 
 
 def runbooks_dir() -> Path:
@@ -48,24 +82,45 @@ def read_runbook(slug: str) -> str | None:
     The slug is model-controlled, so it is validated against ``_SLUG`` before touching the
     filesystem: a malformed or path-traversal slug is treated as "not found" rather than read.
     """
-    if not _SLUG.match(slug):
+    normalized = normalize_slug(slug)
+    if normalized is None:
         return None
-    path = runbook_path(slug)
+    path = runbook_path(normalized)
     return path.read_text(encoding="utf-8") if path.is_file() else None
+
+
+def logs_dir() -> Path:
+    """Return the directory holding deterministic sample service logs."""
+    return settings.data_dir / "logs"
+
+
+def read_service_logs(service: str) -> list[str] | None:
+    """Return a service's log lines, or ``None`` for an invalid/unknown service."""
+    normalized = normalize_slug(service)
+    if normalized is None:
+        return None
+    path = logs_dir() / f"{normalized}.log"
+    return path.read_text(encoding="utf-8").splitlines() if path.is_file() else None
 
 
 @contextmanager
 def _connect() -> Iterator[sqlite3.Connection]:
-    """Open a read/write connection with row access by column name; always closed."""
-    connection = sqlite3.connect(db_path())
-    connection.row_factory = sqlite3.Row
+    """Open a constrained SQLite connection and wrap database errors with context."""
+    path = db_path()
+    connection = sqlite3.connect(path, timeout=5)
     try:
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA foreign_keys = ON")
+        connection.execute("PRAGMA busy_timeout = 5000")
         yield connection
+    except sqlite3.Error as error:
+        connection.rollback()
+        raise DataAccessError(f"SQLite operation failed for {path.name}") from error
     finally:
         connection.close()
 
 
-def list_incidents(status: str | None = None, service: str | None = None) -> list[dict[str, Any]]:
+def list_incidents(status: IncidentStatus | None = None, service: str | None = None) -> list[Incident]:
     """Return incidents, newest first, optionally filtered by status and/or service."""
     query = "SELECT * FROM incidents"
     clauses: list[str] = []
@@ -80,27 +135,27 @@ def list_incidents(status: str | None = None, service: str | None = None) -> lis
         query += " WHERE " + " AND ".join(clauses)
     query += " ORDER BY opened_at DESC"
     with _connect() as connection:
-        return [dict(row) for row in connection.execute(query, params)]
+        return [Incident.model_validate(dict(row)) for row in connection.execute(query, params)]
 
 
-def get_incident(incident_id: str) -> dict[str, Any] | None:
+def get_incident(incident_id: str) -> Incident | None:
     """Return a single incident by id (e.g. ``INC-001``), or ``None`` if unknown."""
     with _connect() as connection:
         row = connection.execute("SELECT * FROM incidents WHERE id = ?", (incident_id,)).fetchone()
-    return dict(row) if row is not None else None
+    return Incident.model_validate(dict(row)) if row is not None else None
 
 
-def list_services() -> list[dict[str, Any]]:
+def list_services() -> list[Service]:
     """Return every watched service with its current status and owning team."""
     with _connect() as connection:
-        return [dict(row) for row in connection.execute("SELECT * FROM services ORDER BY name")]
+        return [Service.model_validate(dict(row)) for row in connection.execute("SELECT * FROM services ORDER BY name")]
 
 
-def get_service(name: str) -> dict[str, Any] | None:
+def get_service(name: str) -> Service | None:
     """Return a single service by name, or ``None`` if unknown."""
     with _connect() as connection:
         row = connection.execute("SELECT * FROM services WHERE name = ?", (name,)).fetchone()
-    return dict(row) if row is not None else None
+    return Service.model_validate(dict(row)) if row is not None else None
 
 
 def _utcnow() -> str:
@@ -108,36 +163,137 @@ def _utcnow() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
-def set_service_status(name: str, status: str) -> bool:
-    """Set a service's status (mock action). Returns True if a service was updated."""
+def _append_audit(
+    connection: sqlite3.Connection,
+    *,
+    actor: str,
+    approved_by: str,
+    rationale: str,
+    context_summary: str,
+    session_id: str,
+    invocation_id: str,
+    action: str,
+    target: str,
+    detail: str,
+) -> AuditEntry:
+    """Append an audit row using the caller's transaction."""
+    timestamp = _utcnow()
+    cursor = connection.execute(
+        """
+        INSERT INTO audit_log
+            (ts, actor, approved_by, rationale, context_summary, session_id, invocation_id, action, target, detail)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (timestamp, actor, approved_by, rationale, context_summary, session_id, invocation_id, action, target, detail),
+    )
+    entry_id = cursor.lastrowid
+    if entry_id is None:
+        raise DataAccessError("SQLite did not return an audit entry id")
+    return AuditEntry(
+        id=entry_id,
+        ts=timestamp,
+        actor=actor,
+        approved_by=approved_by,
+        rationale=rationale,
+        context_summary=context_summary,
+        session_id=session_id,
+        invocation_id=invocation_id,
+        action=action,
+        target=target,
+        detail=detail,
+    )
+
+
+def append_audit(
+    *,
+    actor: str,
+    approved_by: str,
+    rationale: str,
+    context_summary: str,
+    session_id: str,
+    invocation_id: str,
+    action: str,
+    target: str,
+    detail: str,
+) -> AuditEntry:
+    """Append one independently committed audit entry."""
     with _connect() as connection:
-        cursor = connection.execute("UPDATE services SET status = ? WHERE name = ?", (status, name))
+        entry = _append_audit(
+            connection,
+            actor=actor,
+            approved_by=approved_by,
+            rationale=rationale,
+            context_summary=context_summary,
+            session_id=session_id,
+            invocation_id=invocation_id,
+            action=action,
+            target=target,
+            detail=detail,
+        )
         connection.commit()
-        return cursor.rowcount > 0
+    return entry
 
 
-def resolve_incident(incident_id: str) -> bool:
-    """Mark an open incident resolved with a resolved_at timestamp (mock action).
+def restart_service_with_audit(
+    name: str,
+    *,
+    actor: str,
+    approved_by: str,
+    rationale: str,
+    context_summary: str,
+    session_id: str,
+    invocation_id: str,
+) -> AuditEntry | None:
+    """Mark a known service operational and audit it in one transaction."""
+    with _connect() as connection:
+        cursor = connection.execute("UPDATE services SET status = 'operational' WHERE name = ?", (name,))
+        if cursor.rowcount == 0:
+            return None
+        entry = _append_audit(
+            connection,
+            actor=actor,
+            approved_by=approved_by,
+            rationale=rationale,
+            context_summary=context_summary,
+            session_id=session_id,
+            invocation_id=invocation_id,
+            action="restart_service",
+            target=name,
+            detail="service restarted and marked operational (mock)",
+        )
+        connection.commit()
+    return entry
 
-    Returns True if an unresolved incident was updated, False if it was unknown or already resolved.
-    """
+
+def resolve_incident_with_audit(
+    incident_id: str,
+    *,
+    actor: str,
+    approved_by: str,
+    rationale: str,
+    context_summary: str,
+    session_id: str,
+    invocation_id: str,
+) -> AuditEntry | None:
+    """Resolve an open incident and audit it in one transaction."""
     with _connect() as connection:
         cursor = connection.execute(
             "UPDATE incidents SET status = 'resolved', resolved_at = ? WHERE id = ? AND status != 'resolved'",
             (_utcnow(), incident_id),
         )
-        connection.commit()
-        return cursor.rowcount > 0
-
-
-def append_audit(actor: str, action: str, target: str, detail: str) -> dict[str, Any]:
-    """Append one entry to the audit log and return it (used by mock actions, Ch. 4.5)."""
-    timestamp = _utcnow()
-    with _connect() as connection:
-        cursor = connection.execute(
-            "INSERT INTO audit_log (ts, actor, action, target, detail) VALUES (?, ?, ?, ?, ?)",
-            (timestamp, actor, action, target, detail),
+        if cursor.rowcount == 0:
+            return None
+        entry = _append_audit(
+            connection,
+            actor=actor,
+            approved_by=approved_by,
+            rationale=rationale,
+            context_summary=context_summary,
+            session_id=session_id,
+            invocation_id=invocation_id,
+            action="resolve_incident",
+            target=incident_id,
+            detail="incident resolved (mock)",
         )
         connection.commit()
-        entry_id = cursor.lastrowid
-    return {"id": entry_id, "ts": timestamp, "actor": actor, "action": action, "target": target, "detail": detail}
+    return entry

@@ -17,4 +17,5 @@ def isolated_data_dir(tmp_path, monkeypatch):
     destination = tmp_path / "data"
     shutil.copytree(config._DEFAULT_DATA_DIR, destination)  # noqa: SLF001 — test setup mirrors the default
     monkeypatch.setattr(config.settings, "data_dir", destination)
+    monkeypatch.setattr(config.settings, "state_dir", tmp_path / "state")
     return destination

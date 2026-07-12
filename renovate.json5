@@ -1,0 +1,75 @@
+// Renovate keeps the repository's pin-everything policy current instead of pinned-and-forgotten.
+// It runs self-hosted from .github/workflows/renovate.yml (weekly cron + manual dispatch);
+// this file only decides what to update and how the pull requests are grouped.
+// Playbook: docs/8. Community/8.2. Releases.md — coordinated pins: AGENTS.md "Pinned contracts".
+{
+  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+  // Recommended defaults plus digest pinning — the same discipline the repository already applies.
+  extends: ['config:best-practices'],
+  // Match the repository's Conventional Commits style: "chore(deps): ...".
+  semanticCommits: 'enabled',
+  semanticCommitType: 'chore',
+  semanticCommitScope: 'deps',
+  // The workflow cron provides the weekly cadence; leave the in-config schedule open so a
+  // manual workflow_dispatch run can act immediately.
+  prConcurrentLimit: 10,
+  // Nothing auto-merges: the offline gate cannot see model or protocol drift, so every
+  // update goes through the local validation playbook.
+  automerge: false,
+  // Refresh uv.lock files even when no pyproject range changes (in-range security fixes).
+  lockFileMaintenance: { enabled: true },
+  // The kubernetes manager has no default file pattern; point it at the manifests so the
+  // pinned image digests (agentgateway, OTel collector) are updated.
+  kubernetes: {
+    managerFilePatterns: ['/^infra/k8s/.+\\.yaml$/'],
+  },
+  packageRules: [
+    // Locally built course images (compose tags and kustomize placeholders) are not
+    // registry packages; never try to "update" them.
+    {
+      matchPackageNames: ['agentops-agent', 'agentops-mlflow'],
+      enabled: false,
+    },
+    // One reviewable weekly batch for routine bumps; majors stay separate by default.
+    {
+      matchUpdateTypes: ['minor', 'patch', 'pin', 'pinDigest', 'digest'],
+      groupName: 'all non-major dependencies',
+    },
+    // Coordinated pins (AGENTS.md "Pinned contracts") get single-concern PRs at every
+    // update type. Later rules override the batch group above.
+    {
+      // mise binary (github:agentgateway/agentgateway) + Kubernetes image digest move together.
+      matchPackageNames: ['/agentgateway/'],
+      groupName: 'agentgateway',
+    },
+    {
+      // kagent-crds and kagent Helm charts must stay on the same version (infra/helmfile.yaml).
+      matchPackageNames: ['/kagent/'],
+      groupName: 'kagent control plane',
+    },
+    {
+      // ADK range in agents/python/pyproject.toml; uv.lock carries the exact pin.
+      matchPackageNames: ['google-adk'],
+      groupName: 'google-adk',
+    },
+    {
+      // MLflow moves in agents/python and infra/mlflow together; the compose/mise
+      // image tag (agentops-mlflow:<version>) is a local build tag updated by hand.
+      matchPackageNames: ['mlflow'],
+      groupName: 'mlflow',
+    },
+    {
+      // Collector digest is pinned in both the host compose file and the k8s manifest.
+      matchPackageNames: ['otel/opentelemetry-collector-contrib'],
+      groupName: 'opentelemetry-collector',
+    },
+    {
+      // Python 3.13 is a coordinated pin across pyprojects and image bases; review a
+      // runtime minor/major on its own, never inside the weekly batch.
+      matchDatasources: ['docker'],
+      matchPackageNames: ['python'],
+      matchUpdateTypes: ['minor', 'major'],
+      groupName: 'python runtime',
+    },
+  ],
+}

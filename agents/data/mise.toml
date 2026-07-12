@@ -4,7 +4,7 @@
 # agent runs offline out of the box; regenerate it whenever the SQL changes.
 
 [tools]
-sqlite = "latest"
+sqlite = "3.53.3"
 
 [tasks.build]
 alias = "b"
@@ -13,13 +13,25 @@ run = "rm -f incidents.db && sqlite3 incidents.db < sql/schema.sql && sqlite3 in
 
 [tasks.check]
 alias = "c"
-# A row-count probe, not a drift diff: it confirms incidents.db is present and seeded (catches a
-# missing or empty DB), but does not prove it matches the current SQL — rebuild after SQL edits.
-description = "Sanity-check incidents.db is present and seeded (rebuild with `mise run build` after SQL edits)"
-run = [
-  "test \"$(sqlite3 incidents.db 'SELECT count(*) FROM incidents;')\" -gt 0",
-  "test \"$(sqlite3 incidents.db 'SELECT count(*) FROM services;')\" -gt 0",
-]
+description = "Verify incidents.db is reproducible and the dataset is referentially consistent"
+run = '''
+database="$(mktemp)"
+trap 'rm -f "$database"' EXIT
+sqlite3 -init /dev/null "$database" < sql/schema.sql
+sqlite3 -init /dev/null "$database" < sql/seed.sql
+cmp incidents.db "$database"
+# Seeding runs without PRAGMA foreign_keys, so assert referential integrity explicitly.
+orphans="$(sqlite3 -init /dev/null "$database" "SELECT id FROM incidents WHERE service NOT IN (SELECT name FROM services)")"
+test -z "$orphans" || { echo "incidents reference unknown services: $orphans" >&2; exit 1; }
+for runbook in $(sqlite3 -init /dev/null "$database" "SELECT DISTINCT runbook FROM incidents"); do
+    test -f "runbooks/$runbook.md" || { echo "missing runbook file: runbooks/$runbook.md" >&2; exit 1; }
+done
+for log in logs/*.log; do
+    service="$(basename "$log" .log)"
+    known="$(sqlite3 -init /dev/null "$database" "SELECT count(*) FROM services WHERE name = '$service'")"
+    test "$known" = "1" || { echo "log file without a known service: $log" >&2; exit 1; }
+done
+'''
 
 [tasks.clean]
 alias = "n"

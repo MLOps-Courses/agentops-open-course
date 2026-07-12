@@ -1,0 +1,10 @@
+# This is an SDK compatibility marker, not a provider credential. The gateway
+# authenticates to Vertex with ambient Workload Identity in the GKE overlay.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: agentgateway-client
+  namespace: agentops
+type: Opaque
+stringData:
+  OPENAI_API_KEY: agentgateway

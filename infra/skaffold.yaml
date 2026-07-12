@@ -1,26 +1,39 @@
-# https://skaffold.dev — local build→deploy inner loop (Chapter 6.6).
-# Builds the Python agent image from ../agents/python/Dockerfile and pushes to the k3d local
-# registry. The build context is ../agents so the shared dataset (agents/data) is included.
-apiVersion: skaffold/v4beta11
+apiVersion: skaffold/v4beta14
 kind: Config
 metadata:
   name: agentops
 build:
+  tagPolicy:
+    gitCommit:
+      variant: AbbrevCommitSha
   local:
     push: true
+    useBuildkit: true
   artifacts:
-    - image: k3d-registry.localhost:5050/agentops-agent
-      # Context is ../agents (not ../agents/python) so the Dockerfile can COPY both
-      # python/ and the shared data/. It serves A2A on :8080 (kagent's BYO contract).
+    - image: agentops-agent
       context: ../agents
       docker:
         dockerfile: python/Dockerfile
+    - image: agentops-mlflow
+      context: mlflow
+      docker:
+        dockerfile: Dockerfile
 manifests:
-  rawYaml:
-    - k8s/namespace.yaml
-    - kagent/modelconfig.yaml
-    - kagent/agent.yaml
-    - k8s/ingress.yaml
-    # kagent/toolserver.yaml (RemoteMCPServer) is intentionally omitted: it targets an
-    # in-cluster agentgateway Service this course does not ship (Ch. 6.4/6.5). The BYO
-    # agent carries its tools in-process, so the deploy is complete without it.
+  kustomize:
+    paths:
+      - k8s/overlays/local
+deploy:
+  kubectl: {}
+# Teach Skaffold where kagent stores the BYO workload image in its custom resource.
+resourceSelector:
+  allow:
+    - groupKind: Agent.kagent.dev
+      image: [.spec.byo.deployment.image]
+      labels: [.metadata.labels]
+profiles:
+  - name: local
+  - name: gke
+    patches:
+      - op: replace
+        path: /manifests/kustomize/paths/0
+        value: k8s/overlays/gke

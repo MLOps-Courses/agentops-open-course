@@ -32,13 +32,32 @@ CREATE TABLE incidents (
 -- Append-only trail of the mock actions the agent performs (restart, resolve, ...).
 -- Guarded actions (Ch. 4.5) write here instead of touching real infrastructure.
 CREATE TABLE audit_log (
-    id     INTEGER PRIMARY KEY AUTOINCREMENT,
-    ts     TEXT NOT NULL,                                  -- ISO-8601 UTC of the action
-    actor  TEXT NOT NULL,                                  -- who/what performed it (e.g. "ops-copilot")
-    action TEXT NOT NULL,                                  -- e.g. "restart_service", "resolve_incident"
-    target TEXT NOT NULL,                                  -- service name or incident id
-    detail TEXT NOT NULL
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts              TEXT NOT NULL,                         -- ISO-8601 UTC of the action
+    actor           TEXT NOT NULL,                         -- executing agent, e.g. "ops-copilot"
+    approved_by     TEXT NOT NULL,                         -- authenticated ADK user that confirmed it
+    rationale       TEXT NOT NULL,                         -- the approver's stated reason (HITL, Ch. 4.5)
+    context_summary TEXT NOT NULL,                         -- the decision context recorded at approval time
+    session_id      TEXT NOT NULL,
+    invocation_id   TEXT NOT NULL,
+    action          TEXT NOT NULL,                         -- e.g. "restart_service", "resolve_incident"
+    target          TEXT NOT NULL,                         -- service name or incident id
+    detail          TEXT NOT NULL
 );
+
+-- SQLite is not a tamper-proof audit system, but these triggers make the course's
+-- application log append-only: existing rows cannot be rewritten or deleted.
+CREATE TRIGGER audit_log_no_update
+BEFORE UPDATE ON audit_log
+BEGIN
+    SELECT RAISE(ABORT, 'audit_log is append-only');
+END;
+
+CREATE TRIGGER audit_log_no_delete
+BEFORE DELETE ON audit_log
+BEGIN
+    SELECT RAISE(ABORT, 'audit_log is append-only');
+END;
 
 CREATE INDEX idx_incidents_status ON incidents (status);
 CREATE INDEX idx_incidents_service ON incidents (service);

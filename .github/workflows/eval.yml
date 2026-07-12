@@ -1,0 +1,100 @@
+# Model-backed evaluation of the Ops Copilot — scheduled evidence, never a PR gate.
+#
+# The merge gate (ci.yml) stays fast, deterministic, and secret-free: offline tests,
+# the red-team suite, and evalset validation. This workflow closes the loop the course
+# teaches in Chapter 4.4 by actually calling a model: it provisions a local Ollama
+# server on the runner, pulls a small open model, and runs the ADK trajectory and
+# MLflow evaluations against the fixed seed data.
+#
+# Honest expectations:
+# - No provider secret is required — the model runs locally, so forks and PRs never
+#   need credentials (the job simply does not trigger on pull_request).
+# - CPU inference of a ~4B model on the standard 4-vCPU runner is slow; expect the
+#   run to take on the order of an hour. Dispatch with a smaller model tag (for
+#   example qwen3:1.7b) to trade answer quality for speed.
+# - The agentgateway data plane is NOT in this loop: the OpenAI-compatible client
+#   points directly at Ollama, so gateway rate limits and prompt guards are not
+#   exercised here. This run measures model/prompt/tool behavior only.
+# - A small model can miss exact tool trajectories. A failure is a signal to inspect
+#   the uploaded results, not a merge blocker — this workflow never gates PRs.
+name: Eval
+
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: "Ollama model tag to evaluate (smaller runs faster on the 4-vCPU runner)"
+        type: string
+        default: qwen3:4b
+  schedule:
+    - cron: "0 7 * * 1" # weekly, Monday 07:00 UTC, after Renovate (05:00) and Scan (06:00)
+
+permissions:
+  contents: read
+
+concurrency:
+  group: eval-${{ github.workflow }}
+  cancel-in-progress: false # let a running weekly evaluation finish
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    # Guard forks and mirrors: the weekly model download and long CPU inference only
+    # make sense on the canonical repository. Elsewhere the job is skipped, not failed.
+    if: github.repository == 'MLOps-Courses/agentops-open-course'
+    timeout-minutes: 120
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+      # Route ADK's OSS OpenAI-compatible client directly at the local Ollama server.
+      AGENT_GATEWAY_ENABLED: "true"
+      AGENT_MODEL: ${{ inputs.model || 'qwen3:4b' }}
+      OPENAI_BASE_URL: http://127.0.0.1:11434/v1
+      OPENAI_API_KEY: local-ollama # non-secret marker; the local server has no auth
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install the pinned toolchain
+        uses: jdx/mise-action@v4
+
+      - name: Install agent dependencies
+        run: cd agents/python && mise run install
+
+      - name: Install Ollama and serve the evaluation model
+        # Pinned release tarball instead of the floating install.sh script.
+        run: |
+          curl -fsSL "https://github.com/ollama/ollama/releases/download/v0.31.2/ollama-linux-amd64.tgz" | sudo tar -zx -C /usr/local
+          ollama serve &
+          timeout 60 bash -c 'until curl -fsS http://127.0.0.1:11434/ >/dev/null; do sleep 1; done'
+          ollama pull "$AGENT_MODEL"
+
+      - name: Run the ADK trajectory evaluation
+        id: adk
+        # Keep going on a trajectory miss so the MLflow evidence below is still
+        # collected; the final step re-surfaces the failure so it stays actionable.
+        continue-on-error: true
+        shell: bash # explicit bash enables pipefail, so tee cannot mask the exit code
+        run: cd agents/python && mise run eval 2>&1 | tee evals/adk-eval.log
+
+      - name: Run the MLflow evaluation (deterministic scorers, no judge)
+        # Without MLFLOW_TRACKING_URI this logs to local SQLite (evals/mlflow.db)
+        # with run artifacts under mlruns/, both uploaded below.
+        run: cd agents/python && mise run eval:mlflow
+
+      - name: Upload evaluation results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: eval-results-${{ github.run_id }}
+          path: |
+            agents/python/evals/adk-eval.log
+            agents/python/evals/mlflow.db
+            agents/python/mlruns
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Surface the ADK trajectory verdict
+        if: steps.adk.outcome == 'failure'
+        run: |
+          echo "::error::The ADK trajectory evaluation failed — download the eval-results artifact and inspect the failing cases."
+          exit 1

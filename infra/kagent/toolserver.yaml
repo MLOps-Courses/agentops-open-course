@@ -1,51 +1,12 @@
-# kagent MCP tool registration (Chapter 6.4).
-#
-# Two CRDs register an MCP server for agents; pick by transport:
-#   - RemoteMCPServer (kagent.dev/v1alpha2) — a remote MCP endpoint over HTTP/SSE.
-#   - ToolServer      (kagent.dev/v1alpha1) — stdio, SSE, or streamableHttp.
-#
-# ILLUSTRATIVE: a RemoteMCPServer pointing at the Ops Copilot MCP server as it would be
-# served by agentgateway (Ch. 5.2 fronts the stdio `agent.mcp_server` and re-exposes it
-# over streamable HTTP under /mcp).
-#
-# ⚠️ This course does NOT ship an in-cluster agentgateway Deployment/Service. The local
-# gateway config (agentgateway/config.yaml) launches the MCP server over stdio via
-# `uv run --directory ../agents/python`, which only works on your host — not inside the
-# cluster. Standing agentgateway up in-cluster (co-located with the MCP source, e.g. as a
-# sidecar of the agent pod) is an advanced exercise; until you create that `agentgateway`
-# Service, this CR is a template, not an applied resource (it is intentionally left out of
-# skaffold.yaml). The deployed BYO agent already carries these tools in-process, so it does
-# not depend on this CR to function.
-# Fields verified against go/api/config/crd/bases/kagent.dev_remotemcpservers.yaml
-# (required: description, url; protocol defaults to STREAMABLE_HTTP).
 apiVersion: kagent.dev/v1alpha2
 kind: RemoteMCPServer
 metadata:
   name: agentops-tools
   namespace: agentops
+  labels:
+    app.kubernetes.io/part-of: agentops-open-course
 spec:
-  description: Ops Copilot read-only tools (incidents, service status, runbooks) over MCP.
-  # Host/port/path must match the agentgateway Service (Ch. 6.5). /mcp is agentgateway's
-  # streamable-HTTP MCP endpoint; use /sse with protocol SSE instead.
+  description: Read-only incident, service, log, and runbook tools through agentgateway.
   url: http://agentgateway.agentops.svc.cluster.local:3000/mcp
   protocol: STREAMABLE_HTTP
   timeout: 30s
-
-# --- Alternative: ToolServer (v1alpha1) running the MCP server over stdio -----
-# Fields verified against go/api/config/crd/bases/kagent.dev_toolservers.yaml
-# (required: config + description; config = exactly one of stdio/sse/streamableHttp;
-# stdio requires `command`). Note: stdio runs the command inside kagent's tool
-# runtime, which must have `uv` and the agent source available — the gateway/HTTP
-# path above avoids that coupling.
-#
-# apiVersion: kagent.dev/v1alpha1
-# kind: ToolServer
-# metadata:
-#   name: agentops-tools-stdio
-#   namespace: agentops
-# spec:
-#   description: Ops Copilot MCP tools launched over stdio.
-#   config:
-#     stdio:
-#       command: uv
-#       args: [run, python, -m, agent.mcp_server]

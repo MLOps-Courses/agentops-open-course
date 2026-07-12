@@ -1,0 +1,59 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+  - ../../../agentgateway/k3d
+  - prometheus.yaml
+  - alertmanager.yaml
+  - network-policies.yaml
+
+configMapGenerator:
+  - name: prometheus-config
+    namespace: agentops
+    files:
+      - prometheus.yml=prometheus-config.yaml
+      - rules.yml=prometheus-rules.yaml
+  - name: alertmanager-config
+    namespace: agentops
+    files:
+      - alertmanager.yml=alertmanager-config.yaml
+
+patches:
+  - target:
+      group: kagent.dev
+      version: v1alpha2
+      kind: Agent
+      name: agentops-agent
+    patch: |-
+      - op: replace
+        path: /spec/byo/deployment/env/0/value
+        value: qwen3:4b
+  - target:
+      group: kagent.dev
+      version: v1alpha2
+      kind: ModelConfig
+      name: agentgateway
+    patch: |-
+      - op: replace
+        path: /spec/model
+        value: qwen3:4b
+  # Host Ollama exception: host.k3d.internal resolves to the Docker bridge
+  # gateway outside any pod/namespace selector, so the rule must be IP-based.
+  # It stays scoped to the Ollama port instead of pinning a bridge CIDR that
+  # varies per Docker installation.
+  - target:
+      group: networking.k8s.io
+      version: v1
+      kind: NetworkPolicy
+      name: agentgateway-egress
+    patch: |-
+      - op: add
+        path: /spec/egress/-
+        value:
+          to:
+            - ipBlock:
+                cidr: 0.0.0.0/0
+          ports:
+            - port: 11434
+              protocol: TCP

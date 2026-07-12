@@ -25,8 +25,8 @@ jobs:
       - name: Install tools using mise
         uses: jdx/mise-action@v4
 
-      - name: Build the site
-        run: mise run deploy # same mise task the local flow uses (uv run auto-syncs from the lock)
+      - name: Validate and build the site
+        run: mise run check:docs
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

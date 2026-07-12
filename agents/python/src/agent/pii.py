@@ -2,18 +2,22 @@
 
 Presidio detects and redacts personally identifiable information (emails, phone numbers, IP
 addresses, names, …) **fully locally** — no API, no account, no key (MIT licensed). This module
-wires it as an ADK ``before_model_callback`` so PII in the conversation is masked *before* it
-reaches the model provider — and therefore before it lands in traces, logs, or the provider's
-servers. The engines are built lazily (``functools.cache``) on first use, so importing the agent
-stays fast and unit tests that never redact never pay for spaCy.
+wires callbacks at the outbound model, inbound model, and tool-output boundaries. The outbound
+callback prevents detected PII from reaching the provider. Session ingestion happens earlier;
+trace and log safety therefore also relies on telemetry content capture being disabled. The
+engines are built lazily (``functools.cache``) on first use.
 """
 
 from __future__ import annotations
 
 from functools import cache
+from typing import Any
 
 from google.adk.agents.callback_context import CallbackContext
 from google.adk.models.llm_request import LlmRequest
+from google.adk.models.llm_response import LlmResponse
+from google.adk.tools.base_tool import BaseTool
+from google.adk.tools.tool_context import ToolContext
 from presidio_analyzer import AnalyzerEngine
 from presidio_analyzer.nlp_engine import NlpEngineProvider
 from presidio_anonymizer import AnonymizerEngine
@@ -52,15 +56,61 @@ def redact_pii(text: str) -> str:
     return _anonymizer().anonymize(text=text, analyzer_results=results).text  # ty: ignore[invalid-argument-type]
 
 
+def _redact_value(value: Any) -> Any:
+    """Recursively redact strings in tool arguments and structured results."""
+    if isinstance(value, str):
+        return redact_pii(value)
+    if isinstance(value, dict):
+        return {key: _redact_value(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_redact_value(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_redact_value(item) for item in value)
+    return value
+
+
 def redact_request_pii(callback_context: CallbackContext, llm_request: LlmRequest) -> None:
     """``before_model_callback``: mask PII in every text part before the request leaves the process.
 
-    Returning ``None`` lets the (now-redacted) request proceed to the model. Mutating the request in
-    place is the whole guarantee: the provider — and any OTLP trace of the call — only ever sees masked text.
+    Returning ``None`` lets the now-redacted request proceed. Mutating the request in place guarantees
+    that detected PII is masked at the provider boundary; telemetry content capture is controlled separately.
     """
     del callback_context  # part of the ADK callback signature; unused here
     for content in llm_request.contents:
         for part in content.parts or []:
             if part.text:
                 part.text = redact_pii(part.text)
+            if part.function_call and part.function_call.args:
+                part.function_call.args = _redact_value(dict(part.function_call.args))
+            if part.function_response and part.function_response.response:
+                part.function_response.response = _redact_value(dict(part.function_response.response))
     # Returning None (implicitly) lets the now-redacted request proceed to the model.
+
+
+def redact_response_pii(callback_context: CallbackContext, llm_response: LlmResponse) -> LlmResponse | None:
+    """``after_model_callback``: redact text and tool arguments before caller/tool use."""
+    del callback_context
+    changed = False
+    if llm_response.content:
+        for part in llm_response.content.parts or []:
+            if part.text:
+                redacted = redact_pii(part.text)
+                changed = changed or redacted != part.text
+                part.text = redacted
+            if part.function_call and part.function_call.args:
+                redacted_args = _redact_value(dict(part.function_call.args))
+                changed = changed or redacted_args != part.function_call.args
+                part.function_call.args = redacted_args
+    return llm_response if changed else None
+
+
+def redact_tool_output_pii(
+    tool: BaseTool,
+    args: dict[str, Any],
+    tool_context: ToolContext,
+    tool_response: dict[str, Any],
+) -> dict[str, Any] | None:
+    """``after_tool_callback``: redact structured tool output before reuse by the model."""
+    del tool, args, tool_context
+    redacted = _redact_value(tool_response)
+    return redacted if redacted != tool_response else None

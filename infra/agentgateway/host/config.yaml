@@ -1,0 +1,81 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/agentgateway/agentgateway/v1.3.1/schema/config.json
+# Host data plane used before Kubernetes: all upstreams are local processes.
+config:
+  logging:
+    format: json
+
+binds:
+  - port: 3000
+    listeners:
+      - name: mcp
+        routes:
+          - policies:
+              localRateLimit:
+                - maxTokens: 120
+                  tokensPerFill: 120
+                  fillInterval: 60s
+              mcpAuthorization:
+                rules:
+                  - 'mcp.tool.name == "list_incidents"'
+                  - 'mcp.tool.name == "get_incident"'
+                  - 'mcp.tool.name == "get_service_status"'
+                  - 'mcp.tool.name == "search_service_logs"'
+                  - 'mcp.tool.name == "get_runbook"'
+                  - 'mcp.tool.name == "search_runbooks"'
+            backends:
+              - mcp:
+                  failureMode: failClosed
+                  targets:
+                    - name: ops-copilot
+                      mcp:
+                        host: http://localhost:8000/mcp
+
+  - port: 3001
+    listeners:
+      - name: a2a
+        routes:
+          - policies:
+              a2a: {}
+              localRateLimit:
+                - maxTokens: 60
+                  tokensPerFill: 60
+                  fillInterval: 60s
+            backends:
+              - host: localhost:8080
+
+  - port: 4000
+    listeners:
+      - name: llm
+        routes:
+          - policies:
+              localRateLimit:
+                - maxTokens: 30
+                  tokensPerFill: 30
+                  fillInterval: 60s
+              ai:
+                promptGuard:
+                  request:
+                    - regex:
+                        action: reject
+                        rules:
+                          - builtin: email
+                          - pattern: "(?i)(ignore|override).{0,40}(instructions|system prompt)"
+                      rejection:
+                        status: 400
+                        body: Request rejected by the course prompt guard.
+                  response:
+                    - regex:
+                        action: reject
+                        rules:
+                          - builtin: email
+                      rejection:
+                        status: 502
+                        body: Model response rejected by the course data-loss guard.
+            backends:
+              - ai:
+                  name: ollama
+                  hostOverride: localhost:11434
+                  pathOverride: /v1/chat/completions
+                  provider:
+                    openAI:
+                      model: qwen3:4b

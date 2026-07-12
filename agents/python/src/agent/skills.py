@@ -23,7 +23,7 @@ def skills_dir() -> Path:
 
 
 def skill_toolset() -> SkillToolset:
-    """Build a SkillToolset from every skill in the skills directory (progressive disclosure)."""
+    """Build a least-privilege instruction-only SkillToolset."""
     base = skills_dir()
     skills = [load_skill_from_dir(base / name) for name in list_skills_in_dir(base)]
-    return SkillToolset(skills=skills)
+    return SkillToolset(skills=skills, tool_filter=["list_skills", "load_skill"])
