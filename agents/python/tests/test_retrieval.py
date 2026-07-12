@@ -99,3 +99,24 @@ def test_embedding_error_is_actionable(monkeypatch) -> None:
     monkeypatch.setattr(settings, "embeddings_url", "http://127.0.0.1:1")  # nothing listens
     with pytest.raises(retrieval.EmbeddingUnavailableError, match="ollama pull nomic-embed-text"):
         retrieval.embed_texts(["hello"])
+
+
+def test_embedding_request_has_a_cold_start_timeout(monkeypatch) -> None:
+    class _Response:
+        def raise_for_status(self) -> None:
+            return
+
+        def json(self) -> dict[str, list[list[float]]]:
+            return {"embeddings": [[1.0, 0.0]]}
+
+    seen: dict[str, float] = {}
+
+    def post(url, *, json, timeout):
+        del url, json
+        seen["timeout"] = timeout
+        return _Response()
+
+    monkeypatch.setattr(retrieval.httpx, "post", post)
+    monkeypatch.setattr(settings, "embedding_timeout_s", 123.0)
+    assert retrieval.embed_texts(["hello"]) == [[1.0, 0.0]]
+    assert seen == {"timeout": 123.0}

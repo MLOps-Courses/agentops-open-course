@@ -44,7 +44,7 @@ def embed_texts(texts: list[str]) -> list[list[float]]:
         response = httpx.post(
             f"{settings.embeddings_url}/api/embed",
             json={"model": settings.embedding_model, "input": texts},
-            timeout=settings.tool_timeout_s,
+            timeout=settings.embedding_timeout_s,
         )
         response.raise_for_status()
         embeddings = response.json()["embeddings"]
