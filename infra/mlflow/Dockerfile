@@ -21,7 +21,11 @@ RUN --mount=type=bind,from=uv,source=/uv,target=/usr/local/bin/uv \
 
 COPY --chmod=0444 entrypoint.py /opt/mlflow/entrypoint.py
 
-FROM gcr.io/distroless/python3-debian13:nonroot@sha256:828da6b298ecebf90580c84476c29b847b6432b46dbfaa642726b87ac527ee22
+FROM cgr.dev/chainguard/wolfi-base@sha256:02dab76bd852a70556b5b2002195c8a5fdab77d323c433bf6642aab080489795
+
+RUN apk add --no-cache \
+    libstdc++=16.1.0-r4 \
+    python-3.13=3.13.14-r1
 
 ENV PATH="/opt/mlflow/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \

@@ -2,7 +2,7 @@
 # Ops Copilot — Python track container image (Chapter 6.1).
 #
 # A minimal, non-root, multi-stage build: uv resolves the locked dependencies
-# into a self-contained virtualenv, and a Python 3.13 distroless runtime carries
+# into a self-contained virtualenv, and a minimal Wolfi runtime carries
 # only that venv, the bundled dataset, and an empty state directory. Build and
 # runtime bases are digest-pinned for reproducible multi-arch builds.
 #
@@ -39,15 +39,19 @@ COPY python/README.md ./README.md
 COPY python/src ./src
 RUN uv sync --frozen --no-dev --no-editable
 
-# The build image installs Python under /usr/local, while distroless exposes it
+# The build image installs Python under /usr/local, while Wolfi exposes it
 # under /usr/bin. Repoint the venv after the last build-stage Python invocation.
 RUN ln -sfn /usr/bin/python3 /app/.venv/bin/python \
  && ln -sfn /usr/bin/python3 /app/.venv/bin/python3 \
  && ln -sfn /usr/bin/python3 /app/.venv/bin/python3.13 \
  && install -d -o 10001 -g 10001 /app/state
 
-# --- Stage 2: distroless, non-root runtime -----------------------------------
-FROM gcr.io/distroless/python3-debian13:nonroot@sha256:828da6b298ecebf90580c84476c29b847b6432b46dbfaa642726b87ac527ee22 AS runtime
+# --- Stage 2: minimal, non-root runtime --------------------------------------
+FROM cgr.dev/chainguard/wolfi-base@sha256:02dab76bd852a70556b5b2002195c8a5fdab77d323c433bf6642aab080489795 AS runtime
+
+RUN apk add --no-cache \
+    libstdc++=16.1.0-r4 \
+    python-3.13=3.13.14-r1
 
 ENV PATH=/app/.venv/bin:$PATH \
     PYTHONUNBUFFERED=1 \
