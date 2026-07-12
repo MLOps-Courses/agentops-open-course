@@ -1,0 +1,61 @@
+{
+  "eval_set_id": "ops_copilot_structured_report",
+  "name": "Ops Copilot structured triage report",
+  "description": "Model-backed validation of the typed TriageReport entry point (Ch. 4.0).",
+  "eval_cases": [
+    {
+      "eval_id": "inventory-incident-report",
+      "conversation": [
+        {
+          "invocation_id": "inv-inventory-incident-report",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              {
+                "text": "Produce the triage report for incident INC-002."
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": "{\"incident_id\":\"INC-002\",\"severity\":\"SEV1\",\"affected_services\":[\"inventory\"],\"hypothesis\":\"Inventory pods are crash-looping after a bad deployment.\",\"evidence\":[\"inventory pods restart every 30s\",\"HTTP 503 on stock lookups\"],\"recommended_runbook\":\"service-down\",\"proposed_actions\":[\"restart the inventory service after approval\"]}"
+              }
+            ]
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              {
+                "name": "get_incident",
+                "args": {
+                  "incident_id": "INC-002"
+                }
+              },
+              {
+                "name": "search_service_logs",
+                "args": {
+                  "service": "inventory"
+                }
+              },
+              {
+                "name": "get_runbook",
+                "args": {
+                  "slug": "service-down"
+                }
+              }
+            ],
+            "intermediate_responses": []
+          },
+          "creation_timestamp": 0.0
+        }
+      ],
+      "session_input": {
+        "app_name": "triage_report",
+        "user_id": "eval",
+        "state": {}
+      },
+      "creation_timestamp": 0.0
+    }
+  ]
+}

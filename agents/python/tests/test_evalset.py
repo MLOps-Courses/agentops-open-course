@@ -10,8 +10,10 @@ from pathlib import Path
 import pytest
 
 from agent import data
+from agent.models import TriageReport
 
 _EVALSET = Path(__file__).parents[1] / "evals" / "ops.evalset.json"
+_REPORT_EVALSET = Path(__file__).parents[1] / "evals" / "triage-report.evalset.json"
 _CONFIG = Path(__file__).parents[1] / "evals" / "test_config.json"
 
 # Tool-argument keys that reference dataset entities, per tool name.
@@ -78,6 +80,20 @@ def test_eval_config_uses_in_order_trajectory_matching() -> None:
     config = json.loads(_CONFIG.read_text(encoding="utf-8"))
     criterion = config["criteria"]["tool_trajectory_avg_score"]
     assert criterion == {"threshold": 1.0, "match_type": "IN_ORDER"}
+
+
+def test_structured_report_eval_exercises_a_valid_typed_response() -> None:
+    evalset = json.loads(_REPORT_EVALSET.read_text(encoding="utf-8"))
+    assert len(evalset["eval_cases"]) == 1
+    turn = evalset["eval_cases"][0]["conversation"][0]
+    text = turn["final_response"]["parts"][0]["text"]
+    report = TriageReport.model_validate_json(text)
+    assert report.incident_id == "INC-002"
+    assert [use["name"] for use in turn["intermediate_data"]["tool_uses"]] == [
+        "get_incident",
+        "search_service_logs",
+        "get_runbook",
+    ]
 
 
 @pytest.mark.parametrize(
