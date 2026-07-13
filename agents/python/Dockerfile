@@ -49,6 +49,11 @@ RUN ln -sfn /usr/bin/python3 /app/.venv/bin/python \
 # --- Stage 2: minimal, non-root runtime --------------------------------------
 FROM cgr.dev/chainguard/wolfi-base@sha256:02dab76bd852a70556b5b2002195c8a5fdab77d323c433bf6642aab080489795 AS runtime
 
+# Exact apk pins keep the runtime reproducible. Wolfi is a *rolling* repository:
+# it removes superseded package versions, so these pins periodically stop
+# resolving ("no such package") until Renovate opens a PR bumping them. That is
+# expected drift, not a broken course — refresh the pins to the current versions
+# (or `mise run` the Renovate update) and rebuild. See docs 6.1.
 RUN apk add --no-cache \
     libstdc++=16.1.0-r4 \
     python-3.13=3.13.14-r1

@@ -82,6 +82,13 @@ def index_runbooks() -> int:
     for slug in data.list_runbook_slugs():
         content = data.read_runbook(slug) or ""
         chunks.extend((slug, chunk) for chunk in chunk_runbook(slug, content))
+    if not chunks:
+        # An empty corpus is a deployment invariant violation, not a transient
+        # outage — fail loudly with a fix instead of an opaque IndexError below.
+        raise ValueError(
+            f"No runbook chunks to index: {settings.data_dir / 'runbooks'} is empty. "
+            "Seed the runbook library before enabling semantic retrieval."
+        )
     vectors = embed_texts([chunk for _, chunk in chunks])
     dimensions = len(vectors[0])
     with closing(_connect()) as connection:
@@ -110,6 +117,10 @@ def semantic_search(query: str, limit: int = 3) -> list[dict[str, Any]]:
     Builds the index on first use. Raises ``EmbeddingUnavailableError`` when the
     embedding endpoint cannot serve — the caller logs and falls back to keywords.
     """
+    if limit <= 0:
+        # Validate at the boundary: direct callers (e.g. the retrieval eval) do
+        # not pass through ``search_runbooks``'s coercion, so guard here too.
+        raise ValueError(f"semantic_search limit must be positive, got {limit}.")
     with closing(_connect()) as connection:
         if not _index_is_ready(connection):
             index_runbooks()
@@ -120,7 +131,9 @@ def semantic_search(query: str, limit: int = 3) -> list[dict[str, Any]]:
             WHERE embedding MATCH ? AND k = ?
             ORDER BY distance
             """,
-            (_serialize(vector), max(limit * 3, limit)),
+            # Over-fetch chunks (3x limit): several chunks can share one runbook,
+            # so a wider candidate pool is needed to dedupe down to `limit` runbooks.
+            (_serialize(vector), limit * 3),
         ).fetchall()
     # Deduplicate chunks back to whole runbooks, best (smallest) distance first.
     best: dict[str, float] = {}
