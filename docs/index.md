@@ -22,7 +22,7 @@ Build one **Ops Copilot** from its first model call to an observable Kubernetes 
 ## What is the system you will build?
 
 ```mermaid
-flowchart LR
+flowchart TD
     User[Engineer] --> Gateway[agentgateway]
     Agent[Ops Copilot] --> Gateway
     Gateway --> MCP[MCP tools]

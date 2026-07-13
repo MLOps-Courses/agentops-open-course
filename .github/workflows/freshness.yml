@@ -1,0 +1,44 @@
+# Quarterly reminder to re-verify time-sensitive docs claims (versions, prices,
+# model names, benchmarks). Opens one tracking issue from the docs-freshness
+# template if none is already open, so each release cycle includes a freshness pass.
+name: Docs freshness reminder
+
+on:
+  schedule:
+    # 07:00 UTC on the first of Jan/Apr/Jul/Oct — quarterly.
+    - cron: "0 7 1 1,4,7,10 *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: freshness-${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Open a freshness-audit issue when none is open
+        run: |
+          set -euo pipefail
+          # Idempotent: skip if a freshness audit is already open, so the quarterly
+          # cron never piles duplicates on an untriaged one.
+          open=$(gh issue list --state open --label documentation --search "freshness audit in:title" --json number --jq 'length')
+          if [ "$open" -gt 0 ]; then
+            echo "A freshness audit issue is already open; nothing to do."
+            exit 0
+          fi
+          # Strip the leading YAML front matter; the checklist body becomes the issue.
+          body=$(awk 'NR==1 && /^---$/ {fm=1; next} fm && /^---$/ {fm=0; next} !fm' ".github/ISSUE_TEMPLATE/docs-freshness.md")
+          gh issue create \
+            --title "docs: freshness audit for $(date -u +%Y-Q$(( ($(date -u +%-m)-1)/3 + 1 )))" \
+            --label documentation \
+            --body "$body"
