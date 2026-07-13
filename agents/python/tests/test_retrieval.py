@@ -56,6 +56,21 @@ def test_index_and_search_rank_by_similarity() -> None:
     assert all(row["content"] for row in results)
 
 
+@pytest.mark.usefixtures("fake_embedder")
+def test_index_runbooks_rejects_an_empty_corpus(monkeypatch) -> None:
+    # An empty runbook directory must fail with a contextual error, not IndexError.
+    monkeypatch.setattr(retrieval.data, "list_runbook_slugs", list)
+    with pytest.raises(ValueError, match="No runbook chunks to index"):
+        retrieval.index_runbooks()
+
+
+@pytest.mark.usefixtures("fake_embedder")
+@pytest.mark.parametrize("limit", [0, -3])
+def test_semantic_search_rejects_a_non_positive_limit(limit) -> None:
+    with pytest.raises(ValueError, match="limit must be positive"):
+        retrieval.semantic_search("anything", limit=limit)
+
+
 def test_search_builds_the_index_on_first_use(fake_embedder) -> None:
     results = retrieval.semantic_search("disk almost full on the node", limit=2)
     assert len(results) == 2

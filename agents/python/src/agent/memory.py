@@ -40,11 +40,16 @@ def get_runbook(slug: str) -> dict[str, Any]:
     Returns:
         A dict with the ``slug`` and its markdown ``content``, or an ``error`` if unknown.
     """
+    # Parse at the boundary: normalize once here, then work only with the trusted
+    # value — read, error message, and result all speak the normalized slug.
     normalized = normalize_slug(slug)
-    content = data.read_runbook(slug)
+    if normalized is None:
+        known = ", ".join(data.list_runbook_slugs())
+        return {"error": f"Invalid runbook slug {slug!r}. Available runbooks: {known}."}
+    content = data.read_runbook(normalized)
     if content is None:
         known = ", ".join(data.list_runbook_slugs())
-        return {"error": f"No runbook named {slug!r}. Available runbooks: {known}."}
+        return {"error": f"No runbook named {normalized!r}. Available runbooks: {known}."}
     return {"slug": normalized, "content": content}
 
 
