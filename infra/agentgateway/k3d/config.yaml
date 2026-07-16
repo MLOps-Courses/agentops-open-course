@@ -1,0 +1,104 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/agentgateway/agentgateway/v1.3.1/schema/config.json
+# k3d data plane: MCP :3000, A2A :3001, and OpenAI-compatible LLM :4000.
+config:
+  logging:
+    format: json
+  tracing:
+    otlpEndpoint: http://otel-collector.agentops.svc.cluster.local:4317
+    randomSampling: true
+
+binds:
+  - port: 3000
+    listeners:
+      - name: mcp
+        routes:
+          - policies:
+              localRateLimit:
+                - maxTokens: 120
+                  tokensPerFill: 120
+                  fillInterval: 60s
+              mcpAuthorization:
+                rules:
+                  - 'mcp.tool.name == "list_incidents"'
+                  - 'mcp.tool.name == "get_incident"'
+                  - 'mcp.tool.name == "get_service_status"'
+                  - 'mcp.tool.name == "search_service_logs"'
+                  - 'mcp.tool.name == "get_runbook"'
+                  - 'mcp.tool.name == "search_runbooks"'
+            backends:
+              - mcp:
+                  failureMode: failClosed
+                  targets:
+                    - name: ops-copilot
+                      mcp:
+                        host: http://agentops-mcp.agentops.svc.cluster.local:8000/mcp
+
+  - port: 3001
+    listeners:
+      - name: a2a
+        routes:
+          - policies:
+              a2a: {}
+              cors:
+                allowOrigins:
+                  - "http://localhost:8001"
+                allowMethods:
+                  - GET
+                  - POST
+                  - OPTIONS
+                allowHeaders:
+                  - content-type
+              localRateLimit:
+                - maxTokens: 60
+                  tokensPerFill: 60
+                  fillInterval: 60s
+            backends:
+              - host: agentops-agent.agentops.svc.cluster.local:8080
+
+  - port: 4000
+    listeners:
+      - name: llm
+        routes:
+          - policies:
+              # Caller authentication: enforce the marker that the in-cluster
+              # agent and kagent already send as OPENAI_API_KEY from the
+              # agentgateway-client secret. The value is public in this
+              # repository, so it is a demo credential — rotate the secret and
+              # this list together in a real deployment.
+              apiKey:
+                mode: strict
+                keys:
+                  - key: agentgateway
+                    metadata:
+                      client: agentops-course
+              localRateLimit:
+                - maxTokens: 30
+                  tokensPerFill: 30
+                  fillInterval: 60s
+              ai:
+                promptGuard:
+                  request:
+                    - regex:
+                        action: reject
+                        rules:
+                          - builtin: email
+                          - pattern: "(?i)(ignore|override).{0,40}(instructions|system prompt)"
+                      rejection:
+                        status: 400
+                        body: Request rejected by the course prompt guard.
+                  response:
+                    - regex:
+                        action: reject
+                        rules:
+                          - builtin: email
+                      rejection:
+                        status: 502
+                        body: Model response rejected by the course data-loss guard.
+            backends:
+              - ai:
+                  name: ollama
+                  hostOverride: host.k3d.internal:11434
+                  pathOverride: /v1/chat/completions
+                  provider:
+                    openAI:
+                      model: qwen3:4b

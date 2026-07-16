@@ -1,0 +1,53 @@
+# Run the same quality gates used by local hooks.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Install the pinned toolchain
+        uses: jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d # v4.2.0
+
+      - name: Install project dependencies
+        run: mise run install
+
+      - name: Format sources
+        run: mise run format
+
+      - name: Run static checks
+        run: mise run check
+
+      - name: Run offline tests
+        run: mise run test
+
+      - name: Smoke-test the account-free host path
+        run: mise run smoke:host
+
+      # Both suites already run inside `mise run test`; these dedicated steps make
+      # a red-team or evalset regression a named merge-gate signal instead of one
+      # line in the full run. Both are deterministic and offline — no model, no key.
+      - name: Run the deterministic red-team suite
+        run: cd agents/python && mise run redteam
+
+      - name: Validate the evalset against the seed data
+        run: cd agents/python && mise run eval:validate
+
+      - name: Verify generated files are committed
+        run: test -z "$(git status --porcelain)"

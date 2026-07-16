@@ -1,0 +1,123 @@
+# https://mise.jdx.dev
+# AgentOps reference agent — Python track tasks.
+# Only configuration/model-backed tasks load the root .env; offline gates load no dotenv.
+
+[tasks.install]
+alias = "i"
+description = "Install development dependencies"
+run = "uv sync --locked"
+
+[tasks.format]
+alias = "f"
+description = "Format Python source and imports"
+run = "mise run format:python"
+
+[tasks."format:python"]
+description = "Sort imports and format with Ruff"
+run = "uv run ruff check --select=I --fix --force-exclude . && uv run ruff format --force-exclude ."
+
+[tasks.check]
+alias = "c"
+description = "Run code checks in parallel"
+depends = ["check:format", "check:lint", "check:types", "check:vuln"]
+
+[tasks."config:check"]
+description = "Validate the resolved agent configuration and print it with secrets masked"
+env = { _.file = { path = "../../.env", redact = true } }
+run = "uv run python -m agent.config_check"
+
+[tasks."check:format"]
+alias = "cf"
+description = "Check formatting and configuration"
+run = [
+  "uv run validate-pyproject pyproject.toml",
+  "uv run ruff format --check .",
+  "uv lock --check",
+]
+
+[tasks."check:lint"]
+alias = "cl"
+description = "Run the Ruff linter"
+run = "uv run ruff check --force-exclude ."
+
+[tasks."check:types"]
+alias = "ct"
+description = "Run the ty type checker"
+run = "uv run ty check"
+
+[tasks."check:vuln"]
+alias = "ca"
+description = "Audit dependencies for known vulnerabilities"
+# PYSEC-2026-597: path traversal in nltk.data.load(). nltk is a dev-only transitive of
+# rouge-score (a minimal dependency for `adk eval`); it is never imported by the agent
+# runtime and receives no attacker-controlled resource names. No fixed release exists yet —
+# revisit when one ships. Documented, specific ignore (not a blanket suppression).
+run = "uv run pip-audit --ignore-vuln PYSEC-2026-597"
+
+[tasks.test]
+alias = "t"
+description = "Run the offline test suite with branch coverage"
+run = "uv run pytest"
+
+[tasks.eval]
+alias = "e"
+description = "Run the ADK eval sets over the fixed dataset with the configured model"
+env = { _.file = { path = "../../.env", redact = true } }
+run = "uv run adk eval src/agent evals/ops.evalset.json --config_file_path evals/test_config.json"
+
+[tasks."eval:report"]
+description = "Validate the structured TriageReport path with the configured model"
+env = { _.file = { path = "../../.env", redact = true } }
+run = "uv run python evals/report_eval.py"
+
+[tasks."eval:mlflow"]
+description = "Run full-conversation MLflow evals + prompt registry (optional gateway judge)"
+env = { _.file = { path = "../../.env", redact = true } }
+run = "uv run python evals/mlflow_eval.py"
+
+[tasks."eval:retrieval"]
+description = "Compare keyword vs semantic runbook retrieval (needs local Ollama embeddings)"
+env = { _.file = { path = "../../.env", redact = true } }
+run = "uv run python evals/retrieval_eval.py"
+
+[tasks."eval:validate"]
+description = "Validate the evalset structure and seed references offline (no model)"
+run = "uv run pytest --no-cov tests/test_evalset.py"
+
+[tasks.redteam]
+description = "Run deterministic offline adversarial checks (not live model red-teaming)"
+run = "uv run pytest --no-cov tests/test_security.py"
+
+[tasks.mcp]
+description = "Run the Ops Copilot MCP server over stdio (Ch. 3.3)"
+run = "uv run python -m agent.mcp_server"
+
+[tasks."mcp:http"]
+description = "Run the Ops Copilot MCP server over streamable HTTP on :8000"
+env = { MCP_HOST = "127.0.0.1", MCP_PORT = "8000", MCP_TRANSPORT = "streamable-http" }
+run = "uv run python -m agent.mcp_server"
+
+[tasks.web]
+description = "Run the ADK developer web UI with the configured model"
+env = { _.file = { path = "../../.env", redact = true } }
+run = "uv run adk web src"
+
+[tasks.run]
+alias = "r"
+description = "Run the agent in the terminal with the configured model"
+env = { _.file = { path = "../../.env", redact = true } }
+run = "uv run adk run src/agent"
+
+[tasks.a2a]
+description = "Run the persistent A2A server on :8080"
+env = { _.file = { path = "../../.env", redact = true } }
+run = "uv run python -m agent.server"
+
+[tasks."data:reset"]
+description = "Reset the disposable runtime database from the committed seed"
+run = "rm -rf .state"
+
+[tasks.clean]
+alias = "n"
+description = "Remove caches and build artifacts"
+run = "rm -rf .pytest_cache .ruff_cache .ty_cache .coverage htmlcov dist"

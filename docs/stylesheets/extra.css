@@ -1,0 +1,23 @@
+/* Custom styles for the AgentOps Open Course. */
+
+iframe.youtube {
+    display: block;
+    margin: 0 auto;
+}
+
+/* Mobile rendering pass (issue #42): the Material theme already scrolls wide
+   tables, but long URLs and file paths in cells keep them wider than needed.
+   On phone-width viewports, let cell content wrap and trim the table font so
+   the wide 4-column tables (Course paths, Providers, Gateway listeners) stay
+   readable without a long horizontal scroll. */
+@media screen and (max-width: 44.9375em) {
+    .md-typeset table:not([class]) {
+        font-size: 0.65rem;
+    }
+
+    .md-typeset table:not([class]) th,
+    .md-typeset table:not([class]) td {
+        overflow-wrap: anywhere;
+        word-break: break-word;
+    }
+}

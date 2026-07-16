@@ -1,0 +1,150 @@
+# https://docs.astral.sh/uv/reference/settings/
+# The AgentOps reference agent — Python track (Google ADK 2.0). MIT licensed.
+
+[project]
+name = "agentops-agent"
+version = "0.1.0"
+description = "The AgentOps Open Course reference agent, built with Google ADK 2.0."
+readme = "README.md"
+requires-python = ">=3.13"
+license = "MIT" # the code license text lives at agents/LICENSE
+authors = [{ name = "Médéric HURIER", email = "agentops-open-course@fmind.dev" }]
+# --8<-- [start:runtime-dependencies]
+dependencies = [
+  "aiosqlite>=0.22.1,<0.23", # async SQLite driver for ADK sessions and the A2A task store
+  "google-adk[a2a]>=2.4.0", # locked agent runtime + A2A serving; avoid the unused Spanner `db` extra
+  "mcp>=1.28.1", # Model Context Protocol server (FastMCP) + client (McpToolset), Ch. 3.3
+  "openai>=2.45.0", # OSS SDK used by ADK OpenAILlm for direct Ollama or agentgateway
+  "opentelemetry-exporter-otlp-proto-http>=1.42.0,<=1.42.1", # match ADK's OTel cap; export to Collector/MLflow
+  "pydantic-settings>=2.14.2",
+  "presidio-analyzer==2.2.362", # paired release; 2.2.363 caps cryptography below the security floor
+  "presidio-anonymizer==2.2.362", # PII redaction paired exactly with the analyzer
+  "spacy>=3.8,<3.9", # Presidio's NLP engine; pinned to match the en_core_web_sm model below
+  "en-core-web-sm", # small English spaCy model for Presidio (URL-pinned in [tool.uv.sources])
+  "cryptography>=48.0.1,<49", # latest MLflow-compatible line and floor for GHSA-537c-gmf6-5ccf
+  "sqlite-vec>=0.1.6",
+  "sqlalchemy[asyncio]>=2.0.51,<2.1", # persistent SQLite sessions/tasks without cloud database adapters
+]
+# --8<-- [end:runtime-dependencies]
+
+[dependency-groups]
+dev = [
+  "anyio>=4.8.0",
+  # Minimal `adk eval` dependencies. Avoid its broad `eval` extra, which pulls
+  # Vertex's LiteLLM-backed evaluator even though this course does not use it.
+  "hypothesis>=6.100",
+  "jinja2>=3.1.4,<4",
+  "lefthook>=2.1.9",
+  "mlflow>=3.14", # GenAI eval (LLM judges) + prompt registry + experiment tracking, Ch. 4.4 / 7.0
+  "pandas>=2.2.3",
+  "pip-audit>=2.7.3",
+  "pyarrow>=24.0.0", # security floor for the MLflow dependency tree
+  "pytest>=9.1.1",
+  "pytest-cov>=7.1.0",
+  "rouge-score>=0.1.2",
+  "ruff>=0.15.21",
+  "tabulate>=0.9",
+  "ty>=0.0.58,<0.1", # pre-1.0: pin a compatible range until it stabilizes
+  "validate-pyproject>=0.25",
+]
+
+[tool.uv.sources]
+# Pin the small English spaCy model as a reproducible wheel (locked in uv.lock, offline after sync).
+en-core-web-sm = { url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl" }
+
+[build-system]
+requires = ["uv_build>=0.9.0,<0.12"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-root = "src"
+module-name = "agent"
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.format]
+docstring-code-format = true
+line-ending = "lf"
+quote-style = "double"
+
+[tool.ruff.lint]
+select = [
+  "A", # flake8-builtins
+  "ARG", # flake8-unused-arguments
+  "ASYNC", # flake8-async
+  "B", # flake8-bugbear
+  "C4", # flake8-comprehensions
+  "E", # pycodestyle errors
+  "ERA", # eradicate
+  "F", # pyflakes
+  "FA", # flake8-future-annotations
+  "FURB", # refurb
+  "I", # isort
+  "ISC", # flake8-implicit-str-concat
+  "LOG", # flake8-logging
+  "N", # pep8-naming
+  "PERF", # Perflint
+  "PGH", # pygrep-hooks
+  "PIE", # flake8-pie
+  "PT", # flake8-pytest-style
+  "PTH", # flake8-use-pathlib
+  "Q", # flake8-quotes
+  "RET", # flake8-return
+  "RSE", # flake8-raise
+  "RUF", # ruff-specific rules
+  "S", # flake8-bandit
+  "SIM", # flake8-simplify
+  "SLF", # flake8-self
+  "T10", # flake8-debugger
+  "T20", # flake8-print
+  "TID", # flake8-tidy-imports
+  "UP", # pyupgrade
+  "W", # pycodestyle warnings
+]
+
+[tool.ruff.lint.per-file-ignores]
+"src/agent/config_check.py" = [
+  "T201", # the config:check CLI prints its report to stdout by design
+]
+"tests/**" = [
+  "S101", # assert
+  "T201", # print statement allowed in tests
+]
+
+[tool.ty.environment]
+python-version = "3.13"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = [
+  "-ra",
+  "--strict-config",
+  "--strict-markers",
+  "--cov=agent",
+  "--cov-branch",
+  "--cov-report=term-missing:skip-covered",
+  "--cov-fail-under=95",
+]
+pythonpath = ["src"]
+xfail_strict = true
+filterwarnings = [
+  "error",
+  'ignore:^BaseAgentConfig is deprecated and will be removed in future versions\. Config is now loaded via reflection so the separate config class is no longer needed\.$:DeprecationWarning',
+  'ignore:^\[EXPERIMENTAL\] feature FeatureName\.(JSON_SCHEMA_FOR_FUNC_DECL|PLUGGABLE_AUTH|TOOL_CONFIRMATION) is enabled\.$:UserWarning',
+  'ignore:^\[EXPERIMENTAL\] (_?A2a\w+|AgentCardBuilder|AgentRunRequest|convert_\w+|to_a2a):UserWarning',
+  'ignore:^Using `httpx` with `starlette\.testclient` is deprecated; install `httpx2` instead\.$:UserWarning',
+  'ignore:^You should use `Logger` instead\. Deprecated since version 1\.39\.0 and will be removed in a future release\.$:DeprecationWarning',
+  'ignore:^You should use `LoggerProvider` instead\. Deprecated since version 1\.39\.0 and will be removed in a future release\.$:DeprecationWarning',
+  'ignore:^You should use `ProxyLoggerProvider` instead\. Deprecated since version 1\.39\.0 and will be removed in a future release\.$:DeprecationWarning',
+]
+
+[tool.coverage.run]
+branch = true
+source = ["src"]
+omit = ["tests/*"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+skip_empty = true

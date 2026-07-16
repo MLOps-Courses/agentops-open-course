@@ -1,0 +1,39 @@
+apiVersion: skaffold/v4beta14
+kind: Config
+metadata:
+  name: agentops
+build:
+  tagPolicy:
+    gitCommit:
+      variant: AbbrevCommitSha
+  local:
+    push: true
+    useBuildkit: true
+  artifacts:
+    - image: agentops-agent
+      context: ../agents
+      docker:
+        dockerfile: python/Dockerfile
+    - image: agentops-mlflow
+      context: mlflow
+      docker:
+        dockerfile: Dockerfile
+manifests:
+  kustomize:
+    paths:
+      - k8s/overlays/local
+deploy:
+  kubectl: {}
+# Teach Skaffold where kagent stores the BYO workload image in its custom resource.
+resourceSelector:
+  allow:
+    - groupKind: Agent.kagent.dev
+      image: [.spec.byo.deployment.image]
+      labels: [.metadata.labels]
+profiles:
+  - name: local
+  - name: gke
+    patches:
+      - op: replace
+        path: /manifests/kustomize/paths/0
+        value: k8s/overlays/gke

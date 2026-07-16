@@ -1,0 +1,16 @@
+# Docker build context is agents/ (see agents/python/Dockerfile). Keep it small: the image
+# only needs python/{pyproject.toml,uv.lock,src} and data/ — everything else is noise.
+**/.venv/
+**/__pycache__/
+**/*.py[co]
+**/.pytest_cache/
+**/.ruff_cache/
+**/.ty_cache/
+**/.coverage
+**/htmlcov/
+
+# Build artifacts and local env.
+**/bin/
+**/dist/
+**/.env
+**/.adk/

@@ -1,0 +1,39 @@
+# https://mise.jdx.dev
+# AgentOps Ops Copilot dataset — the single source of truth for the reference agent.
+# `incidents.db` is generated from sql/schema.sql + sql/seed.sql and committed so the
+# agent runs offline out of the box; regenerate it whenever the SQL changes.
+
+[tools]
+sqlite = "3.53.3"
+
+[tasks.build]
+alias = "b"
+description = "(Re)build incidents.db from sql/schema.sql + sql/seed.sql"
+run = "rm -f incidents.db && sqlite3 incidents.db < sql/schema.sql && sqlite3 incidents.db < sql/seed.sql"
+
+[tasks.check]
+alias = "c"
+description = "Verify incidents.db is reproducible and the dataset is referentially consistent"
+run = '''
+database="$(mktemp)"
+trap 'rm -f "$database"' EXIT
+sqlite3 -init /dev/null "$database" < sql/schema.sql
+sqlite3 -init /dev/null "$database" < sql/seed.sql
+cmp incidents.db "$database"
+# Seeding runs without PRAGMA foreign_keys, so assert referential integrity explicitly.
+orphans="$(sqlite3 -init /dev/null "$database" "SELECT id FROM incidents WHERE service NOT IN (SELECT name FROM services)")"
+test -z "$orphans" || { echo "incidents reference unknown services: $orphans" >&2; exit 1; }
+for runbook in $(sqlite3 -init /dev/null "$database" "SELECT DISTINCT runbook FROM incidents"); do
+    test -f "runbooks/$runbook.md" || { echo "missing runbook file: runbooks/$runbook.md" >&2; exit 1; }
+done
+for log in logs/*.log; do
+    service="$(basename "$log" .log)"
+    known="$(sqlite3 -init /dev/null "$database" "SELECT count(*) FROM services WHERE name = '$service'")"
+    test "$known" = "1" || { echo "log file without a known service: $log" >&2; exit 1; }
+done
+'''
+
+[tasks.clean]
+alias = "n"
+description = "Remove the generated database"
+run = "rm -f incidents.db"

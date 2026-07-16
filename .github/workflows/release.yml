@@ -1,0 +1,206 @@
+# Publish signed, SBOM-attested container images to GHCR on version tags.
+# Supply chain: build -> scan (Trivy, reviewed OSS license policy) -> push -> SBOM (syft)
+# -> keyless cosign signature + SBOM attestation (GitHub OIDC, no long-lived key)
+# -> independent verification -> assets attached to a draft GitHub release.
+# Third-party actions are pinned by commit SHA because this workflow holds
+# packages:write and produces signed artifacts.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions: {} # least privilege: each job declares exactly what it needs
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false # never cancel a half-published release
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # checkout
+      packages: write # push images to GHCR
+      id-token: write # cosign keyless signing via GitHub OIDC
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: agent
+            context: agents
+            dockerfile: agents/python/Dockerfile
+          - name: mlflow
+            context: infra/mlflow
+            dockerfile: infra/mlflow/Dockerfile
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Verify the tag matches every release metadata surface
+        run: ./scripts/check-release-metadata.sh "${GITHUB_REF_NAME}"
+
+      - name: Resolve the lowercase image reference
+        id: image
+        # GHCR requires lowercase repository paths; github.repository is mixed-case.
+        run: echo "ref=ghcr.io/${GITHUB_REPOSITORY,,}/${{ matrix.name }}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
+      - name: Log in to GHCR
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Build ${{ matrix.name }} image
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          load: true # keep the image local so it can be scanned before any push
+          tags: ${{ steps.image.outputs.ref }}:${{ github.ref_name }}
+          # Single image manifest with one predictable digest; SBOM and provenance
+          # are attached explicitly below as cosign attestations instead.
+          provenance: false
+          sbom: false
+
+      - name: Scan ${{ matrix.name }} image vulnerabilities and secrets
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ steps.image.outputs.ref }}:${{ github.ref_name }}
+          trivy-config: trivy.yaml
+          version: v0.72.0
+          scanners: vuln,secret
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+
+      - name: Verify ${{ matrix.name }} image licenses
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ steps.image.outputs.ref }}:${{ github.ref_name }}
+          trivy-config: trivy.yaml
+          version: v0.72.0
+          scanners: license
+          severity: UNKNOWN,HIGH,CRITICAL
+          exit-code: "1"
+
+      - name: Push the scanned ${{ matrix.name }} image
+        id: push
+        env:
+          IMAGE: ${{ steps.image.outputs.ref }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          docker push "${IMAGE}:${TAG}"
+          repo_digest="$(
+            docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "${IMAGE}:${TAG}" |
+              awk -v prefix="${IMAGE}@" 'index($0, prefix) == 1 { print; exit }'
+          )"
+          digest="${repo_digest#*@}"
+          if [[ "${digest}" != sha256:* ]]; then
+            echo "::error::Could not resolve the pushed digest for ${IMAGE}:${TAG}"
+            exit 1
+          fi
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+
+      - name: Generate the SPDX SBOM with syft
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          image: ${{ steps.image.outputs.ref }}@${{ steps.push.outputs.digest }}
+          format: spdx-json
+          output-file: ${{ matrix.name }}.sbom.spdx.json
+          upload-artifact: false # uploaded together with the digest below
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Sign the image and attach the SBOM attestation
+        env:
+          IMAGE: ${{ steps.image.outputs.ref }}
+          DIGEST: ${{ steps.push.outputs.digest }}
+          SBOM: ${{ matrix.name }}.sbom.spdx.json
+        run: |
+          cosign sign --yes "${IMAGE}@${DIGEST}"
+          cosign attest --yes --type spdxjson --predicate "${SBOM}" "${IMAGE}@${DIGEST}"
+          echo "${IMAGE}@${DIGEST}" > "${{ matrix.name }}.digest.txt"
+
+      - name: Upload the SBOM and digest
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ matrix.name }}-supply-chain
+          path: |
+            ${{ matrix.name }}.sbom.spdx.json
+            ${{ matrix.name }}.digest.txt
+          if-no-files-found: error
+
+  verify:
+    # Prove the supply-chain claim from a separate job: resolve the pushed tag and
+    # check both the keyless signature and the SBOM attestation against the exact
+    # workflow identity that produced them.
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      packages: read # pull the published images and their signatures
+    strategy:
+      fail-fast: false
+      matrix:
+        name: [agent, mlflow]
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Verify the signature and SBOM attestation
+        env:
+          # Fulcio binds the certificate to this workflow file at this tag.
+          IDENTITY: https://github.com/${{ github.workflow_ref }}
+          ISSUER: https://token.actions.githubusercontent.com
+          NAME: ${{ matrix.name }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}/${NAME}:${TAG}"
+          cosign verify \
+            --certificate-oidc-issuer "${ISSUER}" \
+            --certificate-identity "${IDENTITY}" \
+            "${image}"
+          cosign verify-attestation --type spdxjson \
+            --certificate-oidc-issuer "${ISSUER}" \
+            --certificate-identity "${IDENTITY}" \
+            "${image}" > /dev/null
+          echo "verified ${image} against ${IDENTITY}"
+
+  release:
+    # Attach the SBOMs and image digests to the GitHub release for the tag.
+    # A draft is created when none exists: publishing stays a deliberate
+    # maintainer action (docs/8. Community/8.2. Releases.md).
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the draft release and upload assets
+    steps:
+      - name: Download the SBOMs and digests
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: "*-supply-chain"
+          merge-multiple: true
+          path: assets
+
+      - name: Attach the SBOMs and digests to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if ! gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" > /dev/null 2>&1; then
+            gh release create "${TAG}" --repo "${GITHUB_REPOSITORY}" --draft --verify-tag \
+              --title "${TAG}" \
+              --notes "Draft created by the release workflow. Curate notes from CHANGELOG.md before publishing."
+          fi
+          gh release upload "${TAG}" --repo "${GITHUB_REPOSITORY}" --clobber assets/*

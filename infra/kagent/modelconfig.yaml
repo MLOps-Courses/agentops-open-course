@@ -1,0 +1,15 @@
+apiVersion: kagent.dev/v1alpha2
+kind: ModelConfig
+metadata:
+  name: agentgateway
+  namespace: agentops
+  labels:
+    app.kubernetes.io/part-of: agentops-open-course
+spec:
+  provider: OpenAI
+  model: gemini-3.5-flash
+  apiKeySecret: agentgateway-client
+  apiKeySecretKey: OPENAI_API_KEY
+  openAI:
+    baseUrl: http://agentgateway.agentops.svc.cluster.local:4000/v1
+    timeout: 120

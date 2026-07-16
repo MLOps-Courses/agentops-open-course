@@ -1,0 +1,132 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/agentgateway/agentgateway/v1.3.1/schema/config.json
+# Secured host data plane (opt-in, Chapter 5.5): same upstreams as config.yaml
+# plus caller authentication and TLS on every exposed listener.
+#
+# Generate the demo-only material first (both outputs are gitignored), then
+# start the hardened gateway container from the repository root:
+#
+#   infra/scripts/gateway-tls.sh
+#   infra/scripts/gateway-jwt.sh
+#   AGENTOPS_GATEWAY_CONFIG=config-auth.yaml infra/scripts/gateway-host.sh run
+#
+# Honest scope: the certificate is self-signed lab trust (clients must pass it
+# with --cacert), the JWT issuer is a local script instead of an IdP, and the
+# model API key is the same non-secret marker the chapter already exports as
+# OPENAI_API_KEY — public in this repository, so demo-only by construction.
+config:
+  logging:
+    format: json
+
+binds:
+  - port: 3000
+    listeners:
+      - name: mcp
+        protocol: HTTPS
+        tls:
+          cert: infra/agentgateway/host/auth/tls-cert.pem
+          key: infra/agentgateway/host/auth/tls-key.pem
+        routes:
+          - policies:
+              # Identity first: a missing or invalid token is rejected with 401
+              # before any MCP protocol handling or authorization rule runs.
+              jwtAuth:
+                mode: strict
+                issuer: agentops-course
+                audiences: [agentops-gateway]
+                jwks:
+                  file: infra/agentgateway/host/auth/jwks.json
+              localRateLimit:
+                - maxTokens: 120
+                  tokensPerFill: 120
+                  fillInterval: 60s
+              # The verified identity feeds tool authorization: ops-admin keeps
+              # the six read tools, ops-viewer only the two incident reads.
+              mcpAuthorization:
+                rules:
+                  - 'jwt.sub == "ops-admin" && mcp.tool.name == "list_incidents"'
+                  - 'jwt.sub == "ops-admin" && mcp.tool.name == "get_incident"'
+                  - 'jwt.sub == "ops-admin" && mcp.tool.name == "get_service_status"'
+                  - 'jwt.sub == "ops-admin" && mcp.tool.name == "search_service_logs"'
+                  - 'jwt.sub == "ops-admin" && mcp.tool.name == "get_runbook"'
+                  - 'jwt.sub == "ops-admin" && mcp.tool.name == "search_runbooks"'
+                  - 'jwt.sub == "ops-viewer" && mcp.tool.name == "list_incidents"'
+                  - 'jwt.sub == "ops-viewer" && mcp.tool.name == "get_incident"'
+            backends:
+              - mcp:
+                  failureMode: failClosed
+                  targets:
+                    - name: ops-copilot
+                      mcp:
+                        host: http://localhost:8000/mcp
+
+  - port: 3001
+    listeners:
+      - name: a2a
+        protocol: HTTPS
+        tls:
+          cert: infra/agentgateway/host/auth/tls-cert.pem
+          key: infra/agentgateway/host/auth/tls-key.pem
+        routes:
+          - policies:
+              a2a: {}
+              jwtAuth:
+                mode: strict
+                issuer: agentops-course
+                audiences: [agentops-gateway]
+                jwks:
+                  file: infra/agentgateway/host/auth/jwks.json
+              localRateLimit:
+                - maxTokens: 60
+                  tokensPerFill: 60
+                  fillInterval: 60s
+            backends:
+              - host: localhost:8080
+
+  - port: 4000
+    listeners:
+      - name: llm
+        protocol: HTTPS
+        tls:
+          cert: infra/agentgateway/host/auth/tls-cert.pem
+          key: infra/agentgateway/host/auth/tls-key.pem
+        routes:
+          - policies:
+              # The OpenAI SDK already sends OPENAI_API_KEY as a Bearer header,
+              # so enforcing the chapter's marker value needs no agent change.
+              apiKey:
+                mode: strict
+                keys:
+                  - key: agentgateway
+                    metadata:
+                      client: course-learner
+              localRateLimit:
+                - maxTokens: 30
+                  tokensPerFill: 30
+                  fillInterval: 60s
+              ai:
+                promptGuard:
+                  request:
+                    - regex:
+                        action: reject
+                        rules:
+                          - builtin: email
+                          - pattern: "(?i)(ignore|override).{0,40}(instructions|system prompt)"
+                      rejection:
+                        status: 400
+                        body: Request rejected by the course prompt guard.
+                  response:
+                    - regex:
+                        action: reject
+                        rules:
+                          - builtin: email
+                      rejection:
+                        status: 502
+                        body: Model response rejected by the course data-loss guard.
+            backends:
+              - ai:
+                  name: ollama
+                  hostOverride: localhost:11434
+                  pathOverride: /v1/chat/completions
+                  provider:
+                    openAI:
+                      model: qwen3:4b

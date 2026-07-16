@@ -1,0 +1,77 @@
+apiVersion: kagent.dev/v1alpha2
+kind: Agent
+metadata:
+  name: agentops-agent
+  namespace: agentops
+  labels:
+    app.kubernetes.io/name: agentops-agent
+    app.kubernetes.io/part-of: agentops-open-course
+spec:
+  description: Production-shaped Google ADK Ops Copilot served over A2A.
+  type: BYO
+  byo:
+    deployment:
+      image: agentops-agent:dev
+      imagePullPolicy: IfNotPresent
+      replicas: 1
+      serviceAccountName: agentops-agent
+      env:
+        - name: AGENT_MODEL
+          value: gemini-3.5-flash
+        - name: AGENT_MODEL_PROVIDER
+          value: openai-compatible
+        - name: AGENT_MCP_URL
+          value: http://agentgateway:3000/mcp
+        - name: AGENT_DATA_DIR
+          value: /app/data
+        - name: AGENT_STATE_DIR
+          value: /app/state
+        - name: AGENT_A2A_HOST
+          value: agentops-agent.agentops.svc.cluster.local
+        - name: AGENT_A2A_BIND_HOST
+          value: 0.0.0.0
+        - name: AGENT_A2A_PORT
+          value: "8080"
+        - name: AGENT_A2A_PROTOCOL
+          value: http
+        - name: OPENAI_BASE_URL
+          value: http://agentgateway:4000/v1
+        - name: OPENAI_API_KEY
+          value: agentgateway
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: http://otel-collector:4318
+        - name: OTEL_SERVICE_NAME
+          value: ops-copilot
+        - name: OTEL_RESOURCE_ATTRIBUTES
+          value: service.namespace=agentops,deployment.environment=kubernetes
+      resources:
+        requests:
+          cpu: 250m
+          memory: 512Mi
+        limits:
+          cpu: "1"
+          memory: 1536Mi
+      podSecurityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      volumeMounts:
+        - name: state
+          mountPath: /app/state
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+        - name: state
+          persistentVolumeClaim:
+            claimName: agentops-agent-state
+        - name: tmp
+          emptyDir:
+            sizeLimit: 128Mi

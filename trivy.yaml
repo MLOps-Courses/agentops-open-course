@@ -1,0 +1,36 @@
+severity:
+  - HIGH
+  - CRITICAL
+
+scan:
+  # License uses a separate UNKNOWN/HIGH/CRITICAL command because severity is
+  # global in Trivy; mixing it here would also fail UNKNOWN vulnerabilities.
+  scanners:
+    - vuln
+    - misconfig
+    - secret
+
+vulnerability:
+  ignore-unfixed: true
+
+license:
+  # Trivy classifies copyleft as HIGH "restricted" risk and leaves several
+  # valid SPDX expressions, legacy metadata labels, and public-domain grants as
+  # UNKNOWN. These entries are reviewed OSS runtime dependencies; every other
+  # HIGH/CRITICAL or UNKNOWN license still fails the dedicated license gate.
+  ignored:
+    - "Apache-2.0 AND CNRI-Python"
+    - blessing
+    - CC-PDDC
+    - GPL-1.0-only
+    - GPL-2.0-only
+    - GPL-2.0-or-later
+    - GPL-3.0-or-later
+    - "GPL-3.0-or-later WITH GCC-exception-3.1"
+    - LGPL-2.1-or-later
+    - LGPL-3.0-only
+    - "MIT AND PSF-2.0"
+    - MIT-0
+    - MIT-CMU
+    - PSF-2.0
+    - "Python Software Foundation License"

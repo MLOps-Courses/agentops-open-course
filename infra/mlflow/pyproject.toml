@@ -1,0 +1,12 @@
+[project]
+name = "agentops-mlflow"
+version = "0.1.0"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+  "google-cloud-storage==3.12.1",
+  "mlflow==3.14.0",
+  "prometheus-flask-exporter==0.23.2",
+]
+
+[tool.uv]
+package = false

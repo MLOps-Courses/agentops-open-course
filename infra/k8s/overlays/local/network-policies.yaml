@@ -1,0 +1,64 @@
+# Policies for the local-overlay alerting pair. The base default-deny-egress
+# and dns-egress policies already apply to these pods; every flow below is an
+# explicit exception in the same style as the base per-service policies.
+#
+# Prometheus has no in-cluster consumers: learners read its UI through
+# `kubectl port-forward`, which enters via the kubelet rather than another
+# pod, so the ingress policy allows nothing.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: prometheus-ingress
+  namespace: agentops
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: prometheus
+  policyTypes: [Ingress]
+---
+# Prometheus scrapes the collector's metrics endpoint and pushes fired
+# alerts to Alertmanager. Nothing else leaves the pod.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: prometheus-egress
+  namespace: agentops
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: prometheus
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: otel-collector
+      ports:
+        - { port: 8889, protocol: TCP }
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: alertmanager
+      ports:
+        - { port: 9093, protocol: TCP }
+---
+# Only Prometheus talks to Alertmanager; learners use port-forward for the
+# UI. Alertmanager needs no egress policy: default-deny plus DNS is its whole
+# contract, which keeps in-cluster notifications local by construction.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: alertmanager-ingress
+  namespace: agentops
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: alertmanager
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+      ports:
+        - { port: 9093, protocol: TCP }

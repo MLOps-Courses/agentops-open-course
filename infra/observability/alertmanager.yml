@@ -1,0 +1,20 @@
+# Local-only notification fan-out: Prometheus groups fired alerts here. The
+# webhook posts to a placeholder endpoint on the Docker host; until you run a
+# receiver there (or swap in Slack, ntfy, PagerDuty, ...), failed posts only
+# log an error and every alert stays visible in the Alertmanager UI at
+# http://localhost:9093 and its API at /api/v2/alerts.
+route:
+  receiver: local-webhook
+  group_by: [alertname, severity]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+receivers:
+  - name: local-webhook
+    webhook_configs:
+      # Placeholder: any HTTP listener on the host, e.g. port 5001. Replace
+      # with your real notification bridge; nothing in the course depends on
+      # this endpoint existing.
+      - url: http://host.docker.internal:5001/alerts
+        send_resolved: true

@@ -1,0 +1,323 @@
+# https://mise.jdx.dev
+# Root orchestrator: builds the docs (Zensical) and delegates to the Python agent
+# (agents/python), a self-contained project with its own mise.toml.
+# Git hooks (lefthook.yml) and CI (.github/workflows) call these same tasks.
+
+[tools]
+uv = "0.11.28"
+dprint = "0.55.1"
+lefthook = "2.1.10"
+gitleaks = "8.30.1"
+actionlint = "1.7.12"
+k3d = "5.9.0"
+kubectl = "1.36.2"
+helm = "4.2.3"
+helmfile = "1.7.0"
+skaffold = "2.23.0"
+kustomize = "5.8.1"
+kubeconform = "0.8.0"
+kube-linter = "0.8.3"
+opentofu = "1.12.3"
+tflint = "0.63.1"
+trivy = "0.72.0"
+sqlite = "3.53.3"
+shellcheck = "0.11.0"
+shfmt = "3.13.1"
+sops = "3.13.2" # SOPS-encrypted secrets in git (Chapter 6); only needed to run infra/scripts/secrets.sh
+age = "1.3.1" # age recipients/keys for SOPS; ships age-keygen
+ripgrep = "15.1.0"
+lychee = "0.24.2"
+jq = "1.8.2"
+gh = "2.96.0"
+"github:mikefarah/yq" = "4.53.3"
+"github:agentgateway/agentgateway" = "1.3.1"
+
+[settings.task]
+run_auto_install = false # fail fast in hooks instead of silently installing a missing tool
+
+[tasks.install]
+alias = "i"
+description = "Install docs, agent, MLflow, and git-hook dependencies"
+run = [
+  "uv sync --locked",
+  "uv sync --directory infra/mlflow --locked",
+  "./scripts/install-helm-diff.sh",
+  "lefthook install",
+  "cd agents/python && mise run install",
+]
+
+[tasks.doctor]
+description = "Verify the base course-authoring toolchain"
+run = "./scripts/doctor.sh base"
+
+[tasks."doctor:base"]
+description = "Verify the base course-authoring toolchain"
+run = "./scripts/doctor.sh base"
+
+[tasks."doctor:model"]
+description = "Verify the account-free local Ollama model path"
+run = "./scripts/doctor.sh model"
+
+[tasks."doctor:gateway"]
+description = "Verify the host agentgateway path"
+run = "./scripts/doctor.sh gateway"
+
+[tasks."doctor:platform"]
+description = "Verify the local Kubernetes platform path"
+run = "./scripts/doctor.sh platform"
+
+[tasks."doctor:gcp"]
+description = "Verify the optional GCP and GKE path"
+run = "./scripts/doctor.sh gcp"
+
+[tasks."config:check"]
+description = "Validate the agent configuration and print it with secrets masked"
+run = "cd agents/python && mise run config:check"
+
+[tasks.serve]
+alias = "s"
+description = "Serve the documentation locally with live reload (Zensical)"
+run = "uv run zensical serve"
+
+[tasks.watch]
+alias = "w"
+description = "Serve the documentation locally with live reload"
+run = "uv run zensical serve"
+
+[tasks.build]
+alias = "b"
+description = "Build the static documentation site (Zensical → site/)"
+run = "uv run zensical build"
+
+[tasks."build:agent-image"]
+description = "Build the non-root Ops Copilot image"
+run = "docker build --file agents/python/Dockerfile --tag agentops-agent:dev agents"
+
+[tasks."build:mlflow-image"]
+description = "Build the locked self-hosted MLflow image"
+run = "docker build --file infra/mlflow/Dockerfile --tag agentops-mlflow:3.14.0 infra/mlflow"
+
+[tasks.deploy]
+description = "Build the site for release (GitHub Pages publishes it in CI)"
+run = "uv run zensical build"
+
+[tasks.format]
+alias = "f"
+description = "Format docs, config, and the Python agent"
+depends = ["format:dprint", "format:python", "format:shell", "format:tofu"]
+
+[tasks."format:dprint"]
+description = "Format Markdown and configuration files"
+run = "dprint fmt"
+
+[tasks."format:python"]
+description = "Format the Python reference agent"
+run = [
+  "cd agents/python && mise run format:python .",
+  "cd agents/python && uv run ruff check --select=I --fix ../../infra/mlflow/entrypoint.py ../../infra/scripts/loopback-relay.py ../../load/fake_model.py",
+  "cd agents/python && uv run ruff format ../../infra/mlflow/entrypoint.py ../../infra/scripts/loopback-relay.py ../../load/fake_model.py",
+]
+
+[tasks."format:shell"]
+description = "Format repository shell scripts"
+run = "shfmt -w scripts infra/scripts"
+
+[tasks."format:tofu"]
+description = "Format the OpenTofu GCP module"
+run = "tofu -chdir=infra/gcp fmt -recursive"
+
+[tasks.check]
+alias = "c"
+description = "Run the complete maintainer validation, including infrastructure"
+depends = ["check:core", "check:infra"]
+
+[tasks."check:core"]
+description = "Run the model-, container-, cluster-, and cloud-free course validation"
+depends = [
+  "check:data",
+  "check:docs",
+  "check:format",
+  "check:licenses",
+  "check:links",
+  "check:python",
+  "check:release-metadata",
+  "check:shell",
+  "check:workflows",
+]
+
+[tasks."check:data"]
+description = "Verify the committed offline dataset"
+run = "cd agents/data && mise run check"
+
+[tasks."check:docs"]
+description = "Build the course site"
+run = [
+  "./scripts/check-docs.sh",
+  "uv run zensical build",
+]
+
+[tasks."check:format"]
+description = "Check Markdown and configuration formatting"
+run = "dprint check"
+
+[tasks."check:infra"]
+description = "Render and validate the local and GKE infrastructure"
+run = "./scripts/check-infra.sh"
+
+[tasks."check:links"]
+description = "Check repository-local Markdown links without network access"
+run = "lychee --offline README.md CONTRIBUTING.md SECURITY.md CODE_OF_CONDUCT.md CHANGELOG.md 'docs/**/*.md' 'agents/**/*.md' 'infra/**/*.md'"
+
+[tasks."check:licenses"]
+description = "Verify repository and Python dependency licenses"
+run = "./scripts/check-licenses.sh"
+
+[tasks."check:python"]
+description = "Lint, type-check, and audit the Python reference agent"
+run = [
+  "cd agents/python && mise run check",
+  "cd agents/python && uv run ruff format --check ../../infra/mlflow/entrypoint.py ../../infra/scripts/loopback-relay.py ../../load/fake_model.py",
+  "cd agents/python && uv run ruff check ../../infra/mlflow/entrypoint.py ../../infra/scripts/loopback-relay.py ../../load/fake_model.py",
+  "cd agents/python && uv run ty check ../../infra/mlflow/entrypoint.py ../../infra/scripts/loopback-relay.py ../../load/fake_model.py",
+]
+
+[tasks."check:release-metadata"]
+description = "Verify package, citation, changelog, and optional tag versions agree"
+run = "./scripts/check-release-metadata.sh"
+
+[tasks."check:shell"]
+description = "Lint repository shell scripts"
+run = [
+  "shfmt -d scripts infra/scripts",
+  "shellcheck scripts/*.sh infra/scripts/*.sh",
+]
+
+[tasks."check:workflows"]
+description = "Lint GitHub Actions workflows"
+run = "actionlint .github/workflows/*.yml"
+
+[tasks.test]
+alias = "t"
+description = "Run the Python agent test suite"
+run = "cd agents/python && mise run test"
+
+[tasks."gateway:host"]
+description = "Run the loopback-only host agentgateway container in the foreground"
+run = "infra/scripts/gateway-host.sh run"
+
+[tasks."gateway:host:start"]
+description = "Start the loopback-only host agentgateway container"
+run = "infra/scripts/gateway-host.sh start"
+
+[tasks."gateway:host:stop"]
+description = "Stop the course-owned host agentgateway container"
+run = "infra/scripts/gateway-host.sh stop"
+
+[tasks."gateway:host:status"]
+description = "Show the course-owned host agentgateway container"
+run = "infra/scripts/gateway-host.sh status"
+
+[tasks."gateway:host:logs"]
+description = "Follow the course-owned host agentgateway logs"
+run = "infra/scripts/gateway-host.sh logs"
+
+[tasks."smoke:host"]
+description = "Exercise the account-free host model, MCP, A2A, CORS, and metrics path"
+run = "scripts/smoke-host.sh"
+
+[tasks."gateway:host:auth"]
+description = "Run the secured loopback host gateway profile (JWT + API key + TLS)"
+run = [
+  "./infra/scripts/gateway-tls.sh",
+  "./infra/scripts/gateway-jwt.sh >/dev/null",
+  "AGENTOPS_GATEWAY_CONFIG=config-auth.yaml infra/scripts/gateway-host.sh run",
+]
+
+[tasks."client:web"]
+description = "Serve the minimal A2A web client (offline, no build step) on :8001"
+run = "python3 -m http.server 8001 --directory clients/web"
+
+# k6 is intentionally not in [tools] (optional load path, AGPL-3.0); `mise x` runs the
+# pinned ephemeral binary documented in load/README.md and docs 7.2.
+[tasks."load:health"]
+description = "Load-test the health endpoints with k6 (own stack only)"
+run = "mise x k6@2.1.0 -- k6 run load/health.js"
+
+[tasks."load:mcp"]
+description = "Load-test the MCP read path through the gateway with k6"
+run = "mise x k6@2.1.0 -- k6 run load/mcp-read.js"
+
+[tasks."load:a2a"]
+description = "Load-test one A2A turn with k6 (1 VU — each turn spends model tokens)"
+run = "mise x k6@2.1.0 -- k6 run load/a2a-send.js"
+
+[tasks."model:fake"]
+description = "Run a deterministic OpenAI-compatible fake model on :11434 for platform-only load tests"
+run = "uv run --script load/fake_model.py"
+
+[tasks."observability:up"]
+description = "Start local MLflow, OpenTelemetry, Prometheus, and Grafana"
+run = "docker compose -f infra/observability/compose.yaml up --build --detach --wait"
+
+[tasks."observability:down"]
+description = "Stop local observability services while preserving their volumes"
+run = "docker compose -f infra/observability/compose.yaml down"
+
+[tasks."cluster:start"]
+description = "Create or resume the shared k3d local cluster and registry"
+run = "./scripts/cluster-start.sh"
+
+[tasks."platform:install"]
+description = "Install the pinned kagent control plane into k3d-local"
+run = [
+  "test \"$(kubectl config current-context)\" = k3d-local",
+  "kubectl apply --filename infra/k8s/base/namespace.yaml",
+  "helmfile --file infra/helmfile.yaml apply",
+]
+
+[tasks."platform:dev"]
+description = "Build, push, and continuously reconcile the local platform"
+run = [
+  "test \"$(kubectl config current-context)\" = k3d-local",
+  "cd infra && SKAFFOLD_DEFAULT_REPO=registry.localhost:5050 skaffold dev --filename skaffold.yaml --profile local",
+]
+
+[tasks."state:backup"]
+description = "Snapshot the agent SQLite state online-safely (VACUUM INTO)"
+run = "./infra/scripts/backup-state.sh"
+
+[tasks."state:restore"]
+description = "Restore agent SQLite state from a snapshot (stop the A2A/MCP writers first)"
+run = "./infra/scripts/restore-state.sh"
+
+[tasks."state:drill"]
+description = "Run the offline backup+restore drill against throwaway state"
+run = "./infra/scripts/backup-drill.sh"
+
+[tasks.scan]
+description = "Run the full repository security scan"
+depends = ["secure"]
+
+[tasks.secure]
+description = "Scan git history, dependencies, secrets, and infrastructure"
+run = [
+  "gitleaks git --verbose",
+  # infra/agentgateway/host/auth holds git-ignored demo keys generated by gateway:host:auth;
+  # scanning them would fail the gate on any machine that ran the secured host profile.
+  "trivy fs --config trivy.yaml --scanners vuln,misconfig,secret --exit-code 1 --tf-vars infra/gcp/terraform.tfvars.example --skip-dirs .agents --skip-dirs .git --skip-dirs .venv --skip-dirs agents/python/.venv --skip-dirs infra/mlflow/.venv --skip-dirs site --skip-dirs infra/agentgateway/host/auth --skip-files .env --skip-files agents/python/.env .",
+  # License risk has its own severity gate so UNKNOWN licenses fail without
+  # conflating them with vulnerabilities whose upstream severity is unknown.
+  "trivy fs --config trivy.yaml --scanners license --severity UNKNOWN,HIGH,CRITICAL --exit-code 1 --skip-dirs .agents --skip-dirs .git --skip-dirs .venv --skip-dirs agents/python/.venv --skip-dirs infra/mlflow/.venv --skip-dirs site --skip-dirs infra/agentgateway/host/auth --skip-files .env --skip-files agents/python/.env .",
+]
+
+[tasks."secure:staged"]
+description = "Scan staged changes and infrastructure before commit"
+run = [
+  "gitleaks git --staged --verbose",
+  "trivy config --config trivy.yaml --exit-code 1 --tf-vars infra/gcp/terraform.tfvars.example .",
+]
+
+[tasks.clean]
+alias = "n"
+description = "Remove build artifacts"
+run = "rm -rf site/ .venv/"

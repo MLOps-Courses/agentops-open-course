@@ -1,0 +1,152 @@
+# Nightly online-safe snapshot of the agent state (sessions, A2A tasks, and
+# the append-only audit trail) into a second PVC. Uses the course image and
+# the Python stdlib sqlite3 backup API, so there is no new image pin and no
+# plain `cp` of a live database. A backup PVC in the same single-node cluster
+# is crash/mistake recovery for the lab, not disaster recovery, and
+# `skaffold delete` removes both PVCs together.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: agentops-state-backup
+  namespace: agentops
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: agentops-state-backups
+  namespace: agentops
+  labels:
+    app.kubernetes.io/name: agentops-state-backup
+    app.kubernetes.io/part-of: agentops-open-course
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: agentops-state-backup
+  namespace: agentops
+  labels:
+    app.kubernetes.io/name: agentops-state-backup
+    app.kubernetes.io/part-of: agentops-open-course
+spec:
+  schedule: "30 3 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    metadata:
+      labels:
+        app.kubernetes.io/name: agentops-state-backup
+        app.kubernetes.io/part-of: agentops-open-course
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 300
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: agentops-state-backup
+            app.kubernetes.io/part-of: agentops-open-course
+        spec:
+          serviceAccountName: agentops-state-backup
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            fsGroup: 10001
+            fsGroupChangePolicy: OnRootMismatch
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: backup
+              image: agentops-agent:dev
+              imagePullPolicy: IfNotPresent
+              command: ["python", "-c"]
+              # sqlite3.Connection.backup takes the source's read lock page by
+              # page, so each copy is consistent while the MCP/agent pods keep
+              # writing. Build under a hidden directory, verify every database,
+              # then atomically publish it with a `.complete` marker. Retention
+              # keeps the newest 7 completed snapshots.
+              args:
+                - |
+                  import datetime
+                  import os
+                  import pathlib
+                  import shutil
+                  import sqlite3
+                  import sys
+                  import tempfile
+
+                  state = pathlib.Path(os.getenv("AGENT_STATE_DIR", "/app/state"))
+                  backups = pathlib.Path(os.getenv("STATE_BACKUP_ROOT", "/backups"))
+                  backups.mkdir(parents=True, exist_ok=True)
+                  databases = sorted(state.glob("*.db"))
+                  if not databases:
+                      sys.exit("no SQLite databases under /app/state; deploy the agent first")
+                  stamp = datetime.datetime.now(datetime.UTC).strftime("%Y%m%dT%H%M%SZ")
+                  snapshot = backups / stamp
+                  if snapshot.exists():
+                      sys.exit(f"completed snapshot already exists: {snapshot}")
+                  staging = pathlib.Path(tempfile.mkdtemp(dir=backups, prefix=f".incomplete-{stamp}."))
+                  try:
+                      for database in databases:
+                          source = sqlite3.connect(f"file:{database}?mode=ro", uri=True)
+                          target = sqlite3.connect(staging / database.name)
+                          try:
+                              with target:
+                                  source.backup(target)
+                              status = target.execute("PRAGMA integrity_check").fetchone()[0]
+                          finally:
+                              source.close()
+                              target.close()
+                          if status != "ok":
+                              sys.exit(f"integrity check failed for {database.name}: {status}")
+                          print(f"backed up {database.name} -> {staging / database.name}", flush=True)
+                      (staging / ".complete").write_text(
+                          f"completed_at={stamp}\ndatabases={len(databases)}\n",
+                          encoding="utf-8",
+                      )
+                      staging.rename(snapshot)
+                      staging = None
+                  finally:
+                      if staging is not None:
+                          shutil.rmtree(staging, ignore_errors=True)
+                  completed = sorted(
+                      path
+                      for path in backups.iterdir()
+                      if path.is_dir() and not path.name.startswith(".") and (path / ".complete").is_file()
+                  )
+                  for old in completed[:-7]:
+                      shutil.rmtree(old)
+                      print(f"pruned {old}", flush=True)
+                  print(f"snapshot complete: {snapshot}", flush=True)
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 128Mi
+                limits:
+                  cpu: 200m
+                  memory: 256Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: [ALL]
+              volumeMounts:
+                - name: state
+                  mountPath: /app/state
+                  readOnly: true
+                - name: backups
+                  mountPath: /backups
+          volumes:
+            - name: state
+              persistentVolumeClaim:
+                claimName: agentops-agent-state
+            - name: backups
+              persistentVolumeClaim:
+                claimName: agentops-state-backups

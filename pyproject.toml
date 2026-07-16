@@ -1,0 +1,26 @@
+# https://docs.astral.sh/uv/reference/settings/
+# https://packaging.python.org/en/latest/guides/writing-pyproject-toml/
+#
+# This project builds the COURSE DOCUMENTATION only (Zensical). The agent code
+# lives in `agents/python`, a self-contained project.
+
+[project]
+name = "agentops-open-course"
+version = "0.1.0"
+description = "Build, evaluate, secure, deploy, and operate production AI agents with Google ADK and an open-source AgentOps stack."
+authors = [{ name = "Médéric HURIER", email = "agentops-open-course@fmind.dev" }]
+readme = "README.md"
+requires-python = ">=3.13"
+license = "MIT"
+license-files = ["LICENSE"]
+dependencies = [
+  "zensical==0.0.50", # alpha: pin exactly and re-verify the generated site on every upgrade
+]
+
+[dependency-groups]
+dev = [
+  "pip-licenses==5.5.5",
+]
+
+[tool.uv]
+package = false

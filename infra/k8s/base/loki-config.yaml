@@ -1,0 +1,39 @@
+# Single-binary Loki with filesystem storage on the PVC and native OTLP
+# ingestion at /otlp/v1/logs. Auth is disabled because the ClusterIP is only
+# reachable inside the cluster; retention is bounded to 7 days.
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: /loki
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+
+schema_config:
+  configs:
+    - from: "2026-01-01"
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+compactor:
+  retention_enabled: true
+  delete_request_store: filesystem
+
+limits_config:
+  retention_period: 168h
+
+analytics:
+  reporting_enabled: false

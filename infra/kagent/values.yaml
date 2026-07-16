@@ -1,0 +1,89 @@
+rbac:
+  namespaces:
+    - kagent
+    - agentops
+
+controller:
+  watchNamespaces:
+    - agentops
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+ui:
+  replicas: 0
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+database:
+  postgres:
+    bundled:
+      storage: 500Mi
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+
+providers:
+  default: openAI
+  openAI:
+    provider: OpenAI
+    model: qwen3:4b
+    apiKeySecretRef: agentgateway-client
+    apiKeySecretKey: OPENAI_API_KEY
+    apiKey: agentgateway
+    config:
+      baseUrl: http://agentgateway.agentops.svc.cluster.local:4000/v1
+
+kmcp:
+  enabled: false
+
+kagent-tools:
+  enabled: false
+
+k8s-agent:
+  enabled: false
+kgateway-agent:
+  enabled: false
+istio-agent:
+  enabled: false
+promql-agent:
+  enabled: false
+observability-agent:
+  enabled: false
+argo-rollouts-agent:
+  enabled: false
+helm-agent:
+  enabled: false
+cilium-policy-agent:
+  enabled: false
+cilium-manager-agent:
+  enabled: false
+cilium-debug-agent:
+  enabled: false
+
+grafana-mcp:
+  enabled: false
+querydoc:
+  enabled: false
+
+otel:
+  tracing:
+    enabled: true
+    exporter:
+      otlp:
+        endpoint: otel-collector.agentops.svc.cluster.local:4317
+        protocol: grpc
+        insecure: true

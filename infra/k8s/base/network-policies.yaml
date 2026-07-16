@@ -1,0 +1,256 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: agentgateway-ingress
+  namespace: agentops
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: agentgateway
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: agentops
+      ports:
+        - { port: 3000, protocol: TCP }
+        - { port: 3001, protocol: TCP }
+        - { port: 4000, protocol: TCP }
+        - { port: 15020, protocol: TCP }
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kagent
+      ports:
+        - { port: 3000, protocol: TCP }
+        - { port: 4000, protocol: TCP }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mcp-ingress
+  namespace: agentops
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: agentops-mcp
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: agentgateway
+      ports:
+        - { port: 8000, protocol: TCP }
+---
+# The BYO agent's raw A2A listener is an implementation detail. Only
+# agentgateway may enter it; agentops callers use the governed gateway service
+# on :3001 instead. The kagent namespace is intentionally not admitted to A2A.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: agent-a2a-ingress
+  namespace: agentops
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: agentops-agent
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: agentgateway
+      ports:
+        - { port: 8080, protocol: TCP }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mlflow-ingress
+  namespace: agentops
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: mlflow
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: otel-collector
+      ports:
+        - { port: 5000, protocol: TCP }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: otel-collector-ingress
+  namespace: agentops
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: otel-collector
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: agentops
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kagent
+      ports:
+        - { port: 4317, protocol: TCP }
+        - { port: 4318, protocol: TCP }
+        - { port: 8889, protocol: TCP }
+---
+# Only the collector writes OTLP logs to Loki; learners read the query API
+# through `kubectl port-forward`, which enters via the kubelet rather than
+# another pod.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: loki-ingress
+  namespace: agentops
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: loki
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: otel-collector
+      ports:
+        - { port: 3100, protocol: TCP }
+---
+# Default-deny egress for every pod in the namespace, including the kagent
+# BYO agent pod created at runtime. A hijacked agent cannot open arbitrary
+# outbound flows; the declared model, tool, telemetry, and DNS routes below
+# remain trusted paths that still need application-layer data controls.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-egress
+  namespace: agentops
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+---
+# All pods resolve in-cluster service names through the cluster DNS service
+# in kube-system (CoreDNS on k3s, kube-dns on GKE).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: dns-egress
+  namespace: agentops
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - { port: 53, protocol: UDP }
+        - { port: 53, protocol: TCP }
+---
+# agentgateway fans out to its declared backends and pushes traces. The model
+# upstream differs per environment, so each overlay appends its own rule:
+# local allows the host Ollama port and gke allows Vertex over HTTPS.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: agentgateway-egress
+  namespace: agentops
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: agentgateway
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: agentops-mcp
+      ports:
+        - { port: 8000, protocol: TCP }
+    # kagent labels the generated BYO pod with the Agent resource name.
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: agentops-agent
+      ports:
+        - { port: 8080, protocol: TCP }
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: otel-collector
+      ports:
+        - { port: 4317, protocol: TCP }
+---
+# The BYO agent reaches only the gateway (MCP reads + model) and the
+# collector (OTLP/HTTP). It cannot contact the raw MCP server, MLflow,
+# or anything outside the cluster.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: agent-egress
+  namespace: agentops
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: agentops-agent
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: agentgateway
+      ports:
+        - { port: 3000, protocol: TCP }
+        - { port: 4000, protocol: TCP }
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: otel-collector
+      ports:
+        - { port: 4318, protocol: TCP }
+---
+# The collector pushes traces to MLflow, logs to Loki, and scrapes gateway
+# metrics. The raw MCP server, MLflow, and Loki need no egress policy:
+# default-deny plus DNS is their whole contract (the GKE overlay adds
+# MLflow's GCS exception).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: otel-collector-egress
+  namespace: agentops
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: otel-collector
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: mlflow
+      ports:
+        - { port: 5000, protocol: TCP }
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: loki
+      ports:
+        - { port: 3100, protocol: TCP }
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: agentgateway
+      ports:
+        - { port: 15020, protocol: TCP }

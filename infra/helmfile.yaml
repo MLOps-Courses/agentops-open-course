@@ -1,0 +1,22 @@
+# kagent's stable chart. The values disable its demo fleet and optional MCP servers.
+helmDefaults:
+  wait: true
+  waitForJobs: true
+  timeout: 600
+
+releases:
+  - name: kagent-crds
+    namespace: kagent
+    chart: oci://ghcr.io/kagent-dev/kagent/helm/kagent-crds
+    version: 0.9.11
+    createNamespace: true
+
+  - name: kagent
+    namespace: kagent
+    chart: oci://ghcr.io/kagent-dev/kagent/helm/kagent
+    version: 0.9.11
+    createNamespace: true
+    needs:
+      - kagent/kagent-crds
+    values:
+      - kagent/values.yaml
