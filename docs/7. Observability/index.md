@@ -24,6 +24,7 @@ flowchart LR
     Collector -->|logs /otlp| Loki[Loki :3100]
     Collector -->|span_metrics :8889| Prometheus[Prometheus :9090]
     Prometheus --> Grafana[Grafana :3002]
+    Loki --> Grafana
     Prometheus --> Alertmanager[Alertmanager :9093]
 ```
 
