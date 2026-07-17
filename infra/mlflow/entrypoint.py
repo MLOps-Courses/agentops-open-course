@@ -49,7 +49,7 @@ def main() -> None:
 
     os.environ["_MLFLOW_SERVER_ARTIFACT_ROOT"] = artifact_root
     os.environ["MLFLOW_BACKEND_STORE_URI"] = backend_store_uri
-    os.environ.setdefault("MLFLOW_EXPERIMENT_NAME", "ops-copilot")
+    os.environ.setdefault("MLFLOW_EXPERIMENT_NAME", "agentops-agent")
     initialize()
 
     cli.main(

@@ -53,7 +53,7 @@ ollama serve
 
 ```bash
 export OLLAMA_HOST="$(docker network inspect k3d-local --format '{{(index .IPAM.Config 0).Gateway}}'):11434"
-ollama pull qwen3:4b
+ollama pull qwen3:4b-instruct
 cd infra
 SKAFFOLD_DEFAULT_REPO=registry.localhost:5050 skaffold dev -p local
 ```
@@ -66,7 +66,7 @@ kubectl -n agentops port-forward svc/agentgateway 3000:3000 3001:3001 4000:4000 
 kubectl -n agentops port-forward svc/mlflow 5000:5000
 ```
 
-The local overlay keeps `AGENT_MODEL_PROVIDER=openai-compatible` and sends the agent through agentgateway to `qwen3:4b`; it does not need an upstream provider key. `OPENAI_API_KEY=agentgateway` is a non-secret marker that the Kubernetes gateway model listener enforces as a demo API key. The direct `agentops-mcp:8000` Service is reachable only behind the gateway.
+The local overlay keeps `AGENT_MODEL_PROVIDER=openai-compatible` and sends the agent through agentgateway to `qwen3:4b-instruct`; it does not need an upstream provider key. `OPENAI_API_KEY=agentgateway` is a non-secret marker that the Kubernetes gateway model listener enforces as a demo API key. The direct `agentops-mcp:8000` Service is reachable only behind the gateway.
 
 The agent and MCP server share one RWO `agentops-agent-state` claim so SQLite reads and guarded writes stay coherent. Only the agent mounts it writable; the six-tool MCP service mounts it read-only and remains unready until the agent initializes the runtime database. The claim constrains both consumers to a compatible node. This is a single-replica course architecture, not horizontally scalable SQLite.
 

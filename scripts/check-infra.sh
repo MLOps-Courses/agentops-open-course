@@ -81,8 +81,8 @@ for overlay in local gke; do
 	[[ "${backup_target_read_only}" == "false" ]]
 
 	if [[ "${overlay}" == "local" ]]; then
-		[[ "${agent_model}" == "qwen3:4b" ]]
-		[[ "${model_config}" == "qwen3:4b" ]]
+		[[ "${agent_model}" == "qwen3:4b-instruct" ]]
+		[[ "${model_config}" == "qwen3:4b-instruct" ]]
 	else
 		[[ "${agent_model}" == "gemini-3.5-flash" ]]
 		[[ "${model_config}" == "gemini-3.5-flash" ]]

@@ -35,7 +35,7 @@ from .agent import root_agent
 from .config import settings
 from .data import db_path, probe_runtime_database
 
-_APP_NAME = "ops-copilot"
+_APP_NAME = "agentops-agent"
 
 
 @dataclass(slots=True)
@@ -56,7 +56,7 @@ class Runtime:
 
 
 agent_card = AgentCard(
-    name="Ops Copilot",
+    name="AgentOps Agent",
     description="Runbook-grounded incident triage and guarded remediation for the AgentOps Open Course.",
     url=f"{settings.a2a_protocol}://{settings.a2a_host}:{settings.a2a_port}/",
     version=version("agentops-agent"),

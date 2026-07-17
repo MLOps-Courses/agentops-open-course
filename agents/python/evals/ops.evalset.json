@@ -1,6 +1,6 @@
 {
-  "eval_set_id": "ops_copilot_core",
-  "name": "Ops Copilot core behaviors",
+  "eval_set_id": "agentops_agent_core",
+  "name": "AgentOps Agent core behaviors",
   "description": "Deterministic tool-trajectory checks over the bundled dataset (Ch. 4.4).",
   "eval_cases": [
     {

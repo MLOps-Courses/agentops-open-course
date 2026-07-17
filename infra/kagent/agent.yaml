@@ -7,7 +7,7 @@ metadata:
     app.kubernetes.io/name: agentops-agent
     app.kubernetes.io/part-of: agentops-open-course
 spec:
-  description: Production-shaped Google ADK Ops Copilot served over A2A.
+  description: Production-shaped Google ADK AgentOps Agent served over A2A.
   type: BYO
   byo:
     deployment:
@@ -41,7 +41,7 @@ spec:
         - name: OTEL_EXPORTER_OTLP_ENDPOINT
           value: http://otel-collector:4318
         - name: OTEL_SERVICE_NAME
-          value: ops-copilot
+          value: agentops-agent
         - name: OTEL_RESOURCE_ATTRIBUTES
           value: service.namespace=agentops,deployment.environment=kubernetes
       resources:

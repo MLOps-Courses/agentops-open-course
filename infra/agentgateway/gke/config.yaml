@@ -29,7 +29,7 @@ binds:
               - mcp:
                   failureMode: failClosed
                   targets:
-                    - name: ops-copilot
+                    - name: agentops-agent
                       mcp:
                         host: http://agentops-mcp.agentops.svc.cluster.local:8000/mcp
 

@@ -29,7 +29,7 @@ OUTPUT_TOKENS_KEY = "budget:output_tokens"
 _TOKEN_COUNTER = metrics.get_meter("agentops.agent").create_counter(
     "agentops.tokens",
     unit="token",
-    description="Model tokens consumed by the Ops Copilot, by direction",
+    description="Model tokens consumed by the AgentOps Agent, by direction",
 )
 
 

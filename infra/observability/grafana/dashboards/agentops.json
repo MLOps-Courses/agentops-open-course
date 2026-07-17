@@ -195,7 +195,7 @@
       },
       "targets": [
         {
-          "expr": "{service_name=\"ops-copilot\"} | trace_id=~\".*$trace_id.*\"",
+          "expr": "{service_name=\"agentops-agent\"} | trace_id=~\".*$trace_id.*\"",
           "refId": "A"
         }
       ],

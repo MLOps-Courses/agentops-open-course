@@ -28,7 +28,7 @@ patches:
     patch: |-
       - op: replace
         path: /spec/byo/deployment/env/0/value
-        value: qwen3:4b
+        value: qwen3:4b-instruct
   - target:
       group: kagent.dev
       version: v1alpha2
@@ -37,7 +37,7 @@ patches:
     patch: |-
       - op: replace
         path: /spec/model
-        value: qwen3:4b
+        value: qwen3:4b-instruct
   # Host Ollama exception: host.k3d.internal resolves to the Docker bridge
   # gateway outside any pod/namespace selector, so the rule must be IP-based.
   # It stays scoped to the Ollama port instead of pinning a bridge CIDR that

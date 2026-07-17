@@ -1,4 +1,4 @@
-"""Data-access layer over the bundled Ops Copilot dataset (SQLite + runbooks).
+"""Data-access layer over the bundled AgentOps Agent dataset (SQLite + runbooks).
 
 Pure, side-effect-light helpers the tools (Ch. 3.1) build on. Kept separate from the
 tool functions so it can be unit-tested directly against ``agents/data/incidents.db``.

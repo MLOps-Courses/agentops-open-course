@@ -1,4 +1,4 @@
--- AgentOps Open Course — Ops Copilot dataset schema (SQLite).
+-- AgentOps Open Course — AgentOps Agent dataset schema (SQLite).
 -- Single source of truth for the AgentOps Open Course reference agent (agents/python).
 -- Rebuild incidents.db from this file + seed.sql with `mise run build` (see ../mise.toml).
 
@@ -8,7 +8,7 @@ DROP TABLE IF EXISTS audit_log;
 DROP TABLE IF EXISTS incidents;
 DROP TABLE IF EXISTS services;
 
--- The fictional services the Ops Copilot watches over.
+-- The fictional services the AgentOps Agent watches over.
 CREATE TABLE services (
     name        TEXT PRIMARY KEY,                          -- stable slug, e.g. "checkout"
     description TEXT NOT NULL,
@@ -35,7 +35,7 @@ CREATE TABLE incidents (
 CREATE TABLE audit_log (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     ts              TEXT NOT NULL,                         -- ISO-8601 UTC of the action
-    actor           TEXT NOT NULL,                         -- executing agent, e.g. "ops-copilot"
+    actor           TEXT NOT NULL,                         -- executing agent, e.g. "agentops-agent"
     approved_by     TEXT NOT NULL,                         -- ADK user id; synthetic on unauthenticated A2A
     rationale       TEXT NOT NULL,                         -- the approver's stated reason (HITL, Ch. 4.5)
     context_summary TEXT NOT NULL,                         -- current decision context reconstructed at execution

@@ -1,4 +1,4 @@
-"""Knowledge tools over the runbook library — the Ops Copilot's memory/RAG (Chapter 3.4).
+"""Knowledge tools over the runbook library — the AgentOps Agent's memory/RAG (Chapter 3.4).
 
 The runbooks in ``agents/data/runbooks`` are the agent's long-term knowledge. ``get_runbook``
 fetches one by its exact slug (an incident row carries its ``runbook`` slug); ``search_runbooks``
@@ -114,6 +114,6 @@ def search_runbooks(query: str, limit: int = 3) -> dict[str, Any]:
     return {"count": len(top), "runbooks": [{"slug": slug, "content": content} for _, slug, content in top]}
 
 
-# The knowledge tools registered on the Ops Copilot (Ch. 3.4), wrapped with the
+# The knowledge tools registered on the AgentOps Agent (Ch. 3.4), wrapped with the
 # same deadline/retry policy as the read tools — runbook reads are idempotent.
 KNOWLEDGE_TOOLS: list[ToolUnion] = [with_resilience(get_runbook), with_resilience(search_runbooks)]

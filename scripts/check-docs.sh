@@ -12,14 +12,15 @@ rg --files docs -g '*.md' | sort >"${pages_file}"
 
 failed=0
 
-while IFS= read -r page; do
-	first_line=$(sed -n '1p' "${page}")
-	second_line=$(sed -n '2p' "${page}")
-	if [[ ${first_line} != '---' ]] || [[ ! ${second_line} =~ ^description:\ .+ ]]; then
-		printf '%s: expected description front matter at the start of the file\n' "${page}" >&2
-		failed=1
-	fi
+# Front matter is parsed as real YAML, not pattern-matched: an unquoted "key: value"
+# containing a colon-space is valid-looking text but invalid YAML. The renderer then
+# silently drops the block into Markdown, where `text` + `---` becomes a setext <h2>
+# and the description shows up as the page heading. Only a parser catches that.
+if ! uv run python scripts/check_frontmatter.py "${pages_file}"; then
+	failed=1
+fi
 
+while IFS= read -r page; do
 	heading_count=0
 	awk '
 		/^(```|~~~)/ { in_fence = !in_fence; next }

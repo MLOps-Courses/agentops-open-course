@@ -137,7 +137,7 @@ def test_run_reuses_one_session_and_closes_runner(monkeypatch) -> None:
             runners.append(self)
 
         async def create_session(self, **kwargs):
-            assert kwargs == {"app_name": "ops-copilot", "user_id": "eval-multi"}
+            assert kwargs == {"app_name": "agentops-agent", "user_id": "eval-multi"}
             return SimpleNamespace(id="session")
 
         async def run_async(self, **kwargs):
@@ -513,12 +513,12 @@ def test_main_links_prompt_version_to_evaluated_model(monkeypatch, capsys) -> No
         mlflow_eval.mlflow.genai,
         "register_prompt",
         lambda **_kwargs: SimpleNamespace(
-            uri="prompts:/ops-copilot-instruction/7", version=7, name="ops-copilot-instruction"
+            uri="prompts:/agentops-agent-instruction/7", version=7, name="agentops-agent-instruction"
         ),
     )
 
     def initialize(**kwargs):
-        assert kwargs["params"]["prompt_uri"] == "prompts:/ops-copilot-instruction/7"
+        assert kwargs["params"]["prompt_uri"] == "prompts:/agentops-agent-instruction/7"
         assert kwargs["params"]["prompt_version"] == "7"
         return SimpleNamespace(model_id="model-1")
 
@@ -534,7 +534,7 @@ def test_main_links_prompt_version_to_evaluated_model(monkeypatch, capsys) -> No
     tags: dict = {}
     _stub_run_context(monkeypatch, tags)
     mlflow_eval.main()
-    assert tags == {"prompt_name": "ops-copilot-instruction", "prompt_version": "7"}
+    assert tags == {"prompt_name": "agentops-agent-instruction", "prompt_version": "7"}
     assert evaluated["model_id"] == "model-1"
     assert finalized == [("model-1", "READY")]
     output = capsys.readouterr().out

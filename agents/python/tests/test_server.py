@@ -133,7 +133,7 @@ def test_app_factory_owns_and_closes_persistent_runtime() -> None:
         assert runtime.session_service.db_engine is runtime.task_engine
 
         async with app.router.lifespan_context(app):
-            await runtime.session_service.create_session(app_name="ops-copilot", user_id="test")
+            await runtime.session_service.create_session(app_name="agentops-agent", user_id="test")
             await runtime.task_store.initialize()
 
     asyncio.run(exercise_lifespan())

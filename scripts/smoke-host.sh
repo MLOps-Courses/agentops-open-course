@@ -270,7 +270,7 @@ fi
 		AGENT_A2A_STREAMING=false \
 		AGENT_DATA_DIR="${repo_root}/agents/data" \
 		AGENT_MCP_URL="http://localhost:${gateway_mcp_port}/mcp" \
-		AGENT_MODEL=qwen3:4b \
+		AGENT_MODEL=qwen3:4b-instruct \
 		AGENT_MODEL_PROVIDER=openai-compatible \
 		AGENT_SEMANTIC_RETRIEVAL=false \
 		AGENT_STATE_DIR="${state_dir}" \
@@ -330,20 +330,20 @@ PY
 curl --fail --silent --show-error \
 	-H "Authorization: Bearer local-ollama" \
 	-H "Content-Type: application/json" \
-	--data '{"model":"qwen3:4b","messages":[{"role":"user","content":"Say hello."}],"stream":false}' \
+	--data '{"model":"qwen3:4b-instruct","messages":[{"role":"user","content":"Say hello."}],"stream":false}' \
 	"http://localhost:${gateway_model_port}/v1/chat/completions" \
 	>"${work_dir}/model-response.json"
 model_content="$(jq -r '.choices[0].message.content' "${work_dir}/model-response.json")"
 model_name="$(jq -r '.model' "${work_dir}/model-response.json")"
 [[ "${model_content}" == "Fake model response for platform latency measurement." ]]
-[[ "${model_name}" == "qwen3:4b" ]]
+[[ "${model_name}" == "qwen3:4b-instruct" ]]
 
 curl --fail --silent --show-error \
 	"http://localhost:${gateway_a2a_port}/.well-known/agent-card.json" \
 	>"${work_dir}/agent-card.json"
 agent_name="$(jq -r '.name' "${work_dir}/agent-card.json")"
 agent_url="$(jq -r '.url' "${work_dir}/agent-card.json")"
-[[ "${agent_name}" == "Ops Copilot" ]]
+[[ "${agent_name}" == "AgentOps Agent" ]]
 [[ "${agent_url}" == "http://localhost:${gateway_a2a_port}" ]]
 
 curl --fail --silent --show-error \

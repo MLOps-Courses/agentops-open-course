@@ -35,7 +35,7 @@ def clean_environment(monkeypatch, tmp_path):
 def test_default_settings_are_valid() -> None:
     settings = Settings()
     assert settings.model_provider is ModelProvider.OPENAI_COMPATIBLE
-    assert settings.model == "qwen3:4b"
+    assert settings.model == "qwen3:4b-instruct"
     assert settings.openai_base_url == "http://127.0.0.1:11434/v1"
     assert settings.openai_api_key is not None
     assert settings.openai_api_key.get_secret_value() == "local-ollama"
@@ -48,7 +48,7 @@ def test_default_settings_are_valid() -> None:
 
 def test_settings_ignore_local_dotenv(tmp_path) -> None:
     (tmp_path / ".env").write_text("AGENT_MODEL=dotenv-must-not-load\n", encoding="utf-8")
-    assert Settings().model == "qwen3:4b"
+    assert Settings().model == "qwen3:4b-instruct"
 
 
 def test_removed_gateway_flag_fails_with_migration_guidance(monkeypatch) -> None:
@@ -101,10 +101,10 @@ def test_mcp_url_must_be_http() -> None:
 def test_a2a_bind_and_advertised_hosts_are_distinct() -> None:
     settings = Settings(
         a2a_bind_host="0.0.0.0",  # noqa: S104 - Kubernetes explicitly opts into a container-wide bind
-        a2a_host="ops-copilot.localhost",
+        a2a_host="agentops-agent.localhost",
     )
     assert settings.a2a_bind_host == "0.0.0.0"  # noqa: S104 - verifies the explicit opt-in
-    assert settings.a2a_host == "ops-copilot.localhost"
+    assert settings.a2a_host == "agentops-agent.localhost"
     with pytest.raises(ValidationError):
         Settings(a2a_bind_host="")
 
@@ -222,9 +222,9 @@ def test_config_check_fails_with_actionable_errors(monkeypatch, capsys) -> None:
 
 def test_prompt_uri_must_be_a_registry_uri() -> None:
     with pytest.raises(ValidationError, match="AGENT_PROMPT_URI"):
-        Settings(prompt_uri="ops-copilot-instruction/2")
-    settings = Settings(prompt_uri="prompts:/ops-copilot-instruction/2")
-    assert settings.prompt_uri == "prompts:/ops-copilot-instruction/2"
+        Settings(prompt_uri="agentops-agent-instruction/2")
+    settings = Settings(prompt_uri="prompts:/agentops-agent-instruction/2")
+    assert settings.prompt_uri == "prompts:/agentops-agent-instruction/2"
 
 
 def test_component_env_example_documents_every_active_settings_variable() -> None:

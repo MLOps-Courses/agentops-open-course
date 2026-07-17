@@ -1,4 +1,4 @@
-# Recording and alerting rules for the Ops Copilot platform. Every expression
+# Recording and alerting rules for the AgentOps Agent platform. Every expression
 # uses metrics this stack verifiably exports (validated against the pinned
 # collector image):
 # - span_metrics connector: agentops_calls_total, agentops_duration_seconds_*
@@ -47,7 +47,7 @@ groups:
 
       # p95 across all agent spans (dashboard panel expression). The
       # spanmetrics histogram tops out at 30s, so quantiles saturate there.
-      # 15s suits local qwen3:4b on a modest machine; tune it to your
+      # 15s suits local qwen3:4b-instruct on a modest machine; tune it to your
       # hardware rather than deleting the alert.
       - alert: AgentTurnLatencyP95High
         expr: |-

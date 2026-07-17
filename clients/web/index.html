@@ -1,12 +1,12 @@
 <!DOCTYPE html>
-<!-- Ops Copilot web client — a single-file A2A (JSON-RPC over HTTP) browser client.
+<!-- AgentOps Agent web client — a single-file A2A (JSON-RPC over HTTP) browser client.
      Teaching material first: every protocol shape is spelled out in the comments below.
      No build step, no framework, no external requests (works offline). MIT licensed. -->
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Ops Copilot — A2A web client</title>
+  <title>AgentOps Agent — A2A web client</title>
   <style>
     :root { color-scheme: light dark; }
     body { font: 15px/1.5 system-ui, sans-serif; max-width: 52rem; margin: 0 auto; padding: 1rem; }
@@ -37,7 +37,7 @@
 </head>
 <body>
   <header>
-    <h1>Ops Copilot — A2A web client</h1>
+    <h1>AgentOps Agent — A2A web client</h1>
     <!-- Point at agentgateway :3001 (the governed data plane), never the raw agent :8080. -->
     <form id="connect-form">
       <input id="base-url" type="url" value="http://localhost:3001" aria-label="A2A base URL" required>
@@ -245,7 +245,7 @@
     //   data: { "id": "<call-id>", "name": "adk_request_confirmation",
     //           "args": { "originalFunctionCall": {...}, "toolConfirmation": { "hint": "...", "confirmed": false } } }
     // The human answers by sending a FunctionResponse DataPart on the SAME
-    // task. The Ops Copilot refuses approvals without a rationale — that is
+    // task. The AgentOps Agent refuses approvals without a rationale — that is
     // the audit contract, so the form requires one.
     function renderConfirmation(call, taskId) {
       const original = call.args.originalFunctionCall || {};

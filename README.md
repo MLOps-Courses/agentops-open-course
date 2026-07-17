@@ -8,8 +8,8 @@ Learn the complete lifecycle of a production-shaped AI agent, from a first local
 
 ## What makes this course practical?
 
-- **One completed reference:** every chapter inspects and runs the same Ops Copilot, then the capstone guides you through replacing its fictional domain with your own platform.
-- **OSS-first and account-free:** run the Apache-2.0 open-weight [Qwen3](https://huggingface.co/Qwen/Qwen3-4B) model through Ollama with no account, no mandatory SaaS, and no usage fee.
+- **One completed reference:** every chapter inspects and runs the same AgentOps Agent, then the capstone guides you through replacing its fictional domain with your own platform.
+- **OSS-first and account-free:** run the Apache-2.0 open-weight [Qwen3](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507) model through Ollama with no account, no mandatory SaaS, and no usage fee.
 - **Real operational boundaries:** tools, Agent Skills, MCP, A2A, human approval, PII redaction, append-only audit records, and persistent sessions are implemented in the reference agent.
 - **One data plane:** agentgateway routes and governs MCP, A2A, and OpenAI-compatible model traffic.
 - **One local-to-cloud contract:** the same container and Kubernetes base run on k3d and on a small GKE lab; only overlays and model identity change.
@@ -20,12 +20,12 @@ The required host and local Kubernetes path uses open-source software and open-w
 
 ## What will you learn from?
 
-The completed **Ops Copilot** reference investigates incidents in a fictional service. It reads a committed SQLite seed, service logs, Markdown runbooks, and least-privilege Agent Skills. Read actions can run directly; state-changing mock actions require approval and append an application-level, append-only audit record. Runtime state is copied into `.state/`, so exercises never mutate the course dataset.
+The completed **AgentOps Agent** reference investigates incidents in a fictional service. It reads a committed SQLite seed, service logs, Markdown runbooks, and least-privilege Agent Skills. Read actions can run directly; state-changing mock actions require approval and append an application-level, append-only audit record. Runtime state is copied into `.state/`, so exercises never mutate the course dataset.
 
 ```mermaid
 flowchart LR
     User[Engineer or A2A client] -->|A2A :3001| Gateway[agentgateway]
-    Agent[Ops Copilot<br/>Google ADK] -->|OpenAI-compatible :4000| Gateway
+    Agent[AgentOps Agent<br/>Google ADK] -->|OpenAI-compatible :4000| Gateway
     Agent -->|MCP :3000| Gateway
     Gateway -->|MCP| MCP[Ops MCP server :8000]
     Gateway -->|local profile| Ollama[Ollama + Qwen3]
@@ -61,7 +61,7 @@ Required test coverage of 95% reached
 For the first interactive run, install Ollama and pull Qwen3:
 
 ```bash
-ollama pull qwen3:4b
+ollama pull qwen3:4b-instruct
 mise run doctor:model
 ```
 
@@ -91,7 +91,7 @@ mise run mcp:http
 # Terminal 2
 cd agents/python
 AGENT_MODEL_PROVIDER=openai-compatible \
-AGENT_MODEL=qwen3:4b \
+AGENT_MODEL=qwen3:4b-instruct \
 AGENT_MCP_URL=http://127.0.0.1:3000/mcp \
 OPENAI_BASE_URL=http://127.0.0.1:4000/v1 \
 OPENAI_API_KEY=local-ollama \
@@ -116,7 +116,7 @@ curl -fsS http://127.0.0.1:3001/.well-known/agent-card.json | jq .name
 Expected output:
 
 ```text
-"Ops Copilot"
+"AgentOps Agent"
 ```
 
 The MCP and A2A processes remain in the foreground so logs are visible; stop them with `Ctrl-C`. Stop the wrapper with `Ctrl-C` in foreground mode or the explicit stop task in detached mode; wrapper cleanup also removes its relay.
@@ -162,7 +162,7 @@ The GKE path is an optional lab, not a production reference architecture. Its si
 ```text
 agents/python/  Reference ADK agent, tests, evaluations, and A2A server
 agents/data/    Immutable SQLite, runbook, skill, and log seed data
-clients/web/    Minimal offline A2A web client for the Ops Copilot
+clients/web/    Minimal offline A2A web client for the AgentOps Agent
 load/           k6 load tests and latency budgets for the platform
 docs/           FAQ-based course content built with Zensical
 infra/          agentgateway, kagent, k3d/GKE, MLflow, and OTel resources

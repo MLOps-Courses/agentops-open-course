@@ -1,4 +1,4 @@
-"""Guarded mock actions — the Ops Copilot's write side (Chapter 4.5).
+"""Guarded mock actions — the AgentOps Agent's write side (Chapter 4.5).
 
 These tools change state (a service's status, an incident's resolution) and append to the
 audit log. They are **guarded**: wrapped in a ``FunctionTool(require_confirmation=True)`` so
@@ -23,7 +23,7 @@ from .models import MAX_AUDIT_RATIONALE_LENGTH, normalize_incident_id, normalize
 from .pii import redact_persisted_text
 
 # Who the audit log records as the actor for agent-initiated actions.
-_ACTOR = "ops-copilot"
+_ACTOR = "agentops-agent"
 
 
 @dataclass(frozen=True, slots=True)

@@ -30,6 +30,6 @@ def test_instruction_loads_a_pinned_registry_version(monkeypatch) -> None:
     fake_genai = SimpleNamespace(load_prompt=fake_load_prompt)
     monkeypatch.setitem(sys.modules, "mlflow", SimpleNamespace(genai=fake_genai))
     monkeypatch.setitem(sys.modules, "mlflow.genai", fake_genai)
-    monkeypatch.setattr(agent_module.settings, "prompt_uri", "prompts:/ops-copilot-instruction/2")
+    monkeypatch.setattr(agent_module.settings, "prompt_uri", "prompts:/agentops-agent-instruction/2")
     assert agent_module._instruction() == "registry instruction v2"  # noqa: SLF001
-    assert loaded == ["prompts:/ops-copilot-instruction/2"]
+    assert loaded == ["prompts:/agentops-agent-instruction/2"]

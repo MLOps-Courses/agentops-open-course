@@ -89,11 +89,11 @@ description = "Run deterministic offline adversarial checks (not live model red-
 run = "uv run pytest --no-cov tests/test_security.py"
 
 [tasks.mcp]
-description = "Run the Ops Copilot MCP server over stdio (Ch. 3.3)"
+description = "Run the AgentOps Agent MCP server over stdio (Ch. 3.3)"
 run = "uv run python -m agent.mcp_server"
 
 [tasks."mcp:http"]
-description = "Run the Ops Copilot MCP server over streamable HTTP on :8000"
+description = "Run the AgentOps Agent MCP server over streamable HTTP on :8000"
 env = { MCP_HOST = "127.0.0.1", MCP_PORT = "8000", MCP_TRANSPORT = "streamable-http" }
 run = "uv run python -m agent.mcp_server"
 

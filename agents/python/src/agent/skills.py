@@ -1,4 +1,4 @@
-"""Agent Skills — progressive-disclosure instructions for the Ops Copilot (Chapter 3.2).
+"""Agent Skills — progressive-disclosure instructions for the AgentOps Agent (Chapter 3.2).
 
 A *skill* is a folder with a ``SKILL.md`` (name + description front-matter, then instructions,
 plus optional ``assets``/``references``). The model first sees only each skill's name and
@@ -18,7 +18,7 @@ from .config import settings
 
 
 def skills_dir() -> Path:
-    """Return the directory holding the Ops Copilot skills."""
+    """Return the directory holding the AgentOps Agent skills."""
     return settings.data_dir / "skills"
 
 

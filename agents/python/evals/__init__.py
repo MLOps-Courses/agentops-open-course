@@ -1,1 +1,1 @@
-"""Evaluation helpers for the Ops Copilot."""
+"""Evaluation helpers for the AgentOps Agent."""

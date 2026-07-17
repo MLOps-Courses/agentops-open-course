@@ -1,4 +1,4 @@
-"""OpenTelemetry setup for the Ops Copilot (Chapter 7.1).
+"""OpenTelemetry setup for the AgentOps Agent (Chapter 7.1).
 
 ADK emits spans and configures OTLP providers; Python logging still needs an
 explicit ``LoggingHandler`` bridge. This module installs one deduplicated bridge

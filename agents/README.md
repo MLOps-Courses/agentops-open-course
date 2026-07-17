@@ -1,4 +1,4 @@
-# Ops Copilot
+# AgentOps Agent
 
 The course reference system combines a self-contained Google ADK application with an immutable local dataset:
 
@@ -59,7 +59,7 @@ Tests enforce at least 95% branch coverage and do not call a model or cloud serv
 Install Ollama, pull the model, and validate the staged prerequisite:
 
 ```bash
-ollama pull qwen3:4b
+ollama pull qwen3:4b-instruct
 mise run doctor:model
 ```
 
@@ -70,7 +70,7 @@ cd agents/python
 mise run run
 ```
 
-The typed defaults are `AGENT_MODEL_PROVIDER=openai-compatible`, `AGENT_MODEL=qwen3:4b`, `OPENAI_BASE_URL=http://127.0.0.1:11434/v1`, and the non-secret `local-ollama` client marker. No provider account or `.env` file is required. [Chapter 5](../docs/5.%20Gateway/) changes the base URL to agentgateway so model policy and telemetry move outside the application.
+The typed defaults are `AGENT_MODEL_PROVIDER=openai-compatible`, `AGENT_MODEL=qwen3:4b-instruct`, `OPENAI_BASE_URL=http://127.0.0.1:11434/v1`, and the non-secret `local-ollama` client marker. No provider account or `.env` file is required. [Chapter 5](../docs/5.%20Gateway/) changes the base URL to agentgateway so model policy and telemetry move outside the application.
 
 For the optional native Gemini branch, set `AGENT_MODEL_PROVIDER=gemini`, an explicit Gemini model, and either a Gemini API key or Application Default Credentials in the repository-root `.env`.
 

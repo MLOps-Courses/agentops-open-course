@@ -8,7 +8,7 @@ services:
       MLFLOW_ALLOWED_HOSTS: mlflow:*,localhost:*,127.0.0.1:*
       MLFLOW_ARTIFACTS_DESTINATION: /var/lib/mlflow/artifacts
       MLFLOW_DEFAULT_ARTIFACT_ROOT: mlflow-artifacts:/
-      MLFLOW_EXPERIMENT_NAME: ops-copilot
+      MLFLOW_EXPERIMENT_NAME: agentops-agent
     volumes:
       - mlflow-data:/var/lib/mlflow
     ports:

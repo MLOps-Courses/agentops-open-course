@@ -51,7 +51,7 @@ def test_optional_gemini_enterprise_model_passes_explicit_adc_scope(monkeypatch)
 
 def test_openai_compatible_model_uses_validated_endpoint(monkeypatch) -> None:
     monkeypatch.setattr(model.settings, "model_provider", ModelProvider.OPENAI_COMPATIBLE)
-    monkeypatch.setattr(model.settings, "model", "qwen3:4b")
+    monkeypatch.setattr(model.settings, "model", "qwen3:4b-instruct")
     monkeypatch.setattr(model.settings, "openai_base_url", "http://localhost:4000/v1")
     monkeypatch.setattr(model.settings, "openai_api_key", SecretStr("local-not-a-secret"))
     configured = model.build_model()

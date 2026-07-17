@@ -11,7 +11,10 @@ authors:
     email: agentops-open-course@fmind.dev
 repository-code: https://github.com/MLOps-Courses/agentops-open-course
 url: https://agentops-open-course.fmind.dev/
-license: MIT
+# Dual licensed: MIT for the reference software, CC-BY-4.0 for the course prose.
+license:
+  - MIT
+  - CC-BY-4.0
 keywords:
   - AgentOps
   - AI agents

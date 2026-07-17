@@ -40,7 +40,7 @@ providers:
   default: openAI
   openAI:
     provider: OpenAI
-    model: qwen3:4b
+    model: qwen3:4b-instruct
     apiKeySecretRef: agentgateway-client
     apiKeySecretKey: OPENAI_API_KEY
     apiKey: agentgateway

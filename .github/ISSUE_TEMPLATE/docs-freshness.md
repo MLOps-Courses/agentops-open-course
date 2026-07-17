@@ -10,7 +10,7 @@ Time-sensitive claims rot silently. Walk this checklist before each release: ope
 ## Model & provider names
 
 - [ ] `gemini-3.5-flash` is still the correct optional Gemini/Vertex model id — `docs/0. Overview/0.4. Providers.md`, `docs/2. Agents/2.2. Models.md`, `docs/6. Platform/6.3. Platform Agents.md`, and the GKE gateway/agent manifests.
-- [ ] `qwen3:4b` is still the default local Ollama model and its weights remain Apache-2.0 licensed — `agents/python/src/agent/config.py`, `docs/0. Overview/0.4. Providers.md`, `docs/6. Platform/6.6. Platform Delivery.md`, and the local manifests.
+- [ ] `qwen3:4b-instruct` is still the default local Ollama model and its weights remain Apache-2.0 licensed — `agents/python/src/agent/config.py`, `docs/0. Overview/0.4. Providers.md`, `docs/6. Platform/6.6. Platform Delivery.md`, and the local manifests.
 - [ ] `nomic-embed-text` still the embedding model — `agents/python/src/agent/config.py`, `docs/3. Capabilities/3.4. Memory.md`.
 
 ## Prices & cost targets
@@ -33,7 +33,7 @@ Time-sensitive claims rot silently. Walk this checklist before each release: ope
 ## Benchmarks & measured checkpoints
 
 - [ ] Retrieval benchmark checkpoint still reproduces (dataset commit, Ollama version, embed blob) — `docs/3. Capabilities/3.4. Memory.md` ("Measured checkpoint").
-- [ ] `qwen3:4b` serving-window / context-length note still matches `ollama show` output — `docs/3. Capabilities/3.4. Memory.md`.
+- [ ] `qwen3:4b-instruct` serving-window / context-length note still matches `ollama show` output — `docs/3. Capabilities/3.4. Memory.md`.
 
 ## Wrap-up
 

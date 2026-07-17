@@ -1,6 +1,6 @@
 # AgentOps Reference Agent (Python)
 
-The **Ops Copilot** is the executable reference for the [AgentOps Open Course](../../docs/index.md). It uses Google ADK for the agent runtime, Pydantic for trusted boundaries, MCP and A2A for interoperability, SQLite for deterministic local state, and OpenTelemetry for runtime signals.
+The **AgentOps Agent** is the executable reference for the [AgentOps Open Course](../../docs/index.md). It uses Google ADK for the agent runtime, Pydantic for trusted boundaries, MCP and A2A for interoperability, SQLite for deterministic local state, and OpenTelemetry for runtime signals.
 
 ## Quickstart
 
@@ -17,7 +17,7 @@ The test suite is deterministic, network-independent after installation, and enf
 The defaults are enough for the account-free Qwen3 path. With Ollama running:
 
 ```bash
-ollama pull qwen3:4b
+ollama pull qwen3:4b-instruct
 mise run run
 ```
 
@@ -25,7 +25,7 @@ When Chapter 5 introduces agentgateway, change only the endpoint:
 
 ```bash
 AGENT_MODEL_PROVIDER=openai-compatible
-AGENT_MODEL=qwen3:4b
+AGENT_MODEL=qwen3:4b-instruct
 OPENAI_BASE_URL=http://127.0.0.1:4000/v1
 OPENAI_API_KEY=local-ollama
 AGENT_MCP_URL=http://127.0.0.1:3000/mcp

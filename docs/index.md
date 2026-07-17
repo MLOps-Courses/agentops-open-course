@@ -4,7 +4,7 @@ description: Build, evaluate, secure, deploy, and operate one production-shaped 
 
 # AgentOps Open Course
 
-Learn from one completed **Ops Copilot**, from its first local model call to an observable Kubernetes workload. Every chapter inspects and runs the same reference, so concepts stay connected to code, tests, policy, and operations. The capstone then guides you through replacing the fictional incident domain with your own agent platform.
+Learn from one completed **AgentOps Agent**, from its first local model call to an observable Kubernetes workload. Every chapter inspects and runs the same reference, so concepts stay connected to code, tests, policy, and operations. The capstone then guides you through replacing the fictional incident domain with your own agent platform.
 
 !!! tip "Start without an account"
 
@@ -24,7 +24,7 @@ Learn from one completed **Ops Copilot**, from its first local model call to an 
 ```mermaid
 flowchart TD
     User[Engineer] --> Gateway[agentgateway]
-    Agent[Ops Copilot] --> Gateway
+    Agent[AgentOps Agent] --> Gateway
     Gateway --> MCP[MCP tools]
     Gateway --> Model[Qwen3 locally<br/>Gemini optionally]
     Gateway --> Agent

@@ -1,5 +1,5 @@
 # https://mise.jdx.dev
-# AgentOps Ops Copilot dataset — the single source of truth for the reference agent.
+# AgentOps Agent dataset — the single source of truth for the reference agent.
 # `incidents.db` is generated from sql/schema.sql + sql/seed.sql and committed so the
 # agent runs offline out of the box; regenerate it whenever the SQL changes.
 

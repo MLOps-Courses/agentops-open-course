@@ -4,12 +4,12 @@ Guidance for coding agents working in the AgentOps Open Course. Humans should st
 
 ## Repository purpose
 
-The course teaches the complete lifecycle of one **Ops Copilot** with Google ADK, agentgateway, kagent, MLflow, and OpenTelemetry. `main` is a completed, executable reference that learners inspect and extend; it must not drift into a collection of illustrative snippets. Chapter 8.7 turns that reference into a capstone contract for a learner-owned domain.
+The course teaches the complete lifecycle of one **AgentOps Agent** with Google ADK, agentgateway, kagent, MLflow, and OpenTelemetry. `main` is a completed, executable reference that learners inspect and extend; it must not drift into a collection of illustrative snippets. Chapter 8.7 turns that reference into a capstone contract for a learner-owned domain.
 
 - `docs/` contains FAQ-based course pages published by Zensical.
 - `agents/python/` is the locked Python reference agent, offline tests, and model-backed evaluations.
 - `agents/data/` is immutable seed input: SQLite, logs, runbooks, and Agent Skills.
-- `clients/web/` is a minimal, offline, dependency-free A2A web client for the Ops Copilot.
+- `clients/web/` is a minimal, offline, dependency-free A2A web client for the AgentOps Agent.
 - `load/` holds k6 load tests and the documented latency budgets for the platform.
 - `infra/agentgateway/{host,k3d,gke}/` contains the three data-plane profiles.
 - `infra/k8s/base` plus `infra/k8s/overlays/{local,gke}` contains the shared Kubernetes deployment.
@@ -33,7 +33,7 @@ The course teaches the complete lifecycle of one **Ops Copilot** with Google ADK
 
 The required software path is OSS: ADK, agentgateway, kagent, MLflow, OpenTelemetry, Prometheus, Grafana, Ollama, the Apache-2.0 open-weight Qwen3 model, and repository code. It requires no account, no mandatory SaaS, and no usage fee. Gemini, Vertex AI, GKE, GCS, Artifact Registry, and GitHub hosting are optional proprietary services. Never blur that distinction or call an optional cloud environment fully OSS.
 
-Local Qwen3/Ollama is the default model path from the first Chapter 2 interaction. `AGENT_MODEL_PROVIDER=openai-compatible`, `AGENT_MODEL=qwen3:4b`, `OPENAI_BASE_URL=http://127.0.0.1:11434/v1`, and the non-secret `local-ollama` marker are the stable defaults. Chapter 5 changes only `OPENAI_BASE_URL` to the agentgateway listener. Native Gemini and the GKE/Vertex path are optional comparisons; the GKE overlay uses Workload Identity Federation and mounts no cloud key.
+Local Qwen3/Ollama is the default model path from the first Chapter 2 interaction. `AGENT_MODEL_PROVIDER=openai-compatible`, `AGENT_MODEL=qwen3:4b-instruct`, `OPENAI_BASE_URL=http://127.0.0.1:11434/v1`, and the non-secret `local-ollama` marker are the stable defaults. Chapter 5 changes only `OPENAI_BASE_URL` to the agentgateway listener. Native Gemini and the GKE/Vertex path are optional comparisons; the GKE overlay uses Workload Identity Federation and mounts no cloud key.
 
 ## Pinned contracts
 

@@ -29,7 +29,7 @@ binds:
               - mcp:
                   failureMode: failClosed
                   targets:
-                    - name: ops-copilot
+                    - name: agentops-agent
                       mcp:
                         host: http://agentops-mcp.agentops.svc.cluster.local:8000/mcp
 
@@ -101,4 +101,4 @@ binds:
                   pathOverride: /v1/chat/completions
                   provider:
                     openAI:
-                      model: qwen3:4b
+                      model: qwen3:4b-instruct

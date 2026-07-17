@@ -1,4 +1,4 @@
--- AgentOps Open Course — deterministic seed data for the Ops Copilot dataset.
+-- AgentOps Open Course — deterministic seed data for the AgentOps Agent dataset.
 -- Fixed rows so tools, RAG, and evals are reproducible offline. Times are ISO-8601 UTC.
 
 INSERT INTO services (name, description, status, owner) VALUES

@@ -1,6 +1,6 @@
-# Ops Copilot Dataset
+# AgentOps Agent Dataset
 
-The **immutable seed** for the AgentOps Open Course reference agent (the "Ops Copilot"). Data access and deterministic tests run offline after installation; an interactive agent still needs local Ollama or a configured model provider. Every action is mock and local: nothing here touches real infrastructure.
+The **immutable seed** for the AgentOps Open Course reference agent (the "AgentOps Agent"). Data access and deterministic tests run offline after installation; an interactive agent still needs local Ollama or a configured model provider. Every action is mock and local: nothing here touches real infrastructure.
 
 ## Contents
 

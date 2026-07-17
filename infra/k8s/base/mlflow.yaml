@@ -52,7 +52,7 @@ spec:
             - name: MLFLOW_DEFAULT_ARTIFACT_ROOT
               value: mlflow-artifacts:/
             - name: MLFLOW_EXPERIMENT_NAME
-              value: ops-copilot
+              value: agentops-agent
           ports:
             - name: http
               containerPort: 5000

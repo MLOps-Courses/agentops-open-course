@@ -41,7 +41,7 @@ class Settings(BaseSettings):
 
     # --8<-- [start:settings-provider-fields]
     model_provider: ModelProvider = ModelProvider.OPENAI_COMPATIBLE
-    model: str = Field(default="qwen3:4b", min_length=1)
+    model: str = Field(default="qwen3:4b-instruct", min_length=1)
 
     # ``openai-compatible`` describes the ADK client contract, not the
     # deployment topology. Point this URL directly at Ollama for the account-free
@@ -87,7 +87,7 @@ class Settings(BaseSettings):
     mcp_token: SecretStr | None = None
 
     # Optional host dev/eval prompt-registry pin (Ch. 7.0), e.g.
-    # prompts:/ops-copilot-instruction/2. The minimal production image omits
+    # prompts:/agentops-agent-instruction/2. The minimal production image omits
     # MLflow and uses the committed instruction; unset needs no MLflow server.
     prompt_uri: str | None = None
 
@@ -197,7 +197,7 @@ class Settings(BaseSettings):
         problems: list[str] = []
         if self.prompt_uri and not self.prompt_uri.startswith("prompts:/"):
             problems.append(
-                f"AGENT_PROMPT_URI must look like prompts:/ops-copilot-instruction/2, got {self.prompt_uri!r}. "
+                f"AGENT_PROMPT_URI must look like prompts:/agentops-agent-instruction/2, got {self.prompt_uri!r}. "
                 "Unset it to use the committed instruction."
             )
         if self.mcp_url and not self.mcp_url.startswith(("http://", "https://")):

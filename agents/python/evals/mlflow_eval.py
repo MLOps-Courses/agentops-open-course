@@ -1,4 +1,4 @@
-"""Self-hosted MLflow evaluation for the Ops Copilot.
+"""Self-hosted MLflow evaluation for the AgentOps Agent.
 
 The deterministic scorers run for every conversation turn. An optional LLM judge
 uses the OSS OpenAI SDK against agentgateway; no LiteLLM or direct-provider judge
@@ -32,7 +32,7 @@ from agent.config import settings
 
 _EVALSET = Path(__file__).parent / "ops.evalset.json"
 _TRACKING_URI = os.environ.get("MLFLOW_TRACKING_URI", f"sqlite:///{Path(__file__).parent / 'mlflow.db'}")
-_EXPERIMENT = os.environ.get("MLFLOW_EXPERIMENT_NAME", "ops-copilot")
+_EXPERIMENT = os.environ.get("MLFLOW_EXPERIMENT_NAME", "agentops-agent")
 _WRITE_TOOLS = frozenset({"restart_service", "resolve_incident", "save_incident_note"})
 _CONFIRMATION_TARGETS = {
     "restart_service": ("service", "name"),
@@ -506,12 +506,12 @@ def main() -> None:
     mlflow.set_tracking_uri(_TRACKING_URI)
     experiment = mlflow.set_experiment(_EXPERIMENT)
     prompt = mlflow.genai.register_prompt(
-        name="ops-copilot-instruction",
+        name="agentops-agent-instruction",
         template=INSTRUCTION,
-        commit_message="Ops Copilot system instruction",
+        commit_message="AgentOps Agent system instruction",
     )
     logged_model = mlflow.initialize_logged_model(
-        name="ops-copilot",
+        name="agentops-agent",
         experiment_id=experiment.experiment_id,
         model_type="agent",
         params={

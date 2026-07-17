@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.11@sha256:10c699f1b6c8bdc8f6b4ce8974855dd8542f1768c26eb240237b8f1c9c6c9976
-# Ops Copilot — Python track container image (Chapter 6.1).
+# AgentOps Agent — Python track container image (Chapter 6.1).
 #
 # A minimal, non-root, multi-stage build: uv resolves the locked dependencies
 # into a self-contained virtualenv, and a minimal Wolfi runtime carries
@@ -68,7 +68,7 @@ ENV PATH=/app/.venv/bin:$PATH \
 
 WORKDIR /app
 
-# The resolved venv (including the agent package) and bundled Ops Copilot data.
+# The resolved venv (including the agent package) and bundled AgentOps Agent data.
 COPY --from=build /app/.venv /app/.venv
 COPY --chown=10001:10001 data /app/data
 COPY --from=build --chown=10001:10001 /app/state /app/state

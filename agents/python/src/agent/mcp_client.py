@@ -1,4 +1,4 @@
-"""Consume the Ops Copilot MCP server as a client toolset (Chapter 3.3).
+"""Consume the AgentOps Agent MCP server as a client toolset (Chapter 3.3).
 
 ``McpToolset`` launches the MCP server (here over stdio) and adapts its tools into ADK tools an
 agent can call — no code change to the agent beyond adding the toolset. This is the seam the

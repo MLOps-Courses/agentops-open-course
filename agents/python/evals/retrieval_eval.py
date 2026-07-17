@@ -19,7 +19,7 @@ from agent.memory import search_runbooks
 from agent.retrieval import semantic_search
 
 _TRACKING_URI = os.environ.get("MLFLOW_TRACKING_URI", f"sqlite:///{Path(__file__).parent / 'mlflow.db'}")
-_EXPERIMENT = os.environ.get("MLFLOW_EXPERIMENT_NAME", "ops-copilot")
+_EXPERIMENT = os.environ.get("MLFLOW_EXPERIMENT_NAME", "agentops-agent")
 _K_VALUES = (1, 3)
 
 

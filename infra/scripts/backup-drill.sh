@@ -44,7 +44,7 @@ INSERT INTO audit_log
     (ts, actor, approved_by, rationale, context_summary,
      session_id, invocation_id, action, target, detail)
 VALUES
-    ('2026-01-01T00:00:00Z', 'ops-copilot', 'drill-operator', 'restore drill',
+    ('2026-01-01T00:00:00Z', 'agentops-agent', 'drill-operator', 'restore drill',
      'backup-drill.sh', 'drill-session-1', 'drill-invocation-1',
      'restart_service', 'checkout',
      'service restarted and marked operational (mock)');

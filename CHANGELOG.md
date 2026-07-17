@@ -4,6 +4,15 @@ All notable changes to the AgentOps Open Course are documented here. The format 
 
 ## [Unreleased]
 
+### Changed
+
+- Renamed the reference agent from "Ops Copilot" to "AgentOps Agent", aligning the application identity (`OTEL_SERVICE_NAME`, MLflow experiment and prompt registry, ADK `app_name`, MCP server, audit actor, gateway backend) with the `agentops-agent` name the container image, Kubernetes workload, and Python distribution already used.
+- Promoted the default local model to `qwen3:4b-instruct` (Qwen3 4B Instruct 2507) for stronger tool calling at the same 2.5 GB footprint, and documented `gemma4:e4b` as an optional, heavier Apache-2.0 alternative.
+
+### Fixed
+
+- Corrected the front matter on the Overview, Quality, and Observability chapter indexes, where an unquoted colon made the YAML invalid and published the page description as a heading. `scripts/check-docs.sh` now parses front matter instead of pattern-matching it.
+
 ## [0.1.0] - 2026-07-16
 
 ### Added

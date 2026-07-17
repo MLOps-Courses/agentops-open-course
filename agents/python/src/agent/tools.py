@@ -1,4 +1,4 @@
-"""Function tools for the Ops Copilot (Chapter 3.1).
+"""Function tools for the AgentOps Agent (Chapter 3.1).
 
 Each tool is a plain, typed function with a Google-style docstring — ADK reads the
 signature and docstring to build the schema the model sees, then auto-wraps it as a
@@ -123,7 +123,7 @@ def search_service_logs(service: str, query: str = "", limit: int = 20) -> dict[
     return {"service": normalized, "count": len(matches), "lines": matches}
 
 
-# The tools registered on the Ops Copilot, each wrapped with a deadline and bounded
+# The tools registered on the AgentOps Agent, each wrapped with a deadline and bounded
 # retries because reads are idempotent (Ch. 4.5). Guarded actions (restart/resolve)
 # join in Ch. 4.5 and stay unwrapped: retrying a write could apply it twice.
 ALL_TOOLS: list[ToolUnion] = [

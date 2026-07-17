@@ -1,6 +1,6 @@
 {
-  "eval_set_id": "ops_copilot_structured_report",
-  "name": "Ops Copilot structured triage report",
+  "eval_set_id": "agentops_agent_structured_report",
+  "name": "AgentOps Agent structured triage report",
   "description": "Model-backed validation of the typed TriageReport entry point (Ch. 4.0).",
   "eval_cases": [
     {

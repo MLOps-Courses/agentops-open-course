@@ -94,11 +94,11 @@ fi
 
 if [[ ${profile} == model ]]; then
 	if ! curl --fail --silent --show-error http://127.0.0.1:11434/api/tags |
-		jq -e '.models[]?.name | startswith("qwen3:4b")' >/dev/null; then
-		printf 'ollama     start Ollama and run: ollama pull qwen3:4b\n' >&2
+		jq -e '.models[]?.name | startswith("qwen3:4b-instruct")' >/dev/null; then
+		printf 'ollama     start Ollama and run: ollama pull qwen3:4b-instruct\n' >&2
 		exit 1
 	fi
-	printf 'ollama     qwen3:4b ready on 127.0.0.1:11434\n'
+	printf 'ollama     qwen3:4b-instruct ready on 127.0.0.1:11434\n'
 fi
 
 case "${profile}" in

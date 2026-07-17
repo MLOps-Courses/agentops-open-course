@@ -1,6 +1,6 @@
-# Ops Copilot web client
+# AgentOps Agent web client
 
-A single-file A2A browser client for the course's Ops Copilot: one `index.html` with vanilla JavaScript, no build step, no framework, and no external requests (it works offline). It is teaching material for the _client_ side of the [A2A protocol](https://a2a-protocol.org/): agent-card discovery, `message/stream` (SSE) with a `message/send` fallback, task-state rendering, and the human-approval round-trip for guarded actions. MIT licensed (see [`../LICENSE`](../LICENSE)).
+A single-file A2A browser client for the course's AgentOps Agent: one `index.html` with vanilla JavaScript, no build step, no framework, and no external requests (it works offline). It is teaching material for the _client_ side of the [A2A protocol](https://a2a-protocol.org/): agent-card discovery, `message/stream` (SSE) with a `message/send` fallback, task-state rendering, and the human-approval round-trip for guarded actions. MIT licensed (see [`../LICENSE`](../LICENSE)).
 
 ## What it does
 

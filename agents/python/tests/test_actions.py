@@ -328,7 +328,7 @@ def test_action_and_audit_roll_back_together() -> None:
     with pytest.raises(data.DataAccessError, match="SQLite operation failed"):
         data.restart_service_with_audit(
             "inventory",
-            actor="ops-copilot",
+            actor="agentops-agent",
             approved_by="engineer",
             rationale="inventory is hard down",
             session_id="session-7",

@@ -1,4 +1,4 @@
-"""Unit tests for the Ops Copilot function tools (Ch. 3.1), run against the bundled dataset."""
+"""Unit tests for the AgentOps Agent function tools (Ch. 3.1), run against the bundled dataset."""
 
 from typing import cast
 

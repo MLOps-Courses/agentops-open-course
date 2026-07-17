@@ -1,4 +1,4 @@
-# Ops Copilot Evaluations
+# AgentOps Agent Evaluations
 
 The evaluation layer separates deterministic engineering gates from model-backed behavioral evidence. It never weakens the offline unit tests to accommodate non-deterministic output.
 
@@ -18,7 +18,7 @@ The evaluation layer separates deterministic engineering gates from model-backed
 From `agents/python/`, the default configuration calls Qwen3 through local Ollama. Pull the model once, then run the evaluations:
 
 ```bash
-ollama pull qwen3:4b
+ollama pull qwen3:4b-instruct
 mise run eval
 mise run eval:report
 mise run eval:mlflow
@@ -26,14 +26,14 @@ mise run eval:mlflow
 
 To evaluate through agentgateway, change `OPENAI_BASE_URL` to `http://127.0.0.1:4000/v1`; the provider remains `openai-compatible`. Native Gemini is optional through `AGENT_MODEL_PROVIDER=gemini` with AI Studio credentials or Vertex ADC.
 
-The MLflow tracking URI defaults to local SQLite unless `MLFLOW_TRACKING_URI` is set; `MLFLOW_EXPERIMENT_NAME` defaults to `ops-copilot`. Chapter 7 starts the self-hosted server at `http://localhost:5000`. The command prints the authoritative destination and suggests a local `mlflow ui` command only for a `sqlite:` URI, never for an HTTP server.
+The MLflow tracking URI defaults to local SQLite unless `MLFLOW_TRACKING_URI` is set; `MLFLOW_EXPERIMENT_NAME` defaults to `agentops-agent`. Chapter 7 starts the self-hosted server at `http://localhost:5000`. The command prints the authoritative destination and suggests a local `mlflow ui` command only for a `sqlite:` URI, never for an HTTP server.
 
 ## Configure an optional MLflow judge
 
 The code-only scorers always run. An LLM judge is opt-in:
 
 ```bash
-MLFLOW_JUDGE_MODEL=qwen3:4b
+MLFLOW_JUDGE_MODEL=qwen3:4b-instruct
 MLFLOW_JUDGE_BASE_URL=http://localhost:4000/v1
 MLFLOW_JUDGE_API_KEY=agentgateway
 ```

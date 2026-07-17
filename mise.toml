@@ -90,7 +90,7 @@ description = "Build the static documentation site (Zensical → site/)"
 run = "uv run zensical build"
 
 [tasks."build:agent-image"]
-description = "Build the non-root Ops Copilot image"
+description = "Build the non-root AgentOps Agent image"
 run = "docker build --file agents/python/Dockerfile --tag agentops-agent:dev agents"
 
 [tasks."build:mlflow-image"]

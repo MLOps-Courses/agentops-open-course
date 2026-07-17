@@ -1,4 +1,4 @@
-"""The Ops Copilot tools, exposed as an MCP server (Chapter 3.3).
+"""The AgentOps Agent tools, exposed as an MCP server (Chapter 3.3).
 
 The Model Context Protocol (MCP) lets tools live in their own process and be consumed by *any*
 MCP client — so this one server backs the agent and, later, the gateway (Ch. 5.2).
@@ -54,7 +54,7 @@ def _allowed_hosts() -> list[str]:
 
 
 mcp = FastMCP(
-    "ops-copilot",
+    "agentops-agent",
     host=os.environ.get("MCP_HOST", "127.0.0.1"),
     port=int(os.environ.get("MCP_PORT", "8000")),
     stateless_http=True,

@@ -13,13 +13,17 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "pip-licenses" },
+    { name = "pyyaml" },
 ]
 
 [package.metadata]
 requires-dist = [{ name = "zensical", specifier = "==0.0.50" }]
 
 [package.metadata.requires-dev]
-dev = [{ name = "pip-licenses", specifier = "==5.5.5" }]
+dev = [
+    { name = "pip-licenses", specifier = "==5.5.5" },
+    { name = "pyyaml", specifier = "==6.0.3" },
+]
 
 [[package]]
 name = "click"

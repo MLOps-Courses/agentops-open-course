@@ -1,4 +1,4 @@
-# Model-backed evaluation of the Ops Copilot — scheduled evidence, never a PR gate.
+# Model-backed evaluation of the AgentOps Agent — scheduled evidence, never a PR gate.
 #
 # The merge gate (ci.yml) stays fast, deterministic, and secret-free: offline tests,
 # the red-team suite, and evalset validation. This workflow closes the loop the course
@@ -25,7 +25,7 @@ on:
       model:
         description: "Ollama model tag to evaluate (smaller runs faster on the 4-vCPU runner)"
         type: string
-        default: qwen3:4b
+        default: qwen3:4b-instruct
   schedule:
     - cron: "0 7 * * 1" # weekly, Monday 07:00 UTC, after Renovate (05:00) and Scan (06:00)
 
@@ -47,7 +47,7 @@ jobs:
       GITHUB_TOKEN: ${{ github.token }}
       # Route ADK's OSS OpenAI-compatible client directly at the local Ollama server.
       AGENT_MODEL_PROVIDER: openai-compatible
-      AGENT_MODEL: ${{ inputs.model || 'qwen3:4b' }}
+      AGENT_MODEL: ${{ inputs.model || 'qwen3:4b-instruct' }}
       OPENAI_BASE_URL: http://127.0.0.1:11434/v1
       OPENAI_API_KEY: local-ollama # non-secret marker; the local server has no auth
     steps:

@@ -1,4 +1,4 @@
-"""The Ops Copilot — the AgentOps Open Course reference agent.
+"""The AgentOps Agent — the AgentOps Open Course reference agent.
 
 An on-call assistant that helps engineers triage and resolve incidents for a fictional
 platform against a bundled offline dataset. Model requests use direct local Ollama by
@@ -27,7 +27,7 @@ from .tools import ALL_TOOLS
 
 # The persona and operating rules. Kept explicit so behavior is reproducible and evaluable.
 INSTRUCTION = """\
-You are the Ops Copilot, an on-call assistant for a fictional online platform.
+You are the AgentOps Agent, an on-call assistant for a fictional online platform.
 You help engineers triage and resolve incidents quickly and safely.
 
 Operating rules:
@@ -58,7 +58,7 @@ def _instruction() -> str:
     """Return the committed instruction, or a pinned prompt-registry version.
 
     In the host development/evaluation environment, ``AGENT_PROMPT_URI`` (e.g.
-    ``prompts:/ops-copilot-instruction/2``) can load a version from the
+    ``prompts:/agentops-agent-instruction/2``) can load a version from the
     self-hosted MLflow registry (Ch. 7.0). The minimal production image omits
     that dev dependency and uses the committed text; unset also needs no server.
     """
@@ -86,7 +86,7 @@ def _read_tools() -> list[ToolUnion]:
 root_agent = Agent(
     model=build_model(),
     name="agentops_agent",
-    description="An on-call Ops Copilot that triages and resolves incidents from a local dataset.",
+    description="An on-call AgentOps Agent that triages and resolves incidents from a local dataset.",
     instruction=_instruction(),
     tools=[*_read_tools(), *ACTION_TOOLS, *MEMORY_TOOLS, skill_toolset()],
     # Callback lists chain with first-non-None-wins: the budget check runs before
