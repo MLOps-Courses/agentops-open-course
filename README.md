@@ -87,8 +87,19 @@ cd agents/python
 mise run mcp:http
 ```
 
+Start the digest-pinned gateway wrapper from the repository root. It publishes every gateway listener on loopback. On native Linux it also owns a Docker-bridge-only relay to the loopback MCP, A2A, and Ollama upstreams, plus the loopback gateway-metrics listener consumed by Compose Prometheus. Raw services remain off the workstation's LAN interfaces:
+
 ```bash
 # Terminal 2
+mise run gateway:host
+```
+
+To keep the gateway detached, use `mise run gateway:host:start`, inspect it with `mise run gateway:host:status` and `mise run gateway:host:logs`, then stop it with `mise run gateway:host:stop`.
+
+The agent starts last and points only at the gateway's `:3000` and `:4000` listeners:
+
+```bash
+# Terminal 3
 cd agents/python
 AGENT_MODEL_PROVIDER=openai-compatible \
 AGENT_MODEL=qwen3:4b-instruct \
@@ -97,15 +108,6 @@ OPENAI_BASE_URL=http://127.0.0.1:4000/v1 \
 OPENAI_API_KEY=local-ollama \
 mise run a2a
 ```
-
-Start the digest-pinned gateway wrapper from the repository root. It publishes every gateway listener on loopback. On native Linux it also owns a Docker-bridge-only relay to the loopback MCP, A2A, and Ollama upstreams, plus the loopback gateway-metrics listener consumed by Compose Prometheus. Raw services remain off the workstation's LAN interfaces:
-
-```bash
-# Terminal 3
-mise run gateway:host
-```
-
-To keep the gateway detached, use `mise run gateway:host:start`, inspect it with `mise run gateway:host:status` and `mise run gateway:host:logs`, then stop it with `mise run gateway:host:stop`.
 
 Inspect the A2A contract through the governed listener, not the raw application port:
 

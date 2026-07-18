@@ -66,4 +66,4 @@ cd agents/python
 mise run test
 ```
 
-That is the umbrella gate (`uv run pytest` over the full suite). Each sub-page also has a scoped checkpoint you can run in isolation — for example `uv run pytest tests/test_tools.py` for [3.1](./3.1. Tools.md) or `uv run pytest tests/test_server.py tests/test_delegation.py` for [3.6](./3.6. A2A.md) — so you can verify one capability at a time as you build it. Model-backed behavior remains a separate evaluation gate (`mise run eval`), because a green offline suite proves the wiring, not the reasoning.
+That is the umbrella gate (`uv run pytest` over the full suite). Each sub-page also has a scoped checkpoint you can run in isolation — for example `uv run pytest tests/test_tools.py tests/test_data.py` for [3.1](./3.1. Tools.md) or `uv run pytest tests/test_server.py tests/test_delegation.py` for [3.6](./3.6. A2A.md) — so you can verify one capability at a time as you build it. Model-backed behavior remains a separate evaluation gate (`mise run eval`), because a green offline suite proves the wiring, not the reasoning.
