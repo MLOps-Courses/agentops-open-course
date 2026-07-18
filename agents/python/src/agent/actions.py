@@ -62,6 +62,9 @@ def _validated_approval(tool_context: ToolContext | None) -> _Approval | str:
     missing = [label for label, value in identities.items() if not isinstance(value, str) or not value.strip()]
     if missing:
         return f"the confirmed action is missing {', '.join(missing)}"
+    # The dict-based ``missing`` check already guarantees these are non-empty strings, but
+    # the type checker cannot see that through the aggregate. This guard narrows each name
+    # to ``str`` for the ``_Approval`` fields below (``assert`` is disallowed by lint S101).
     if not isinstance(user_id, str) or not isinstance(session_id, str) or not isinstance(invocation_id, str):
         return "the confirmed action has invalid identity metadata"
     payload = getattr(confirmation, "payload", None)

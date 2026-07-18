@@ -300,12 +300,20 @@ async def _run(turns: list[str], eval_id: str) -> dict[str, Any]:
         session = await runner.session_service.create_session(app_name=_EXPERIMENT, user_id=user_id)
         responses: list[str] = []
         trajectories: list[list[dict[str, Any]]] = []
+        # Accumulate token/model-call usage over the whole conversation so a cost
+        # regression (Chapter 4.4) can be judged per case, not just per turn.
+        input_tokens = output_tokens = model_calls = 0
         for turn in turns:
             message = types.Content(role="user", parts=[types.Part(text=turn)])
             answer_parts: list[str] = []
             tool_calls: list[dict[str, Any]] = []
             confirmation_pause: str | None = None
             async for event in runner.run_async(user_id=user_id, session_id=session.id, new_message=message):
+                usage = getattr(event, "usage_metadata", None)
+                if usage is not None:
+                    input_tokens += getattr(usage, "prompt_token_count", 0) or 0
+                    output_tokens += getattr(usage, "candidates_token_count", 0) or 0
+                    model_calls += 1
                 for call in event.get_function_calls():
                     if not call.name:
                         continue
@@ -317,7 +325,13 @@ async def _run(turns: list[str], eval_id: str) -> dict[str, Any]:
             response = "".join(answer_parts)
             responses.append(response if response.strip() else confirmation_pause or "")
             trajectories.append(tool_calls)
-        return {"responses": responses, "tools": trajectories}
+        usage_totals = {
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "total_tokens": input_tokens + output_tokens,
+            "model_calls": model_calls,
+        }
+        return {"responses": responses, "tools": trajectories, "usage": usage_totals}
     finally:
         await runner.close()
 

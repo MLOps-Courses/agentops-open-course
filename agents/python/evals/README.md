@@ -12,6 +12,7 @@ The evaluation layer separates deterministic engineering gates from model-backed
 | ADK trajectory         | `mise run eval`          | Yes             | Expected tools and arguments over the fixed seed.                                          |
 | Structured report      | `mise run eval:report`   | Yes             | `TriageReport` schema enforcement plus its required read-tool trajectory.                  |
 | MLflow evaluation      | `mise run eval:mlflow`   | Yes             | Isolated state, required code-scorer thresholds, prompt/model lineage, and optional judge. |
+| Cost regression        | `mise run eval:cost`     | Yes             | Per-case token/model-call usage stays within tolerance of `cost_baseline.json` (evidence). |
 
 ## Run the live evaluations
 
@@ -48,6 +49,7 @@ Treat judge output as evidence, not truth. Record the judge model and prompt, in
 - `triage-report.evalset.json` runs the dedicated structured-output entry point; ADK enforces `TriageReport` while the eval checks the evidence-gathering trajectory.
 - `test_config.json` defines ADK pass criteria; the tool-trajectory score with `IN_ORDER` matching is the behavioral gate.
 - `mlflow_eval.py` preserves every turn and part in isolated case state, registers the prompt, links prompt/model lineage to the run, applies four required deterministic scorers (`IN_ORDER` reads, exact write policy, response facts, and complete turns), fails below `1.0`, and adds an optional explicit-gateway judge. A terminal ADK confirmation request becomes a deterministic input-required response derived only from its guarded original call; the evaluator never approves it or mutates state.
+- `cost_eval.py` runs every case, records its token and model-call usage, and compares it to `cost_baseline.json` (regenerated from real measurements with `--update`, so no counts are committed until you measure them). It catches a correct-but-expensive regression — a prompt or model change that keeps the trajectory scorers green while quietly inflating tokens — that the `IN_ORDER` scorers ignore by design. Tune strictness with `AGENT_COST_TOLERANCE` (default 0.25).
 - `../tests/test_evalset.py` is the offline consistency check behind `mise run eval:validate`: every referenced incident/service/runbook must exist in the committed seed, and the deliberate negatives (`INC-999`, `warehouse`) must stay missing.
 
 ROUGE-style response overlap is intentionally not a hard gate because valid generative wording varies. Tool selection, arguments, policy decisions, and trusted data boundaries are stronger contracts.

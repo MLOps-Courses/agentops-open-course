@@ -80,6 +80,11 @@ description = "Compare keyword vs semantic runbook retrieval (needs local Ollama
 env = { _.file = { path = "../../.env", redact = true } }
 run = "uv run python evals/retrieval_eval.py"
 
+[tasks."eval:cost"]
+description = "Check per-case token/model-call usage against cost_baseline.json (--update to record)"
+env = { _.file = { path = "../../.env", redact = true } }
+run = "uv run python evals/cost_eval.py"
+
 [tasks."eval:validate"]
 description = "Validate the evalset structure and seed references offline (no model)"
 run = "uv run pytest --no-cov tests/test_evalset.py"

@@ -71,7 +71,9 @@ def search_runbooks(query: str, limit: int = 3) -> dict[str, Any]:
         limit: The maximum number of runbooks to return (most relevant first).
 
     Returns:
-        A dict with ``count`` and a ``runbooks`` list (slug + markdown content), best match first.
+        A dict with ``count``, a ``retrieval`` mode (``semantic`` or ``keyword``), and a
+        ``runbooks`` list (slug + markdown content), best match first. The mode makes a
+        semantic-to-keyword fallback visible in the result, not only in the log.
     """
     if limit <= 0:  # a non-positive limit falls back to the default
         limit = 3
@@ -111,7 +113,11 @@ def search_runbooks(query: str, limit: int = 3) -> dict[str, Any]:
     # for equal scores, which matters for reproducible evals.
     scored.sort(key=lambda row: (-row[0], row[1]))
     top = scored[:limit]
-    return {"count": len(top), "runbooks": [{"slug": slug, "content": content} for _, slug, content in top]}
+    return {
+        "count": len(top),
+        "retrieval": "keyword",
+        "runbooks": [{"slug": slug, "content": content} for _, slug, content in top],
+    }
 
 
 # The knowledge tools registered on the AgentOps Agent (Ch. 3.4), wrapped with the

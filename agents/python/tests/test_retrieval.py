@@ -94,7 +94,7 @@ def test_search_runbooks_falls_back_to_keywords_with_a_log(monkeypatch, caplog) 
     monkeypatch.setattr(retrieval, "embed_texts", unavailable)
     with caplog.at_level(logging.WARNING):
         result = memory.search_runbooks("database connection pool exhausted")
-    assert "retrieval" not in result  # the keyword result shape is unchanged
+    assert result["retrieval"] == "keyword"  # the fallback is visible in the result, not only the log
     assert result["count"] > 0
     assert any("falling back to keywords" in message for message in caplog.messages)
 

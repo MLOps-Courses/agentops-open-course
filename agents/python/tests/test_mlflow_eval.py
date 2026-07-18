@@ -168,7 +168,9 @@ def test_run_reuses_one_session_and_closes_runner(monkeypatch) -> None:
 
     monkeypatch.setattr(mlflow_eval, "InMemoryRunner", FakeRunner)
     result = asyncio.run(mlflow_eval._run(["one", "two"], "multi"))  # noqa: SLF001
-    assert result == {
+    # Events carry no usage_metadata here, so the usage totals stay at zero.
+    assert result["usage"] == {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0, "model_calls": 0}
+    assert {"responses": result["responses"], "tools": result["tools"]} == {
         "responses": ["answer-1-complete", "answer-2-complete"],
         "tools": [
             [
@@ -233,6 +235,32 @@ def test_run_converts_a_real_confirmation_pause_without_approving_or_mutating(mo
 def test_run_rejects_an_empty_conversation() -> None:
     with pytest.raises(ValueError, match="at least one turn"):
         asyncio.run(mlflow_eval._run([], "empty"))  # noqa: SLF001
+
+
+def test_run_accumulates_token_and_call_usage(monkeypatch) -> None:
+    class FakeRunner:
+        def __init__(self, *, agent, app_name) -> None:
+            del agent, app_name
+            self.session_service = SimpleNamespace(create_session=self._session)
+
+        async def _session(self, **_kwargs):
+            return SimpleNamespace(id="s")
+
+        async def run_async(self, **_kwargs):
+            yield SimpleNamespace(
+                usage_metadata=SimpleNamespace(prompt_token_count=100, candidates_token_count=20),
+                get_function_calls=list,
+                is_final_response=lambda: True,
+                content=types.Content(role="model", parts=[types.Part(text="ok")]),
+            )
+
+        async def close(self) -> None:
+            return None
+
+    monkeypatch.setattr(mlflow_eval, "InMemoryRunner", FakeRunner)
+    result = asyncio.run(mlflow_eval._run(["a", "b"], "usage"))  # noqa: SLF001
+    # Two turns, one 100/20 model response each → summed over the conversation.
+    assert result["usage"] == {"input_tokens": 200, "output_tokens": 40, "total_tokens": 240, "model_calls": 2}
 
 
 def test_deterministic_scorers_cover_turn_boundaries() -> None:

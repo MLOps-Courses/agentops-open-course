@@ -28,6 +28,13 @@ def test_search_runbooks_ranks_relevant_first() -> None:
     assert result["runbooks"][0]["slug"] == "service-down"
 
 
+def test_search_runbooks_reports_keyword_mode() -> None:
+    # The default (offline) path must label its retrieval mode so a downstream
+    # reader can tell a keyword result from a semantic one without inspecting logs.
+    result = memory.search_runbooks("service down")
+    assert result["retrieval"] == "keyword"
+
+
 def test_search_runbooks_respects_limit() -> None:
     result = memory.search_runbooks("latency errors disk deploy service", limit=2)
     assert result["count"] <= 2

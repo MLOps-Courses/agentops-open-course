@@ -95,6 +95,14 @@ jobs:
         # with run artifacts under mlruns/, both uploaded below.
         run: cd agents/python && mise run eval:mlflow
 
+      - name: Check per-case token/cost usage against the baseline
+        id: cost
+        # Evidence, not a gate: records a baseline on first run (nothing committed)
+        # and reports drift beyond tolerance once cost_baseline.json is committed.
+        continue-on-error: true
+        shell: bash
+        run: cd agents/python && mise run eval:cost 2>&1 | tee evals/cost-eval.log
+
       - name: Upload evaluation results
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -103,6 +111,7 @@ jobs:
           path: |
             agents/python/evals/adk-eval.log
             agents/python/evals/report-eval.log
+            agents/python/evals/cost-eval.log
             agents/python/evals/mlflow.db
             agents/python/mlruns
           if-no-files-found: warn

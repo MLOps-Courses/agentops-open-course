@@ -132,6 +132,14 @@ class Settings(BaseSettings):
     # read tool to inherit the same generous deadline.
     embedding_timeout_s: float = Field(default=120.0, gt=0, le=600)
 
+    # Bounded conversation history / context compaction (Chapter 3.4). ``None``
+    # sends ADK's full session history to the model every turn; a positive value
+    # keeps only that many most-recent messages and replaces the older ones with
+    # one compact synthetic note. Deterministic and model-free, so the offline
+    # test gate stays exact. A single user turn can expand into several messages
+    # (a model tool call, a tool response, a model answer), so set it with headroom.
+    max_history_messages: int | None = Field(default=None, ge=2)
+
     # Token budgeting and cost attribution (Chapter 7.3). ``None`` disables the
     # budget; prices default to 0 because the reference path is local Ollama.
     max_tokens_per_session: int | None = Field(default=None, ge=1)

@@ -14,6 +14,7 @@ from google.adk.agents.llm_agent import ToolUnion
 
 from .actions import ACTION_TOOLS
 from .budget import enforce_token_budget, record_token_usage
+from .compaction import compact_history
 from .config import settings
 from .guardrails import handle_model_error, handle_tool_error, secure_tool_output, validate_actions
 from .longterm import MEMORY_TOOLS
@@ -89,11 +90,12 @@ root_agent = Agent(
     description="An on-call AgentOps Agent that triages and resolves incidents from a local dataset.",
     instruction=_instruction(),
     tools=[*_read_tools(), *ACTION_TOOLS, *MEMORY_TOOLS, skill_toolset()],
-    # Callback lists chain with first-non-None-wins: the budget check runs before
-    # redaction (a refused call needs no redaction), and usage recording returns
-    # None so the PII pass still sees every response.
+    # Callback lists chain with first-non-None-wins: the budget check runs first
+    # (a refused call needs no further work), then compaction bounds the history,
+    # then redaction runs on only the messages that survive. Usage recording
+    # returns None so the PII pass still sees every response.
     # --8<-- [start:root-agent-guardrails]
-    before_model_callback=[enforce_token_budget, redact_request_pii],
+    before_model_callback=[enforce_token_budget, compact_history, redact_request_pii],
     after_model_callback=[record_token_usage, redact_response_pii],
     before_tool_callback=validate_actions,
     after_tool_callback=secure_tool_output,

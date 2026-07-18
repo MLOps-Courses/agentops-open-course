@@ -6,7 +6,7 @@ description: "Gain insight into the agent in production: reproducibility, tracin
 
 ## How will you operate the agent after deployment?
 
-Your AgentOps Agent now runs as a private Kubernetes workload ([Chapter 6](../6. Platform/)). This chapter closes the [AgentOps loop](../0. Overview/0.2. AgentOps.md) with evidence: release lineage, OpenTelemetry traces, span-derived/gateway metrics, explicit cost assumptions, trace-linked human feedback, a safe online-evaluation design, and auditable approved actions.
+Your AgentOps Agent now runs as a private Kubernetes workload ([Chapter 6](../6. Platform/)). This chapter closes the [AgentOps loop](../0. Overview/0.2. AgentOps.md) with evidence: release lineage, OpenTelemetry traces, span-derived/gateway metrics, explicit cost assumptions, trace-linked human feedback, a safe online-evaluation design, auditable approved actions, and the incident-response loop that ties every one of those signals into detect → review → prevent.
 
 Every later page in this chapter assumes one shipped telemetry topology and one set of ports. Read this landing page first so the OTLP endpoints, stores, and deployment profiles the sibling pages keep referencing already mean something concrete.
 
@@ -51,5 +51,6 @@ Traces, metrics, logs, assessments, and audit rows each answer a different opera
 | Was this answer any good?                  | human MLflow assessment              | MLflow                              | [7.4. Feedback](./7.4. Feedback.md)                   |
 | Are answers drifting at scale?             | sampled trace scoring (design)       | MLflow                              | [7.5. Online Evaluation](./7.5. Online Evaluation.md) |
 | Who approved this write, and what changed? | append-only audit row                | SQLite audit table                  | [7.6. Governance](./7.6. Governance.md)               |
+| The agent itself broke — now what?         | the detect→review→prevent loop       | every signal above, joined          | [7.7. Incident Response](./7.7. Incident Response.md) |
 
 The chapter checkpoint uses local or already-running lab telemetry. It does not deploy GCP or call a model unless the learner explicitly chooses that step.
