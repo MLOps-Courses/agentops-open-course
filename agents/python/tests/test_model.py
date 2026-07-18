@@ -1,11 +1,44 @@
 """Unit tests for OpenAI-compatible and optional Gemini model selection."""
 
+from collections.abc import AsyncGenerator
+
 import pytest
 from google.adk.models import Gemini, OpenAILlm
+from google.adk.models.llm_request import LlmRequest
+from google.adk.models.llm_response import LlmResponse
+from google.genai import types
 from pydantic import SecretStr
 
 from agent import model
 from agent.config import ModelProvider
+from agent.model import FallbackLlm
+
+
+class _StubLlm(model.BaseLlm):
+    """A model stub that answers, raises up front, or raises after one chunk."""
+
+    reply: str = ""
+    fail: bool = False
+    fail_after_yield: bool = False
+
+    async def generate_content_async(
+        self, llm_request: LlmRequest, stream: bool = False
+    ) -> AsyncGenerator[LlmResponse]:
+        del llm_request, stream
+        if self.fail:
+            raise ConnectionError(f"{self.model} is down")
+        yield LlmResponse(content=types.Content(role="model", parts=[types.Part(text=self.reply)]))
+        if self.fail_after_yield:
+            raise ConnectionError(f"{self.model} dropped mid-stream")
+
+
+async def _collect(llm: model.BaseLlm) -> list[str]:
+    request = LlmRequest(contents=[types.Content(role="user", parts=[types.Part(text="hi")])])
+    return [
+        response.content.parts[0].text or ""
+        async for response in llm.generate_content_async(request)
+        if response.content is not None and response.content.parts
+    ]
 
 
 def test_optional_gemini_model_uses_native_retry_policy(monkeypatch) -> None:
@@ -88,3 +121,63 @@ def test_openai_compatible_model_requires_endpoint_and_key(monkeypatch) -> None:
     monkeypatch.setattr(model.settings, "openai_api_key", None)
     with pytest.raises(ValueError, match="OPENAI_API_KEY"):
         model.build_model()
+
+
+def test_build_model_without_fallback_returns_bare_primary(monkeypatch) -> None:
+    monkeypatch.setattr(model.settings, "model_provider", ModelProvider.OPENAI_COMPATIBLE)
+    monkeypatch.setattr(model.settings, "openai_base_url", "http://localhost:4000/v1")
+    monkeypatch.setattr(model.settings, "openai_api_key", SecretStr("local-not-a-secret"))
+    monkeypatch.setattr(model.settings, "model_fallback", None)
+    configured = model.build_model()
+    assert isinstance(configured, OpenAILlm)
+    assert not isinstance(configured, FallbackLlm)
+
+
+def test_build_model_with_fallback_wraps_two_distinct_models(monkeypatch) -> None:
+    monkeypatch.setattr(model.settings, "model_provider", ModelProvider.OPENAI_COMPATIBLE)
+    monkeypatch.setattr(model.settings, "openai_base_url", "http://localhost:4000/v1")
+    monkeypatch.setattr(model.settings, "openai_api_key", SecretStr("local-not-a-secret"))
+    monkeypatch.setattr(model.settings, "model", "qwen3:4b-instruct")
+    monkeypatch.setattr(model.settings, "model_fallback", "qwen3:1.7b")
+    configured = model.build_model()
+    assert isinstance(configured, FallbackLlm)
+    assert configured.primary.model == "qwen3:4b-instruct"
+    assert configured.fallback.model == "qwen3:1.7b"
+
+
+def test_fallback_engages_only_when_primary_fails_before_responding() -> None:
+    import asyncio
+
+    primary = _StubLlm(model="primary", fail=True)
+    fallback = _StubLlm(model="fallback", reply="from fallback")
+    chain = FallbackLlm(model="primary", primary=primary, fallback=fallback)
+    assert asyncio.run(_collect(chain)) == ["from fallback"]
+
+
+def test_healthy_primary_is_used_and_fallback_untouched() -> None:
+    import asyncio
+
+    primary = _StubLlm(model="primary", reply="from primary")
+    fallback = _StubLlm(model="fallback", fail=True)  # would raise if ever called
+    chain = FallbackLlm(model="primary", primary=primary, fallback=fallback)
+    assert asyncio.run(_collect(chain)) == ["from primary"]
+
+
+def test_mid_stream_failure_is_not_masked_by_fallback() -> None:
+    import asyncio
+
+    primary = _StubLlm(model="primary", reply="partial", fail_after_yield=True)
+    fallback = _StubLlm(model="fallback", reply="from fallback")
+    chain = FallbackLlm(model="primary", primary=primary, fallback=fallback)
+    with pytest.raises(ConnectionError, match="dropped mid-stream"):
+        asyncio.run(_collect(chain))
+
+
+def test_both_models_down_surfaces_the_fallback_error() -> None:
+    import asyncio
+
+    primary = _StubLlm(model="primary", fail=True)
+    fallback = _StubLlm(model="fallback", fail=True)
+    chain = FallbackLlm(model="primary", primary=primary, fallback=fallback)
+    with pytest.raises(ConnectionError, match="fallback is down"):
+        asyncio.run(_collect(chain))

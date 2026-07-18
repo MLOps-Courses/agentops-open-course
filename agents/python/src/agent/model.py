@@ -2,15 +2,21 @@
 
 from __future__ import annotations
 
+import logging
+from collections.abc import AsyncGenerator
 from functools import cached_property
 from typing import Any
 
 from google.adk.models import BaseLlm, Gemini, OpenAILlm
+from google.adk.models.llm_request import LlmRequest
+from google.adk.models.llm_response import LlmResponse
 from google.genai import types
 from openai import AsyncOpenAI
 from pydantic import Field, SecretStr
 
 from .config import ModelProvider, settings
+
+logger = logging.getLogger(__name__)
 
 
 class ResilientOpenAILlm(OpenAILlm):
@@ -74,33 +80,84 @@ def _gemini_client_kwargs(retry_options: types.HttpRetryOptions) -> dict[str, An
     }
 
 
-# --8<-- [start:build-model]
-def build_model() -> str | BaseLlm:
-    """Return the configured ADK model implementation.
+class FallbackLlm(BaseLlm):
+    """Try a primary model, then a secondary when the primary fails outright.
 
-    Gemini mode uses ADK's native integration. The default account-free mode
-    uses ADK's OSS OpenAI-compatible client; ``OPENAI_BASE_URL`` chooses direct
-    Ollama or an agentgateway route without changing application code.
+    Retries and timeouts (``model.py``/``resilience.py``) handle a *flaky* call;
+    a fallback handles a *dead* one — the primary endpoint is down, overloaded,
+    or the model was unloaded. The fallback only engages if the primary raises
+    **before yielding any response**: once a (possibly streamed) turn has begun,
+    switching models mid-answer would splice two different completions together,
+    so a mid-flight error is re-raised instead.
     """
-    if settings.model_provider is ModelProvider.GEMINI:
-        retry_options = _retry_options()
-        return Gemini(
-            model=settings.model,
-            retry_options=retry_options,
-            client_kwargs=_gemini_client_kwargs(retry_options),
-        )
+
+    primary: BaseLlm = Field(exclude=True)
+    fallback: BaseLlm = Field(exclude=True)
+
+    async def generate_content_async(
+        self, llm_request: LlmRequest, stream: bool = False
+    ) -> AsyncGenerator[LlmResponse]:
+        yielded = False
+        try:
+            async for response in self.primary.generate_content_async(llm_request, stream=stream):
+                yielded = True
+                yield response
+            return
+        except Exception as error:  # a dead primary is exactly when the fallback earns its keep
+            if yielded:
+                raise
+            logger.warning(
+                "Primary model %s failed before responding, falling back to %s: %s",
+                self.primary.model,
+                self.fallback.model,
+                error,
+            )
+        async for response in self.fallback.generate_content_async(llm_request, stream=stream):
+            yield response
+
+
+def _build_openai_compatible(model: str) -> ResilientOpenAILlm:
+    """Build the OSS OpenAI-compatible client for a specific model name."""
     if not settings.openai_base_url or not settings.openai_api_key:
         raise ValueError(
             "AGENT_MODEL_PROVIDER=openai-compatible requires OPENAI_BASE_URL and OPENAI_API_KEY; "
             "run `mise run config:check` for the resolved configuration."
         )
     return ResilientOpenAILlm(
-        model=settings.model,
+        model=model,
         openai_base_url=settings.openai_base_url,
         openai_api_key=settings.openai_api_key,
         timeout_s=settings.model_timeout_s,
         retries=settings.max_retries,
     )
+
+
+def _build_single(model: str) -> BaseLlm:
+    """Build one ADK model for ``model`` on the configured provider."""
+    if settings.model_provider is ModelProvider.GEMINI:
+        retry_options = _retry_options()
+        return Gemini(
+            model=model,
+            retry_options=retry_options,
+            client_kwargs=_gemini_client_kwargs(retry_options),
+        )
+    return _build_openai_compatible(model)
+
+
+# --8<-- [start:build-model]
+def build_model() -> str | BaseLlm:
+    """Return the configured ADK model implementation.
+
+    Gemini mode uses ADK's native integration. The default account-free mode
+    uses ADK's OSS OpenAI-compatible client; ``OPENAI_BASE_URL`` chooses direct
+    Ollama or an agentgateway route without changing application code. When
+    ``AGENT_MODEL_FALLBACK`` names a second model, the primary is wrapped so a
+    dead primary fails over to it on the same provider (Chapter 5.4).
+    """
+    primary = _build_single(settings.model)
+    if settings.model_fallback is None:
+        return primary
+    return FallbackLlm(model=settings.model, primary=primary, fallback=_build_single(settings.model_fallback))
 
 
 # --8<-- [end:build-model]

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextvars
 import os
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
@@ -36,6 +37,42 @@ from .config import settings
 from .data import db_path, probe_runtime_database
 
 _APP_NAME = "agentops-agent"
+
+# The gateway-verified caller identity for the request currently being served.
+# A pure-ASGI middleware sets it from the trusted header (same task as the
+# executor, so the value is visible when the request converter runs); it is unset
+# outside a request, where the synthetic A2A id remains the identity.
+_VERIFIED_SUBJECT: contextvars.ContextVar[str | None] = contextvars.ContextVar("verified_subject", default=None)
+
+
+class VerifiedIdentityMiddleware:
+    """Bind the gateway-verified caller identity for the duration of one request.
+
+    When ``AGENT_TRUSTED_IDENTITY_HEADER`` is set, this reads that header — which a
+    trusted gateway populates *after* validating the JWT (Chapter 5.5) — and makes
+    it the request's caller identity, so a guarded write's audit row names the
+    real approver instead of the unauthenticated synthetic id. When unset, or when
+    the header is absent, nothing changes and the synthetic id stands.
+    """
+
+    def __init__(self, app: Callable[..., Awaitable[None]]) -> None:
+        self.app = app
+
+    async def __call__(self, scope: dict, receive: Callable, send: Callable) -> None:
+        header_name = settings.trusted_identity_header
+        if scope["type"] != "http" or not header_name:
+            await self.app(scope, receive, send)
+            return
+        wanted = header_name.lower().encode()
+        subject = next(
+            (value.decode().strip() for key, value in scope.get("headers", []) if key.lower() == wanted and value),
+            None,
+        )
+        token = _VERIFIED_SUBJECT.set(subject or None)
+        try:
+            await self.app(scope, receive, send)
+        finally:
+            _VERIFIED_SUBJECT.reset(token)
 
 
 @dataclass(slots=True)
@@ -94,6 +131,13 @@ def _bounded_request(
     an explicit trade-off documented in Chapter 3.6.
     """
     converted = convert_a2a_request_to_agent_run_request(request, part_converter)
+    # --8<-- [start:verified-identity]
+    # A gateway-verified identity, if present, replaces the synthetic A2A id so the
+    # audit row (Chapter 7.6) and per-user memory key on the real caller.
+    verified_subject = _VERIFIED_SUBJECT.get()
+    if verified_subject:
+        converted.user_id = verified_subject
+    # --8<-- [end:verified-identity]
     run_config = converted.run_config or RunConfig()
     updates: dict[str, object] = {"max_llm_calls": settings.a2a_max_llm_calls}
     if settings.a2a_streaming:
@@ -228,6 +272,9 @@ def create_app(agent: BaseAgent = root_agent) -> Starlette:
         agent_executor_factory=_agent_executor,
     )
     app.state.runtime = runtime
+    # Bind the gateway-verified identity (when configured) for each request before
+    # the A2A executor converts it, so a guarded write audits the real approver.
+    app.add_middleware(VerifiedIdentityMiddleware)
     # Kubernetes-facing health endpoints (Ch. 6): registered before startup so
     # they coexist with the A2A routes the lifespan adds.
     healthz, livez = _health_routes(runtime)

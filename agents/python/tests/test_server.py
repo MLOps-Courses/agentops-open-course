@@ -435,3 +435,72 @@ def test_a2a_sse_interruption_emits_terminal_failure(monkeypatch) -> None:
     assert terminal["metadata"]["adk_error_code"] == "MODEL_UNAVAILABLE"
     assert terminal["status"]["message"]["parts"][0]["text"] == "Model request failed safely."
     assert "stream interrupted" not in json.dumps(events)
+
+
+def test_verified_identity_overrides_synthetic_user_when_present(monkeypatch) -> None:
+    """A gateway-verified subject becomes the run's user_id (and thus approved_by)."""
+
+    def fake_converter(request, part_converter) -> AgentRunRequest:
+        del request, part_converter
+        return AgentRunRequest(user_id="A2A_USER_ctx-1", run_config=RunConfig())
+
+    monkeypatch.setattr(server, "convert_a2a_request_to_agent_run_request", fake_converter)
+    token = server._VERIFIED_SUBJECT.set("alice@example.com")  # noqa: SLF001 - simulates the middleware
+    try:
+        converted = server._bounded_request(  # noqa: SLF001 - request policy contract
+            cast("RequestContext", None),
+            cast("A2APartToGenAIPartConverter", None),
+        )
+    finally:
+        server._VERIFIED_SUBJECT.reset(token)  # noqa: SLF001
+    assert converted.user_id == "alice@example.com"
+
+
+def test_missing_verified_identity_keeps_the_synthetic_user(monkeypatch) -> None:
+    def fake_converter(request, part_converter) -> AgentRunRequest:
+        del request, part_converter
+        return AgentRunRequest(user_id="A2A_USER_ctx-1", run_config=RunConfig())
+
+    monkeypatch.setattr(server, "convert_a2a_request_to_agent_run_request", fake_converter)
+    converted = server._bounded_request(  # noqa: SLF001 - request policy contract
+        cast("RequestContext", None),
+        cast("A2APartToGenAIPartConverter", None),
+    )
+    assert converted.user_id == "A2A_USER_ctx-1"  # unauthenticated fallback stands
+
+
+def _run_middleware(header_name: str | None, headers: list[tuple[bytes, bytes]]) -> str | None:
+    """Drive the ASGI middleware once and capture the subject downstream sees."""
+    seen: dict[str, str | None] = {}
+
+    async def downstream(scope, receive, send) -> None:
+        del scope, receive, send
+        seen["subject"] = server._VERIFIED_SUBJECT.get()  # noqa: SLF001
+
+    async def _noop(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+
+    middleware = server.VerifiedIdentityMiddleware(downstream)
+
+    async def drive() -> None:
+        await middleware({"type": "http", "headers": headers}, _noop, _noop)
+
+    settings_header = settings.trusted_identity_header
+    settings.trusted_identity_header = header_name
+    try:
+        asyncio.run(drive())
+    finally:
+        settings.trusted_identity_header = settings_header
+    return seen["subject"]
+
+
+def test_middleware_binds_the_trusted_header_when_configured() -> None:
+    subject = _run_middleware("x-verified-subject", [(b"x-verified-subject", b"alice@example.com")])
+    assert subject == "alice@example.com"
+    # The binding is per-request: it does not leak once the middleware returns.
+    assert server._VERIFIED_SUBJECT.get() is None  # noqa: SLF001
+
+
+def test_middleware_ignores_the_header_when_not_configured() -> None:
+    subject = _run_middleware(None, [(b"x-verified-subject", b"attacker@evil.example")])
+    assert subject is None  # an un-configured header is never trusted

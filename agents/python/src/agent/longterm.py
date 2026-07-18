@@ -12,11 +12,18 @@ data store like any other. Cross-session recall therefore requires a stable user
 id; the unauthenticated A2A adapter's context-bound synthetic id is intentionally
 not human identity. ``mise run data:reset`` clears the store with the rest of the
 runtime state.
+
+Because it is personal data keyed by user, the store also supports erasure:
+``forget_user_memory`` deletes one user's notes to satisfy a right-to-erasure
+request (Chapter 7.6). It is an operator action invoked out of band, never an
+agent tool — the model can save and recall, but only a human can erase.
 """
 
 from __future__ import annotations
 
+import argparse
 import sqlite3
+import sys
 from contextlib import closing
 from datetime import UTC, datetime
 from typing import Any
@@ -127,6 +134,46 @@ def recall_incident_context(incident_id: str = "", tool_context: ToolContext | N
     return {"count": len(notes), "notes": notes}
 
 
+# --8<-- [start:forget]
+def forget_user_memory(user_id: str) -> dict[str, Any]:
+    """Erase every long-term note for one user (right-to-erasure, Chapter 7.6).
+
+    Deletes the user's incident notes from the memory store. The append-only
+    audit log is deliberately **untouched**: erasure covers the personal data a
+    user contributed, not the record of who approved which state change, which is
+    retained under a separate legal basis ([7.6](../7. Observability/7.6. Governance.md)).
+    This is an operator/DSAR action invoked out of band — never an agent tool, so
+    the model can never erase memory on its own.
+    """
+    cleaned = user_id.strip()
+    if not cleaned:
+        return {"error": "Refusing to erase memory for an empty user id."}
+    with closing(_connect()) as connection:
+        cursor = connection.execute("DELETE FROM incident_notes WHERE user_id = ?", (cleaned,))
+        deleted = cursor.rowcount
+        connection.commit()
+    return {"forgotten": {"user_id": cleaned, "count": deleted}}
+
+
+# --8<-- [end:forget]
+
+
 # Long-term memory stays local to the agent (per-user store) even when the read
-# tools are served through the governed MCP route.
+# tools are served through the governed MCP route. Erasure is not here on purpose:
+# ``forget_user_memory`` is an operator action, not something the model can call.
 MEMORY_TOOLS = [recall_incident_context, save_incident_note]
+
+
+def main() -> None:
+    """Operator CLI: erase one user's long-term notes for a right-to-erasure request."""
+    parser = argparse.ArgumentParser(description="Erase one user's long-term incident notes (right-to-erasure).")
+    parser.add_argument("user_id", help="The logical user id whose notes to erase.")
+    result = forget_user_memory(parser.parse_args().user_id)
+    if "error" in result:
+        sys.exit(result["error"])
+    count = result["forgotten"]["count"]
+    print(f"Erased {count} note(s) for user {result['forgotten']['user_id']!r}.")  # noqa: T201 - CLI output
+
+
+if __name__ == "__main__":
+    main()

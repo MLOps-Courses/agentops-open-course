@@ -85,6 +85,16 @@ description = "Check per-case token/model-call usage against cost_baseline.json 
 env = { _.file = { path = "../../.env", redact = true } }
 run = "uv run python evals/cost_eval.py"
 
+[tasks."eval:ground"]
+description = "Check each answer's entities are grounded in that turn's retrieved evidence"
+env = { _.file = { path = "../../.env", redact = true } }
+run = "uv run python evals/groundedness_eval.py"
+
+[tasks."eval:ab"]
+description = "Compare two pinned prompt versions side by side on the deterministic scorers"
+env = { _.file = { path = "../../.env", redact = true } }
+run = "uv run python evals/prompt_ab.py"
+
 [tasks."eval:validate"]
 description = "Validate the evalset structure and seed references offline (no model)"
 run = "uv run pytest --no-cov tests/test_evalset.py"

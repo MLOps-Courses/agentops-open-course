@@ -110,12 +110,38 @@ class Settings(BaseSettings):
     # SIGTERM. Kubernetes' terminationGracePeriodSeconds must exceed this.
     drain_timeout_s: float = Field(default=10.0, gt=0, le=300)
 
+    # Name of the request header carrying a gateway-verified caller identity
+    # (Chapter 5.5 / 7.6). ``None`` keeps the unauthenticated synthetic A2A id.
+    # Only set this when a trusted gateway validates the JWT and *sets* this
+    # header itself, overwriting any client-supplied copy — a raw client could
+    # otherwise forge it. When set, the value becomes the audit ``approved_by``.
+    trusted_identity_header: str | None = Field(default=None, min_length=1)
+
     # Resilience: bounded retries with exponential backoff for idempotent reads
     # and model calls; guarded write actions are never retried (Chapter 4.5).
     model_timeout_s: float = Field(default=60.0, gt=0, le=600)
     tool_timeout_s: float = Field(default=30.0, gt=0, le=600)
     max_retries: int = Field(default=2, ge=0, le=10)
     retry_backoff_s: float = Field(default=0.5, gt=0, le=30)
+
+    # Circuit breaker for idempotent read tools (Chapter 4.5). Off by default so
+    # the shipped behavior stays "retry only". When on, a read tool that fails
+    # ``circuit_failure_threshold`` times in a row opens: further calls fail fast
+    # (shedding load off a dead dependency) until ``circuit_reset_timeout_s``
+    # elapses and one trial call tests recovery. Never wraps writes.
+    circuit_breaker_enabled: bool = False
+    circuit_failure_threshold: int = Field(default=5, ge=1, le=100)
+    circuit_reset_timeout_s: float = Field(default=30.0, gt=0, le=600)
+
+    # Optional secondary model tried when the primary fails every retry (Ch. 5.4).
+    # ``None`` keeps the single-model path. Uses the same provider/endpoint as the
+    # primary — a smaller local model is the intended account-free fallback.
+    model_fallback: str | None = Field(default=None, min_length=1)
+
+    # Emergency kill-switch (Chapter 4.5 / 7.7). When true, every guarded write
+    # action refuses before approval — an instant, redeploy-free way to freeze
+    # all state changes during an incident while reads keep working.
+    writes_disabled: bool = False
 
     # Default-on prompt-injection hardening for tool/retrieval content (Ch. 4.6):
     # spotlight untrusted text and neutralize known injection markers.
@@ -212,6 +238,11 @@ class Settings(BaseSettings):
             problems.append(
                 f"AGENT_MCP_URL must be an http(s) URL such as http://127.0.0.1:3000/mcp, got {self.mcp_url!r}. "
                 "Unset it to use the in-process stdio MCP server."
+            )
+        if self.model_fallback is not None and self.model_fallback == self.model:
+            problems.append(
+                f"AGENT_MODEL_FALLBACK must differ from AGENT_MODEL (both are {self.model!r}); "
+                "a fallback identical to the primary adds no resilience. Unset it or pick a distinct model."
             )
         if problems:
             raise ValueError("\n".join(problems))

@@ -27,15 +27,16 @@ flowchart TD
 
 Every platform concern has one owning manifest, so a broken rollout has one place to look. This chapter's pages map onto the `infra/` tree like this:
 
-| Sub-page                                              | What it adds                                                  | Owning manifest(s)                                        |
-| ----------------------------------------------------- | ------------------------------------------------------------- | --------------------------------------------------------- |
-| [6.0. Platform](./6.0. Platform.md)                   | Agents as Kubernetes workloads; the shared base and overlays  | `infra/k8s/base/kustomization.yaml`                       |
-| [6.1. Containers](./6.1. Containers.md)               | The multi-stage, digest-pinned agent image                    | `agents/python/Dockerfile`                                |
-| [6.2. Platform Install](./6.2. Platform Install.md)   | The tracked k3d cluster/registry and the kagent chart         | `infra/k3d.yaml`, `infra/helmfile.yaml`                   |
-| [6.3. Platform Agents](./6.3. Platform Agents.md)     | The hardened BYO `Agent` and gateway `ModelConfig`            | `infra/kagent/agent.yaml`, `modelconfig.yaml`             |
-| [6.4. Platform Tools](./6.4. Platform Tools.md)       | The read-only MCP server and its governed `RemoteMCPServer`   | `infra/k8s/base/mcp.yaml`, `infra/kagent/toolserver.yaml` |
-| [6.5. Platform Gateway](./6.5. Platform Gateway.md)   | The private data plane, network policy, and workload identity | `infra/k8s/base/network-policies.yaml` + overlays         |
-| [6.6. Platform Delivery](./6.6. Platform Delivery.md) | Skaffold dev loop, the OpenTofu GKE plan, and teardown        | `infra/skaffold.yaml`, `infra/gcp/`                       |
+| Sub-page                                                    | What it adds                                                    | Owning manifest(s)                                        |
+| ----------------------------------------------------------- | --------------------------------------------------------------- | --------------------------------------------------------- |
+| [6.0. Platform](./6.0. Platform.md)                         | Agents as Kubernetes workloads; the shared base and overlays    | `infra/k8s/base/kustomization.yaml`                       |
+| [6.1. Containers](./6.1. Containers.md)                     | The multi-stage, digest-pinned agent image                      | `agents/python/Dockerfile`                                |
+| [6.2. Platform Install](./6.2. Platform Install.md)         | The tracked k3d cluster/registry and the kagent chart           | `infra/k3d.yaml`, `infra/helmfile.yaml`                   |
+| [6.3. Platform Agents](./6.3. Platform Agents.md)           | The hardened BYO `Agent` and gateway `ModelConfig`              | `infra/kagent/agent.yaml`, `modelconfig.yaml`             |
+| [6.4. Platform Tools](./6.4. Platform Tools.md)             | The read-only MCP server and its governed `RemoteMCPServer`     | `infra/k8s/base/mcp.yaml`, `infra/kagent/toolserver.yaml` |
+| [6.5. Platform Gateway](./6.5. Platform Gateway.md)         | The private data plane, network policy, and workload identity   | `infra/k8s/base/network-policies.yaml` + overlays         |
+| [6.6. Platform Delivery](./6.6. Platform Delivery.md)       | Skaffold dev loop, the OpenTofu GKE plan, and teardown          | `infra/skaffold.yaml`, `infra/gcp/`                       |
+| [6.7. Progressive Delivery](./6.7. Progressive Delivery.md) | Evaluation as the promotion gate for an image or prompt version | `scripts/promote.sh`                                      |
 
 ## What changes between the local and GKE overlays?
 

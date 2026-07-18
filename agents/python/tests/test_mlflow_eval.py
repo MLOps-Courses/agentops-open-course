@@ -153,8 +153,10 @@ def test_run_reuses_one_session_and_closes_runner(monkeypatch) -> None:
                     }
                 },
             )
+            response = SimpleNamespace(name=f"tool-{self.calls}", response={"turn": self.calls})
             event = SimpleNamespace(
                 get_function_calls=lambda: [call, confirmation],
+                get_function_responses=lambda: [response],
                 is_final_response=lambda: True,
                 content=types.Content(
                     role="model",
@@ -250,6 +252,7 @@ def test_run_accumulates_token_and_call_usage(monkeypatch) -> None:
             yield SimpleNamespace(
                 usage_metadata=SimpleNamespace(prompt_token_count=100, candidates_token_count=20),
                 get_function_calls=list,
+                get_function_responses=list,
                 is_final_response=lambda: True,
                 content=types.Content(role="model", parts=[types.Part(text="ok")]),
             )

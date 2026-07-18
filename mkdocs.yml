@@ -105,6 +105,7 @@ nav:
       - 6.4. Platform Tools: 6. Platform/6.4. Platform Tools.md
       - 6.5. Platform Gateway: 6. Platform/6.5. Platform Gateway.md
       - 6.6. Platform Delivery: 6. Platform/6.6. Platform Delivery.md
+      - 6.7. Progressive Delivery: 6. Platform/6.7. Progressive Delivery.md
   - 7. Observability:
       - Observability: 7. Observability/index.md
       - 7.0. Reproducibility: 7. Observability/7.0. Reproducibility.md

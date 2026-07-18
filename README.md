@@ -168,7 +168,18 @@ clients/web/    Minimal offline A2A web client for the AgentOps Agent
 load/           k6 load tests and latency budgets for the platform
 docs/           FAQ-based course content built with Zensical
 infra/          agentgateway, kagent, k3d/GKE, MLflow, and OTel resources
+skills/         Installable Agent Skills packaging the course's patterns
 ```
+
+## Reuse the patterns in your own agents
+
+The top-level [`skills/`](./skills/) directory packages this course's operational patterns — telemetry, guardrails, resilience, token budgets, least privilege, evaluation, incident response — as portable [Agent Skills](https://agents.md/) you can install into your own projects with the [`skills` CLI](https://github.com/vercel-labs/skills):
+
+```bash
+npx skills add MLOps-Courses/agentops-open-course --all
+```
+
+Each skill is tool-agnostic guidance that points back to the exact reference file it distils. See [`skills/README.md`](./skills/README.md).
 
 ## Everyday commands
 

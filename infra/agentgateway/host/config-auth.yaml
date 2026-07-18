@@ -79,6 +79,14 @@ binds:
                 - maxTokens: 60
                   tokensPerFill: 60
                   fillInterval: 60s
+              # Carry the JWT-verified subject to the app as a trusted header,
+              # replacing any client-supplied copy (`set` overwrites), so a guarded
+              # write's audit row names the real operator (Chapters 5.5 / 7.6). The
+              # app honors it only when AGENT_TRUSTED_IDENTITY_HEADER is set.
+              transformations:
+                request:
+                  set:
+                    x-verified-subject: jwt.sub
             backends:
               - host: localhost:8080
 

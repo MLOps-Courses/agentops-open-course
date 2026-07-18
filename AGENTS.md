@@ -8,7 +8,8 @@ The course teaches the complete lifecycle of one **AgentOps Agent** with Google 
 
 - `docs/` contains FAQ-based course pages published by Zensical.
 - `agents/python/` is the locked Python reference agent, offline tests, and model-backed evaluations.
-- `agents/data/` is immutable seed input: SQLite, logs, runbooks, and Agent Skills.
+- `agents/data/` is immutable seed input: SQLite, logs, runbooks, and the agent's runtime Agent Skills.
+- `skills/` holds installable, portable Agent Skills (`npx skills add …`) that distil the course's patterns for reuse in other projects — distinct from the runtime skills under `agents/data/skills`. `scripts/check-skills.sh` (via `mise run check:skills`) validates them.
 - `clients/web/` is a minimal, offline, dependency-free A2A web client for the AgentOps Agent.
 - `load/` holds k6 load tests and the documented latency budgets for the platform.
 - `infra/agentgateway/{host,k3d,gke}/` contains the three data-plane profiles.
@@ -79,6 +80,7 @@ mise run observability:down
 mise run cluster:start
 mise run platform:install
 mise run platform:dev
+mise run promote
 ```
 
 Agent tasks from `agents/python/`:
@@ -93,7 +95,7 @@ mise run a2a
 mise run data:reset
 ```
 
-`mise run eval` and `mise run eval:mlflow` call a configured model and stay outside the offline test gate. The MLflow judge is optional and must use the configured agentgateway URL.
+The `eval:*` tasks (`eval`, `eval:report`, `eval:mlflow`, `eval:cost`, `eval:ground`, `eval:ab`, `eval:retrieval`) call a configured model and stay outside the offline test gate — they are scheduled evidence in `eval.yml`, not CI gates. `eval:validate` is the only offline eval and runs in CI. The MLflow judge is optional and must use the configured agentgateway URL.
 
 ## Local and cloud safety
 

@@ -19,11 +19,18 @@ from google.adk.tools.function_tool import FunctionTool
 from google.adk.tools.tool_context import ToolContext
 
 from . import data
+from .config import settings
 from .models import MAX_AUDIT_RATIONALE_LENGTH, normalize_incident_id, normalize_slug
 from .pii import redact_persisted_text
 
 # Who the audit log records as the actor for agent-initiated actions.
 _ACTOR = "agentops-agent"
+
+# The message every guarded write returns while the kill-switch is engaged.
+_WRITES_DISABLED_REASON = (
+    "writes are frozen by the AGENT_WRITES_DISABLED kill-switch; reads still work. "
+    "Clear the flag once the incident is contained to resume approvals."
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,6 +118,8 @@ def restart_service(name: str, tool_context: ToolContext | None = None) -> dict[
         A dict describing the outcome, or an ``error`` if the service is unknown
         or the approval carried no rationale.
     """
+    if settings.writes_disabled:
+        return _approval_error(f"restart of {name!r}", _WRITES_DISABLED_REASON)
     normalized = normalize_slug(name)
     if normalized is None:
         return {"error": f"Invalid service name {name!r}; expected lowercase kebab-case."}
@@ -146,6 +155,8 @@ def resolve_incident(incident_id: str, tool_context: ToolContext | None = None) 
         A dict describing the outcome, or an ``error`` if the incident is unknown,
         already resolved, or the approval carried no rationale.
     """
+    if settings.writes_disabled:
+        return _approval_error(f"resolution of {incident_id!r}", _WRITES_DISABLED_REASON)
     normalized = normalize_incident_id(incident_id)
     if normalized is None:
         return {"error": f"Invalid incident id {incident_id!r}; expected an id like INC-002."}

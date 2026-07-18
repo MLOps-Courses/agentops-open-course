@@ -300,6 +300,10 @@ async def _run(turns: list[str], eval_id: str) -> dict[str, Any]:
         session = await runner.session_service.create_session(app_name=_EXPERIMENT, user_id=user_id)
         responses: list[str] = []
         trajectories: list[list[dict[str, Any]]] = []
+        # The concatenated tool-response text the agent actually received each turn.
+        # A groundedness scorer (Chapter 4.4) checks the answer stayed within this
+        # evidence plus the user's own words, rather than inventing entities.
+        evidence: list[str] = []
         # Accumulate token/model-call usage over the whole conversation so a cost
         # regression (Chapter 4.4) can be judged per case, not just per turn.
         input_tokens = output_tokens = model_calls = 0
@@ -307,6 +311,7 @@ async def _run(turns: list[str], eval_id: str) -> dict[str, Any]:
             message = types.Content(role="user", parts=[types.Part(text=turn)])
             answer_parts: list[str] = []
             tool_calls: list[dict[str, Any]] = []
+            evidence_parts: list[str] = []
             confirmation_pause: str | None = None
             async for event in runner.run_async(user_id=user_id, session_id=session.id, new_message=message):
                 usage = getattr(event, "usage_metadata", None)
@@ -320,18 +325,23 @@ async def _run(turns: list[str], eval_id: str) -> dict[str, Any]:
                     recorded_call = {"name": call.name, "args": dict(call.args or {})}
                     tool_calls.append(recorded_call)
                     confirmation_pause = _confirmation_pause_response(recorded_call) or confirmation_pause
+                evidence_parts.extend(
+                    json.dumps(function_response.response, default=str, sort_keys=True)
+                    for function_response in event.get_function_responses()
+                )
                 if event.is_final_response() and event.content:
                     answer_parts.extend(part.text for part in event.content.parts or [] if part.text)
             response = "".join(answer_parts)
             responses.append(response if response.strip() else confirmation_pause or "")
             trajectories.append(tool_calls)
+            evidence.append(" ".join(evidence_parts))
         usage_totals = {
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,
             "total_tokens": input_tokens + output_tokens,
             "model_calls": model_calls,
         }
-        return {"responses": responses, "tools": trajectories, "usage": usage_totals}
+        return {"responses": responses, "tools": trajectories, "usage": usage_totals, "evidence": evidence}
     finally:
         await runner.close()
 

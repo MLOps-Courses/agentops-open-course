@@ -359,3 +359,21 @@ def test_error_callbacks_return_safe_responses(caplog) -> None:
     assert "RuntimeError: secret detail" in caplog.text
     assert "RuntimeError: provider detail" in caplog.text
     assert "NoneType: None" not in caplog.text
+
+
+def test_kill_switch_freezes_writes_before_approval(monkeypatch) -> None:
+    """AGENT_WRITES_DISABLED refuses every guarded write with no state change."""
+    monkeypatch.setattr(actions.settings, "writes_disabled", True)
+    before = _audit_count()
+    restart = _run_action("restart_service", {"name": "inventory"}, _approved_context({"rationale": "runbook says so"}))
+    resolve = _run_action("resolve_incident", {"incident_id": "INC-002"}, _approved_context({"rationale": "fixed"}))
+    assert "AGENT_WRITES_DISABLED" in restart["error"]
+    assert "AGENT_WRITES_DISABLED" in resolve["error"]
+    assert _audit_count() == before  # frozen: nothing was written or audited
+
+
+def test_kill_switch_leaves_reads_and_approvals_working_when_clear(monkeypatch) -> None:
+    """With the switch clear, an approved write still succeeds normally."""
+    monkeypatch.setattr(actions.settings, "writes_disabled", False)
+    result = _run_action("restart_service", {"name": "inventory"}, _approved_context({"rationale": "runbook says so"}))
+    assert "restarted" in result["result"]

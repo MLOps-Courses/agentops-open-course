@@ -71,3 +71,21 @@ def test_memory_lives_in_the_disposable_state_dir() -> None:
 
     path = longterm.memory_db_path()
     assert path == str(settings.state_dir / "memory.db")  # disposable state, never seed data
+
+
+def test_forget_user_memory_erases_only_that_user() -> None:
+    longterm.save_incident_note("INC-002", "alice private note", _context("alice", "s1"))
+    longterm.save_incident_note("INC-001", "bob private note", _context("bob", "s2"))
+    result = longterm.forget_user_memory("alice")
+    assert result["forgotten"] == {"user_id": "alice", "count": 1}
+    assert longterm.recall_incident_context(tool_context=_context("alice", "s3"))["count"] == 0
+    assert longterm.recall_incident_context(tool_context=_context("bob", "s4"))["count"] == 1  # bob is untouched
+
+
+def test_forget_user_memory_rejects_empty_user() -> None:
+    assert "error" in longterm.forget_user_memory("   ")
+
+
+def test_forget_is_not_an_agent_tool() -> None:
+    # Erasure is an operator action; the model must never be handed the capability.
+    assert longterm.forget_user_memory not in longterm.MEMORY_TOOLS

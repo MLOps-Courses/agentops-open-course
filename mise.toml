@@ -101,6 +101,10 @@ run = "docker build --file infra/mlflow/Dockerfile --tag agentops-mlflow:3.14.0 
 description = "Build the site for release (GitHub Pages publishes it in CI)"
 run = "uv run zensical build"
 
+[tasks.promote]
+description = "Eval-gated promotion: run the eval gate, render the overlay, print promote/rollback commands"
+run = "./scripts/promote.sh"
+
 [tasks.format]
 alias = "f"
 description = "Format docs, config, and the Python agent"
@@ -142,6 +146,7 @@ depends = [
   "check:python",
   "check:release-metadata",
   "check:shell",
+  "check:skills",
   "check:workflows",
 ]
 
@@ -166,7 +171,11 @@ run = "./scripts/check-infra.sh"
 
 [tasks."check:links"]
 description = "Check repository-local Markdown links without network access"
-run = "lychee --offline README.md CONTRIBUTING.md SECURITY.md CODE_OF_CONDUCT.md CHANGELOG.md 'docs/**/*.md' 'agents/**/*.md' 'infra/**/*.md'"
+run = "lychee --offline README.md CONTRIBUTING.md SECURITY.md CODE_OF_CONDUCT.md CHANGELOG.md 'docs/**/*.md' 'agents/**/*.md' 'infra/**/*.md' 'skills/**/*.md'"
+
+[tasks."check:skills"]
+description = "Validate the installable Agent Skills under skills/"
+run = "./scripts/check-skills.sh"
 
 [tasks."check:licenses"]
 description = "Verify repository and Python dependency licenses"
