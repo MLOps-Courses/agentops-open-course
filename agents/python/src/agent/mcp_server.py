@@ -82,15 +82,17 @@ for _tool in (
 # serves custom routes without auth — suitable exactly for probes.
 @mcp.custom_route("/healthz", methods=["GET"])
 async def healthz(request: Request) -> JSONResponse:
-    """Readiness: the agent-owned runtime database is readable and valid."""
+    """Readiness: shared state is readable and remains writable for agent actions."""
     del request
+    problems: list[str] = []
     try:
         probe_runtime_database()
     except Exception as error:  # readiness reports every failure class as unready
-        return JSONResponse(
-            {"status": "unready", "problems": [f"dataset unavailable: {type(error).__name__}"]},
-            status_code=503,
-        )
+        problems.append(f"dataset unavailable: {type(error).__name__}")
+    if not os.access(settings.state_dir, os.W_OK):
+        problems.append(f"state directory is not writable: {settings.state_dir}")
+    if problems:
+        return JSONResponse({"status": "unready", "problems": problems}, status_code=503)
     return JSONResponse({"status": "ready"})
 
 
