@@ -1,6 +1,7 @@
 """Unit tests for the MCP server and client wiring (Ch. 3.3)."""
 
 import asyncio
+import json
 from types import SimpleNamespace
 from typing import cast
 
@@ -200,6 +201,19 @@ def test_mcp_healthz_rejects_a_corrupt_runtime_database() -> None:
     response = asyncio.run(mcp_server.healthz(cast("Request", None)))
     assert response.status_code == 503
     assert destination.read_bytes() == before
+
+
+def test_mcp_healthz_fails_when_shared_state_is_not_writable(monkeypatch) -> None:
+    data.db_path()
+    monkeypatch.setattr(mcp_server.os, "access", lambda *_: False)
+
+    response = asyncio.run(mcp_server.healthz(cast("Request", None)))
+
+    assert response.status_code == 503
+    assert json.loads(response.body) == {
+        "status": "unready",
+        "problems": [f"state directory is not writable: {settings.state_dir}"],
+    }
 
 
 def test_mcp_livez_is_trivially_alive() -> None:
