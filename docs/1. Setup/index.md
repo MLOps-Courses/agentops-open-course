@@ -8,6 +8,8 @@ description: Set up a professional local environment and toolchain for building 
 
 Before you run the reference agent, build a reproducible local environment — without needing every model, container engine, cluster, or cloud account at once. `mise install` materializes the pinned CLI set from `mise.toml`; from there you admit each external dependency only at the chapter that first needs it, and a staged `doctor` proves the prerequisites for that stage before you depend on them.
 
+When a command in this chapter fails, match the symptom in [0.6. Troubleshooting](../0. Overview/0.6. Troubleshooting.md) or re-run the `doctor` for your tier. New to a term along the way? The [0.7. Glossary](../0. Overview/0.7. Glossary.md) defines every course term and links each back to where it is introduced.
+
 - **[1.0. System](./1.0. System.md)**: supported systems, hardware, network needs, and the pinned mise toolchain.
 - **[1.1. Python](./1.1. Python.md)**: the pinned Python and uv environment, runtime dependencies, and the offline quality checkpoint.
 - **[1.2. Containers](./1.2. Containers.md)**: the Docker-compatible runtime the Chapter 5 gateway wrapper needs, and the later agent-image boundary.

@@ -36,6 +36,22 @@ flowchart TD
 
 The bundled incident, log, runbook, and skill data is immutable. A runtime copy receives mock state changes and append-only audit records, which keeps each exercise resettable and safe. You do not reconstruct this system file by file: `main` is the working reference, and each checkpoint asks you to understand, verify, or deliberately change one boundary.
 
+## How does the course progress?
+
+The chapter order is the AgentOps lifecycle: you build the agent, prove it, govern its traffic, deploy it, operate it, then sustain it. Each stage unlocks a heavier prerequisite tier, so nothing forces a model, gateway, cluster, or cloud on you before the chapter that needs it.
+
+```mermaid
+flowchart LR
+    O["0. Overview<br/>orient + decide"] --> S["1. Setup<br/>pinned local env"]
+    S --> A["2. Agents<br/>build"]
+    A --> C["3. Capabilities<br/>tools · MCP · A2A"]
+    C --> Q["4. Quality<br/>test · eval · guard"]
+    Q --> G["5. Gateway<br/>govern traffic"]
+    G --> P["6. Platform<br/>k3d + optional GKE"]
+    P --> Ob["7. Observability<br/>operate"]
+    Ob --> Cm["8. Community<br/>sustain + capstone"]
+```
+
 ## Where should you start?
 
 New to agent systems? Read the chapters in order. Already shipping LLM applications? Use the outcomes below as a map:
