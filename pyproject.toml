@@ -14,7 +14,7 @@ requires-python = ">=3.13"
 license = "MIT"
 license-files = ["LICENSE"]
 dependencies = [
-  "zensical==0.0.50", # alpha: pin exactly and re-verify the generated site on every upgrade
+  "zensical==0.0.51", # alpha: pin exactly and re-verify the generated site on every upgrade
 ]
 
 [dependency-groups]
