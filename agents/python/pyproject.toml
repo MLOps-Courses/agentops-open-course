@@ -12,7 +12,7 @@ authors = [{ name = "Médéric HURIER", email = "agentops-open-course@fmind.dev"
 # --8<-- [start:runtime-dependencies]
 dependencies = [
   "aiosqlite>=0.22.1,<0.23", # async SQLite driver for ADK sessions and the A2A task store
-  "google-adk[a2a]>=2.4.0", # locked agent runtime + A2A serving; avoid the unused Spanner `db` extra
+  "google-adk[a2a]>=2.5.0", # locked agent runtime + A2A serving; avoid the unused Spanner `db` extra
   "a2a-sdk>=1.1.2", # A2A protocol types + server (Ch. 3.6); 1.x reworked the type surface — kept current with ADK's <2 cap
   "mcp>=1.28.1", # Model Context Protocol server (FastMCP) + client (McpToolset), Ch. 3.3
   "openai>=2.45.0", # OSS SDK used by ADK OpenAILlm for direct Ollama or agentgateway
