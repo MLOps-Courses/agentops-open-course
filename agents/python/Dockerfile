@@ -14,7 +14,7 @@
 # docker build -f agents/python/Dockerfile -t agentops-agent:dev agents
 
 # --- Stage 1: resolve dependencies into /app/.venv with uv -------------------
-FROM ghcr.io/astral-sh/uv:0.11.32@sha256:df4cae8f3a96d175e2e5f992e597550000edbe78fdc2594d5cd8de1a217f504c AS uv
+FROM ghcr.io/astral-sh/uv:0.12.0@sha256:606e70c71c852d03f611b1e56a195d08648507018a7057fab82c4974c4eae105 AS uv
 FROM python:3.13.14-slim-trixie@sha256:6771159cd4fa5d9bba1258caf0b82e6b73458c694d178ad97c5e925c2d0e1a91 AS build
 
 COPY --from=uv /uv /uvx /bin/
