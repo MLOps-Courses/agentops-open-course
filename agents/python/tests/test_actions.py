@@ -268,8 +268,10 @@ def test_action_tools_require_confirmation() -> None:
         declaration = tool._get_declaration()  # noqa: SLF001 — inspect model-facing schema
         assert declaration is not None
         description = declaration.description or ""
-        assert "creates a confirmation request" in description
-        assert "Never claim a request exists without calling this tool" in description
+        assert "Create an ADK confirmation request" in description
+        assert "Call this tool before approval" in description
+        assert "call does not" in description
+        assert "A prose promise cannot create the confirmation request" in description
 
 
 def test_unconfirmed_call_pauses_for_approval() -> None:

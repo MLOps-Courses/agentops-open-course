@@ -284,7 +284,7 @@ jobs:
             echo "::error::The MLflow scorer evaluation failed — inspect mlflow-eval.log."
           fi
           if [[ "${{ steps.cost.outcome }}" == "failure" ]]; then
-            echo "::error::The cost evaluation failed — inspect cost-eval.log and cost-observed.json."
+            echo "::error::The cost evaluation failed — inspect cost-eval.log and model-observed.json; cost-observed.json exists only after every case yields valid measurement evidence."
           fi
           if [[ "${{ steps.ground.outcome }}" == "failure" ]]; then
             echo "::error::The groundedness evaluation failed — inspect ground-eval.log and ground-observed.json."

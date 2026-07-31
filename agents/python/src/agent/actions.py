@@ -110,11 +110,12 @@ def _approval_error(action: str, reason: str) -> dict[str, Any]:
 
 
 def restart_service(name: str, tool_context: ToolContext | None = None) -> dict[str, Any]:
-    """Request a guarded mock restart through ADK's built-in confirmation.
+    """Create an ADK confirmation request for a guarded mock restart.
 
-    Calling this tool creates a confirmation request and pauses before this
-    function runs. Only an approval with a rationale restarts the service and
-    writes the audit entry. Never claim a request exists without calling this tool.
+    Call this tool before approval when the evidence supports a restart. The
+    call does not restart the service: ADK pauses before this function runs.
+    Only a later approval with a rationale executes the restart and writes the
+    audit entry. A prose promise cannot create the confirmation request.
 
     Args:
         name: The service to restart, e.g. ``inventory``.
@@ -151,11 +152,12 @@ def restart_service(name: str, tool_context: ToolContext | None = None) -> dict[
 
 
 def resolve_incident(incident_id: str, tool_context: ToolContext | None = None) -> dict[str, Any]:
-    """Request a guarded mock resolution through ADK's built-in confirmation.
+    """Create an ADK confirmation request for a guarded mock resolution.
 
-    Calling this tool creates a confirmation request and pauses before this
-    function runs. Only an approval with a rationale resolves the incident and
-    writes the audit entry. Never claim a request exists without calling this tool.
+    Call this tool before approval when the evidence supports resolution. The
+    call does not resolve the incident: ADK pauses before this function runs.
+    Only a later approval with a rationale executes the resolution and writes
+    the audit entry. A prose promise cannot create the confirmation request.
 
     Args:
         incident_id: The incident to resolve, e.g. ``INC-002``.

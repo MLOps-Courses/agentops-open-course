@@ -61,14 +61,15 @@ def test_instruction_requires_plan_and_post_action_verification() -> None:
     assert "never guess or batch dependent calls" in instruction
     assert "unfiltered sample logs" in instruction
     assert "infer a cause from an empty filtered result" in instruction
-    assert "ADK creates its confirmation request" in instruction
     assert "gather and wait for every decision-context result" in instruction
-    assert "Never narrate a" in instruction
-    assert "future guarded call: emit it now" in instruction
-    assert "never replace the" in instruction
-    assert "built-in confirmation with a prose question" in instruction
-    assert "Never claim confirmation was requested unless you" in instruction
-    assert "emitted the guarded tool call in this turn" in instruction
+    assert "are approval-proposal tools" in instruction
+    assert "Calling one before approval" in instruction
+    assert "does not change state" in instruction
+    assert "Only the later confirmed execution performs the write" in instruction
+    assert "your next model output must be the matching guarded tool call" in instruction
+    assert "not a sentence promising or claiming a request" in instruction
+    assert "Only that call creates" in instruction
+    assert "If the evidence does not support it" in instruction
     assert "incidents by ids returned by tools or the engineer" in instruction
     assert "(e.g. INC-001)" not in instruction
     assert "re-read the incident and affected service" in instruction

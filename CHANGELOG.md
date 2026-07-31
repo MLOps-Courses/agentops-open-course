@@ -36,6 +36,8 @@ All notable changes to the AgentOps Open Course are documented here. The format 
 - Replaced probabilistic required exercises and broad directory restores with deterministic offline checks, dirty-worktree preflights, and named-file cleanup.
 - Closed documentation drift across dependency versions, tool profiles, CLI expansions, route ordering, setup tiers, retrieval behavior, and release evidence.
 - Made CI concurrency, permissions, job scopes, diagnostics, and scheduled evidence explicit while keeping all required pull-request gates deterministic.
+- Restored App-level policy parity in ADK and MLflow evaluation, made recall, skill loading, and both approval proposals individually required, and prevented failed critical transcripts from becoming cost baselines.
+- Hardened Platform acceptance around isolated DNS, MLflow's measured 2 GiB ceiling, PII-stable backup evidence, fail-fast restore Jobs, and sanitized container diagnostics.
 - Made release lookup, run qualification, SPDX attestation matching, image cleanup, and package-index publication retry-safe and fail-closed.
 - Made GKE delivery authenticate Docker explicitly, select the exact cluster context, publish only a clean source SHA, and document complete application and infrastructure cleanup.
 - Made optional GKE cleanup capture exact CSI handles across both course namespaces, accept a valid empty partial-deploy inventory, and restore only APIs enabled by that lab.
