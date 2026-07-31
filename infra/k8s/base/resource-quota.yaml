@@ -4,10 +4,10 @@
 # Quota sizing = declared steady state + rolling-update surge headroom.
 # Steady state (gateway, MCP, agent, MLflow, collector, Loki, plus the local
 # overlay's Prometheus and Alertmanager): requests 1050m/2112Mi, limits
-# 4700m/4992Mi. Skaffold rollouts surge one extra pod per RollingUpdate
+# 4700m/6016Mi. Skaffold rollouts surge one extra pod per RollingUpdate
 # deployment (MLflow, Loki, Prometheus, and Alertmanager are Recreate):
-# +550m/+1024Mi requests, +2500m/+2816Mi limits. The remainder covers one or
-# two LimitRange-defaulted debug pods.
+# +550m/+1024Mi requests, +2500m/+2816Mi limits. The 9 Gi ceiling covers either
+# that full surge or several LimitRange-defaulted debug pods at steady state.
 apiVersion: v1
 kind: ResourceQuota
 metadata:

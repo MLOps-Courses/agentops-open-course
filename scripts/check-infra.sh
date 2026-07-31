@@ -161,6 +161,8 @@ for overlay in local gke; do
 	backup_arguments="$(yq -r 'select(.kind == "CronJob" and .metadata.name == "agentops-state-backup") | .spec.jobTemplate.spec.template.spec.containers[] | select(.name == "backup") | .args[]' "${rendered}")"
 	[[ "${backup_state_read_only}" == "true" ]]
 	[[ "${backup_target_read_only}" == "false" ]]
+	mlflow_memory_limit="$(yq -r 'select(.kind == "Deployment" and .metadata.name == "mlflow") | .spec.template.spec.containers[0].resources.limits.memory' "${rendered}")"
+	[[ "${mlflow_memory_limit}" == "2Gi" ]]
 	if rg -Fx -- '--lock-file' <<<"${backup_arguments}" >/dev/null; then
 		fail "backup CronJob must use the shared state-directory lock"
 	fi
@@ -186,10 +188,8 @@ for overlay in local gke; do
 			[[ "${deployment_cpu}" == "50m" ]]
 		done
 		mlflow_cpu="$(yq -r 'select(.kind == "Deployment" and .metadata.name == "mlflow") | .spec.template.spec.containers[0].resources.requests.cpu' "${rendered}")"
-		mlflow_memory_limit="$(yq -r 'select(.kind == "Deployment" and .metadata.name == "mlflow") | .spec.template.spec.containers[0].resources.limits.memory' "${rendered}")"
 		agent_cpu="$(yq -r 'select(.kind == "Agent" and .metadata.name == "agentops-agent") | .spec.byo.deployment.resources.requests.cpu' "${rendered}")"
 		[[ "${mlflow_cpu}" == "100m" ]]
-		[[ "${mlflow_memory_limit}" == "2Gi" ]]
 		[[ "${agent_cpu}" == "100m" ]]
 
 		vertex_backend_model="$(yq -r '.binds[] | select(.port == 4000) | .listeners[].routes[].backends[].ai.provider.vertex.model' infra/agentgateway/gke/config.yaml)"

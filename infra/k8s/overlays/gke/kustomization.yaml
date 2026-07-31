@@ -37,11 +37,6 @@ patches:
       - op: replace
         path: /spec/template/spec/containers/0/resources/requests/cpu
         value: 100m
-      # GCS client loading and SQLite migrations briefly exceed the base
-      # ceiling. Preserve the low reservation while allowing that burst.
-      - op: replace
-        path: /spec/template/spec/containers/0/resources/limits/memory
-        value: 2Gi
   - target:
       group: kagent.dev
       version: v1alpha2

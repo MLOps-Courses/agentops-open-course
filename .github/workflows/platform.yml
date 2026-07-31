@@ -791,7 +791,7 @@ jobs:
                 pod: .metadata.name,
                 containers: [
                   .status.containerStatuses[]? |
-                  {name, image, imageID, ready, restartCount}
+                  {name, image, imageID, ready, restartCount, state, lastState}
                 ]
               }
             ]' >"${diagnostics}/images.json" || true
@@ -799,6 +799,9 @@ jobs:
             kubectl logs --namespace "${namespace}" "${pod}" \
               --container "${container}" --tail=500 2>&1 |
               sanitize >"${diagnostics}/log-${namespace}-${pod}-${container}.txt" || true
+            kubectl logs --namespace "${namespace}" "${pod}" \
+              --container "${container}" --previous --tail=500 2>&1 |
+              sanitize >"${diagnostics}/log-${namespace}-${pod}-${container}-previous.txt" || true
           done < <(
             kubectl get pods --all-namespaces -o json |
               jq -r '.items[] |
