@@ -10,40 +10,81 @@ import json
 import re
 import sys
 from collections.abc import Sequence
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any, Final
 
 _ISSUE_TITLE_PREFIX: Final = "docs: freshness audit"
 _MAX_AGE: Final = dt.timedelta(days=120)
 _MIN_WAIVER_LENGTH: Final = 24
-_TASK: Final = re.compile(r"^\s{0,3}[-*+]\s+\[([ xX])\]\s+(.+?)\s*$")
-_FENCE: Final = re.compile(r"^\s{0,3}(`{3,}|~{3,})")
-_HTML_COMMENT: Final = re.compile(r"<!--.*?-->", re.DOTALL)
-_DEFAULT_TEMPLATE: Final = Path(".github/ISSUE_TEMPLATE/docs-freshness.md")
 
 
-def _task_items(markdown: str) -> list[tuple[bool, str]]:
-    """Return real GFM task items, excluding fenced examples and comments."""
-    items: list[tuple[bool, str]] = []
-    fence_character: str | None = None
-    fence_length = 0
-    for line in _HTML_COMMENT.sub("", markdown).splitlines():
-        if fence_character is not None:
-            closing = re.fullmatch(rf"\s{{0,3}}{re.escape(fence_character)}{{{fence_length},}}\s*", line)
-            if closing:
-                fence_character = None
-                fence_length = 0
-            continue
-        if opening := _FENCE.match(line):
-            marker = opening.group(1)
-            fence_character = marker[0]
-            fence_length = len(marker)
-            continue
-        if task := _TASK.match(line):
-            label = re.sub(r"\s+", " ", task.group(2)).strip()
-            if label:
-                items.append((task.group(1).lower() == "x", label))
-    return items
+class _RenderedTask:
+    """Accumulate one GitHub-rendered task-list item."""
+
+    def __init__(self) -> None:
+        self.checkbox: bool | None = None
+        self.text: list[str] = []
+        self.invalid = False
+
+
+class _RenderedTaskParser(HTMLParser):
+    """Extract only task items that GitHub's GFM renderer made interactive."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.items: list[tuple[bool, str]] = []
+        self._list_items: list[_RenderedTask | None] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        attributes = dict(attrs)
+        if tag == "li":
+            classes = (attributes.get("class") or "").split()
+            self._list_items.append(_RenderedTask() if "task-list-item" in classes else None)
+            return
+        if tag != "input" or not self._list_items or (item := self._list_items[-1]) is None:
+            return
+        classes = (attributes.get("class") or "").split()
+        checked = "checked" in attributes
+        valid = (
+            attributes.get("type") == "checkbox" and "disabled" in attributes and "task-list-item-checkbox" in classes
+        )
+        if item.checkbox is not None or not valid:
+            item.invalid = True
+        else:
+            item.checkbox = checked
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        self.handle_starttag(tag, attrs)
+
+    def handle_data(self, data: str) -> None:
+        if self._list_items and (item := self._list_items[-1]) is not None:
+            item.text.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag != "li" or not self._list_items:
+            return
+        item = self._list_items.pop()
+        if item is None:
+            return
+        label = re.sub(r"\s+", " ", "".join(item.text)).strip()
+        if item.invalid or item.checkbox is None or not label:
+            raise ValueError("rendered freshness checklist contains a malformed task item")
+        self.items.append((item.checkbox, label))
+
+    def finish(self) -> list[tuple[bool, str]]:
+        """Reject malformed rendered HTML instead of accepting partial evidence."""
+        self.close()
+        if self._list_items:
+            raise ValueError("rendered freshness checklist contains an unclosed list item")
+        return self.items
+
+
+def _rendered_task_items(rendered_html: str) -> list[tuple[bool, str]]:
+    """Return task states and canonical visible labels from GitHub-rendered HTML."""
+    parser = _RenderedTaskParser()
+    parser.feed(rendered_html)
+    return parser.finish()
 
 
 def _checklist_digest(labels: list[str]) -> str:
@@ -78,7 +119,7 @@ def validate_freshness_handoff(
     repository: str,
     now: dt.datetime,
     issue: dict[str, Any] | None = None,
-    checklist_template: str | None = None,
+    checklist_template_html: str | None = None,
 ) -> dict[str, Any]:
     """Return sanitized review evidence or reject a stale/ambiguous handoff."""
     if not actor.strip() or not re.fullmatch(r"[^/]+/[^/]+", repository):
@@ -101,14 +142,20 @@ def validate_freshness_handoff(
         body = issue.get("body")
         if not isinstance(body, str) or not body.strip():
             raise ValueError("freshness issue must contain its reviewed checklist")
-        if not isinstance(checklist_template, str) or not checklist_template.strip():
-            raise ValueError("freshness checklist template is required for issue evidence")
-        expected = [label for _, label in _task_items(checklist_template)]
-        reviewed = _task_items(body)
+        body_html = issue.get("body_html")
+        if not isinstance(body_html, str) or not body_html.strip():
+            raise ValueError("freshness issue must include GitHub-rendered HTML")
+        if not isinstance(checklist_template_html, str) or not checklist_template_html.strip():
+            raise ValueError("rendered freshness checklist template is required for issue evidence")
+        template_items = _rendered_task_items(checklist_template_html)
+        if any(checked for checked, _ in template_items):
+            raise ValueError("freshness checklist template must contain only unchecked task items")
+        expected = [label for _, label in template_items]
+        reviewed = _rendered_task_items(body_html)
         if not expected:
             raise ValueError("freshness checklist template contains no task items")
         if not reviewed:
-            raise ValueError("freshness issue must contain checked checklist items outside code examples")
+            raise ValueError("freshness issue must contain GitHub-rendered task items")
         if any(not checked for checked, _ in reviewed):
             raise ValueError("freshness issue still contains unchecked checklist items")
         reviewed_labels = [label for _, label in reviewed]
@@ -159,24 +206,26 @@ def main(argv: Sequence[str] | None = None) -> None:
     parser.add_argument("--actor", required=True)
     parser.add_argument("--repository", required=True)
     parser.add_argument("--issue-json", type=Path)
-    parser.add_argument("--checklist-template", type=Path, default=_DEFAULT_TEMPLATE)
+    parser.add_argument("--checklist-template-html", type=Path)
     arguments = parser.parse_args(argv)
     issue = None
-    checklist_template = None
+    checklist_template_html = None
     try:
         if arguments.issue_json is not None:
             loaded = json.loads(arguments.issue_json.read_text(encoding="utf-8"))
             if not isinstance(loaded, dict):
                 raise ValueError("freshness issue response must be one JSON object")
             issue = loaded
-            checklist_template = arguments.checklist_template.read_text(encoding="utf-8")
+            if arguments.checklist_template_html is None:
+                raise ValueError("rendered freshness checklist template is required with issue evidence")
+            checklist_template_html = arguments.checklist_template_html.read_text(encoding="utf-8")
         result = validate_freshness_handoff(
             arguments.evidence,
             actor=arguments.actor,
             repository=arguments.repository,
             now=dt.datetime.now(dt.UTC),
             issue=issue,
-            checklist_template=checklist_template,
+            checklist_template_html=checklist_template_html,
         )
     except (OSError, ValueError, json.JSONDecodeError) as error:
         raise SystemExit(f"error: {error}") from error

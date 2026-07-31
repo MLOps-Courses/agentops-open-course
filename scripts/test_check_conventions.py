@@ -297,6 +297,25 @@ class SourceContractTests(unittest.TestCase):
             )
         assert any("release_freshness.py" in message for _, message in problems)
 
+    def test_release_workflow_cannot_replace_rendered_freshness_evidence_with_raw_markdown(self) -> None:
+        docs = ("docs/8. Community/8.2. Releases.md",)
+        owners = (".github/workflows/release.yml",)
+        for required, replacement in (
+            ("application/vnd.github.full+json", "application/vnd.github+json"),
+            ("gh api --method POST markdown --input -", "printf unsafe-template"),
+        ):
+            with self.subTest(required=required), tempfile.TemporaryDirectory() as directory:
+                root = pathlib.Path(directory)
+                copy_contract_files(root, (*docs, *owners))
+                workflow = root / owners[0]
+                text = workflow.read_text(encoding="utf-8")
+                workflow.write_text(text.replace(required, replacement, 1), encoding="utf-8")
+                problems = check_conventions.check_release_freshness_course_contracts(
+                    contract_pages(root, docs),
+                    root=root,
+                )
+            assert any(required in message for _, message in problems)
+
     def test_release_page_cannot_hide_the_completed_checklist_requirement(self) -> None:
         docs = ("docs/8. Community/8.2. Releases.md",)
         owners = (".github/workflows/release.yml",)

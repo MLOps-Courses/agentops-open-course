@@ -1411,6 +1411,9 @@ def check_release_freshness_course_contracts(
         (
             "freshness_evidence:",
             "issues: read",
+            "application/vnd.github.full+json",
+            "gh api --method POST markdown --input -",
+            "--checklist-template-html freshness-template.html",
             "scripts/release_freshness.py",
             "freshness: $freshness",
         ),

@@ -62,8 +62,20 @@ jobs:
           freshness_arguments=()
           if [[ "$FRESHNESS_EVIDENCE" =~ ^issue:([1-9][0-9]*)$ ]]; then
             issue_number="${BASH_REMATCH[1]}"
-            gh api "repos/${GITHUB_REPOSITORY}/issues/${issue_number}" > freshness-issue.json
-            freshness_arguments+=(--issue-json freshness-issue.json)
+            gh api \
+              --header "Accept: application/vnd.github.full+json" \
+              "repos/${GITHUB_REPOSITORY}/issues/${issue_number}" \
+              > freshness-issue.json
+            jq \
+              --null-input \
+              --rawfile text .github/ISSUE_TEMPLATE/docs-freshness.md \
+              --arg context "$GITHUB_REPOSITORY" \
+              '{text: $text, mode: "gfm", context: $context}' |
+              gh api --method POST markdown --input - > freshness-template.html
+            freshness_arguments+=(
+              --issue-json freshness-issue.json
+              --checklist-template-html freshness-template.html
+            )
           fi
           python3 scripts/release_freshness.py \
             --evidence "$FRESHNESS_EVIDENCE" \

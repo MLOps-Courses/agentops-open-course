@@ -20,7 +20,7 @@ Two directories, split by what the code does:
 | `cluster-start.sh`     | `cluster:start`                                        | platform | Creates the local k3d cluster and its registry, or reconciles an existing one.      |
 | `promote.sh`           | `promote`                                              | platform | Eval-gated promotion: gate, render the overlay, print promote/rollback commands.    |
 | `release_evidence.py`  | Release workflow                                       | release  | Minimizes and binds qualifying Eval evidence to its exact run attempt.              |
-| `release_freshness.py` | Release workflow                                       | release  | Validates a recent completed freshness checklist or reviewed waiver.                |
+| `release_freshness.py` | Release workflow                                       | release  | Validates GitHub-rendered tasks from a recent freshness audit or a reviewed waiver. |
 | `release_reconcile.py` | Release workflow                                       | release  | Proves ownership before deleting a reversible failed-promotion index.               |
 | `smoke-host.sh`        | `smoke:host`                                           | gateway  | Proves the host composition against a fake model, then tears it down.               |
 | `lib.sh`               | sourced by the others                                  | —        | Strict mode plus shared command and cgroup prerequisite helpers.                    |
