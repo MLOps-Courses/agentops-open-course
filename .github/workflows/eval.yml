@@ -81,19 +81,20 @@ jobs:
 
       - name: Install Ollama and serve the evaluation model
         # Pin both the release asset and GitHub-published SHA-256 instead of
-        # executing Ollama's floating install script. Hold the last qualified
-        # runtime while #118 requalifies newer releases through the governed
-        # App; any upgrade also needs strict trajectories and a reviewed baseline.
+        # executing Ollama's floating install script. v0.32.5 contains the
+        # GCC 13 Linux-runner fix for the Sapphire Rapids first-inference crash
+        # seen on otherwise compatible hosted runners; it still needs the strict
+        # trajectories and reviewed baseline below before release qualification.
         run: |
           archive="${RUNNER_TEMP}/ollama-linux-amd64.tar.zst"
           curl --fail --show-error --location --retry 3 \
             --output "${archive}" \
-            "https://github.com/ollama/ollama/releases/download/v0.31.2/ollama-linux-amd64.tar.zst"
-          echo "2c88f0f31a959bac5a3cad4cc5296ec568551d4aa79f548f554adb2b575b3133  ${archive}" |
+            "https://github.com/ollama/ollama/releases/download/v0.32.5/ollama-linux-amd64.tar.zst"
+          echo "f7d6bdbcf71b83aa8670c4e7dc4b6936c0952fcf8b114eaf6a11cbadb9684214  ${archive}" |
             sha256sum --check -
           zstd --decompress --stdout "${archive}" | sudo tar -xf - -C /usr/local
           ollama --version
-          ollama serve &
+          ollama serve > agents/python/evals/ollama.log 2>&1 &
           timeout 60 bash -c 'until curl -fsS http://127.0.0.1:11434/ >/dev/null; do sleep 1; done'
           ollama pull "$AGENT_MODEL"
           model_digest="$(
@@ -111,6 +112,33 @@ jobs:
             '{model: $model, digest: $digest, ollama_version: $ollama_version, context_length: $context_length, temperature: $temperature}' \
             > agents/python/evals/model.json
           echo "EVAL_MODEL_DIGEST=${model_digest}" >> "$GITHUB_ENV"
+
+          # Readiness and a completed pull do not load the inference backend.
+          # Exercise one bounded generation now so CPU-library crashes fail
+          # before the six expensive evidence paths, with the server log kept.
+          smoke_payload="$(
+            jq -n \
+              --arg model "$AGENT_MODEL" \
+              '{
+                model: $model,
+                messages: [{role: "user", content: "Reply with OK."}],
+                temperature: 0,
+                max_tokens: 8,
+                stream: false
+              }'
+          )"
+          if ! smoke_response="$(
+            curl --fail-with-body --show-error \
+              --max-time "$AGENT_MODEL_TIMEOUT_S" \
+              --header 'Content-Type: application/json' \
+              --data "$smoke_payload" \
+              http://127.0.0.1:11434/v1/chat/completions
+          )"; then
+            tail -n 200 agents/python/evals/ollama.log >&2
+            exit 1
+          fi
+          jq -e '.choices[0].message.content | strings | length > 0' \
+            <<< "$smoke_response" >/dev/null
 
       - name: Run the ADK trajectory evaluation
         id: adk
@@ -226,6 +254,7 @@ jobs:
             agents/python/evals/report-eval.log
             agents/python/evals/workflow-eval.log
             agents/python/evals/mlflow-eval.log
+            agents/python/evals/ollama.log
             agents/python/evals/cost-eval.log
             agents/python/evals/cost-observed.json
             agents/python/evals/cost_baseline.json

@@ -373,12 +373,9 @@ class SourceContractTests(unittest.TestCase):
             root = pathlib.Path(directory)
             copy_contract_files(root, files)
             baseline = root / files[1]
-            text = baseline.read_text(encoding="utf-8")
-            assert "ollama version is 0.31.2" in text
-            baseline.write_text(
-                text.replace("ollama version is 0.31.2", "ollama version is 0.32.5", 1),
-                encoding="utf-8",
-            )
+            document = json.loads(baseline.read_text(encoding="utf-8"))
+            document["ollama_version"] = "ollama version is 0.0.0"
+            baseline.write_text(json.dumps(document), encoding="utf-8")
             problems = check_conventions.check_eval_runtime_baseline(root=root)
         assert any("scheduled Eval pins" in message for _, message in problems)
 

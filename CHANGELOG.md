@@ -37,6 +37,7 @@ All notable changes to the AgentOps Open Course are documented here. The format 
 - Closed documentation drift across dependency versions, tool profiles, CLI expansions, route ordering, setup tiers, retrieval behavior, and release evidence.
 - Made CI concurrency, permissions, job scopes, diagnostics, and scheduled evidence explicit while keeping all required pull-request gates deterministic.
 - Restored App-level policy parity in ADK and MLflow evaluation, made recall, skill loading, and both approval proposals individually required, and prevented failed critical transcripts from becoming cost baselines.
+- Upgraded scheduled model evidence to Ollama 0.32.5 with its Linux runner fix, and made a real first inference fail fast while retaining the server diagnostic log.
 - Hardened Platform acceptance around isolated DNS, MLflow's measured 2 GiB ceiling, PII-stable backup evidence, fail-fast restore Jobs, and sanitized container diagnostics.
 - Made release lookup, run qualification, SPDX attestation matching, image cleanup, and package-index publication retry-safe and fail-closed.
 - Made GKE delivery authenticate Docker explicitly, select the exact cluster context, publish only a clean source SHA, and document complete application and infrastructure cleanup.
