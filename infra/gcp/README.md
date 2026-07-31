@@ -76,11 +76,14 @@ Capture every dynamically provisioned disk before deleting either namespace. GKE
 Delete the workload data first, then the controller and its course-owned namespace:
 
 ```bash
-SKAFFOLD_DEFAULT_REPO="${repository}" \
-  skaffold delete \
-  --filename infra/skaffold.yaml \
-  --profile gke \
-  --kube-context "${expected_context}"
+(
+  cd infra
+  SKAFFOLD_DEFAULT_REPO="${repository}" \
+    skaffold delete \
+    --filename skaffold.yaml \
+    --profile gke \
+    --kube-context "${expected_context}"
+)
 kubectl --context "${expected_context}" \
   wait --for=delete namespace/agentops --timeout=300s
 helmfile \

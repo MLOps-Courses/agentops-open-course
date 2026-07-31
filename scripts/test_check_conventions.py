@@ -308,6 +308,9 @@ class SourceContractTests(unittest.TestCase):
         assert workflow.count("runAsUser: 100\n") == 3
         assert workflow.count("runAsGroup: 101\n") == 3
         assert workflow.count("image: curlimages/curl:8.21.0@sha256:") == 3
+        assert workflow.count("kubernetes.io/metadata.name: kube-system") == 1
+        assert workflow.count("{port: 53, protocol: UDP}") == 1
+        assert workflow.count("{port: 53, protocol: TCP}") == 1
 
     def test_gcp_runbook_rejects_a_root_scoped_tofu_command_without_chdir(self) -> None:
         relative = "infra/gcp/README.md"
@@ -321,6 +324,22 @@ class SourceContractTests(unittest.TestCase):
             readme.write_text(text.replace(needle, "tofu output -raw get_credentials_command", 1), encoding="utf-8")
             problems = check_conventions.check_gcp_runbook(root=root)
         assert any("needs `-chdir=infra/gcp`" in message for _, message in problems)
+
+    def test_skaffold_runbooks_reject_a_root_scoped_config_path(self) -> None:
+        relative = "infra/gcp/README.md"
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            copy_contract_files(root, (relative,))
+            readme = root / relative
+            text = readme.read_text(encoding="utf-8")
+            needle = "--filename skaffold.yaml"
+            assert needle in text
+            readme.write_text(
+                text.replace(needle, "--filename infra/skaffold.yaml", 1),
+                encoding="utf-8",
+            )
+            problems = check_conventions.check_skaffold_runbooks(root=root)
+        assert any("run from `infra/`" in message for _, message in problems)
 
     def test_ci_install_profile_cannot_drift_from_linting_page(self) -> None:
         files = (

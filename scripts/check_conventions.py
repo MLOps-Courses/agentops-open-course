@@ -1604,6 +1604,20 @@ def check_gcp_runbook(*, root: pathlib.Path = ROOT) -> list[Problem]:
     ]
 
 
+def check_skaffold_runbooks(*, root: pathlib.Path = ROOT) -> list[Problem]:
+    """Skaffold commands run beside its config because build paths are working-directory relative."""
+    paths = sorted(path for base in (root / "docs", root / "infra") if base.exists() for path in base.rglob("*.md"))
+    return [
+        (
+            path.relative_to(root).as_posix(),
+            f"line {line_number}: run from `infra/` with `--filename skaffold.yaml`",
+        )
+        for path in paths
+        for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1)
+        if "--filename infra/skaffold.yaml" in line
+    ]
+
+
 def safe_course_route(route: str) -> bool:
     """Return whether a route is a normalized relative HTML path."""
     path = pathlib.PurePosixPath(route)
@@ -1772,6 +1786,7 @@ def check_docs() -> list[Problem]:
     problems += check_cost_owner(pages)
     problems += check_quickstarts(pages)
     problems += check_gcp_runbook()
+    problems += check_skaffold_runbooks()
     problems += check_routes(pages)
     return problems
 
