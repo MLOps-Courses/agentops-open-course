@@ -99,6 +99,8 @@ jobs:
               --namespace kagent --ignore-not-found --wait=true >/dev/null
           }
           trap cleanup EXIT
+          # curlimages/curl declares curl_user by name. Kubernetes cannot prove that
+          # named user is non-root, so pin the image's reviewed numeric uid/gid.
           kubectl apply -f - <<'EOF'
           apiVersion: v1
           kind: Pod
@@ -112,6 +114,8 @@ jobs:
             automountServiceAccountToken: false
             securityContext:
               runAsNonRoot: true
+              runAsUser: 100
+              runAsGroup: 101
               seccompProfile:
                 type: RuntimeDefault
             containers:
@@ -155,6 +159,8 @@ jobs:
             automountServiceAccountToken: false
             securityContext:
               runAsNonRoot: true
+              runAsUser: 100
+              runAsGroup: 101
               seccompProfile:
                 type: RuntimeDefault
             containers:
@@ -180,6 +186,8 @@ jobs:
             automountServiceAccountToken: false
             securityContext:
               runAsNonRoot: true
+              runAsUser: 100
+              runAsGroup: 101
               seccompProfile:
                 type: RuntimeDefault
             containers:

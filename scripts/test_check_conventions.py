@@ -303,6 +303,12 @@ class SourceContractTests(unittest.TestCase):
             )
         assert any("exceeds the 7-day policy" in message for _, message in problems)
 
+    def test_platform_network_probes_pin_the_curl_image_numeric_identity(self) -> None:
+        workflow = check_conventions.ROOT.joinpath(".github/workflows/platform.yml").read_text(encoding="utf-8")
+        assert workflow.count("runAsUser: 100\n") == 3
+        assert workflow.count("runAsGroup: 101\n") == 3
+        assert workflow.count("image: curlimages/curl:8.21.0@sha256:") == 3
+
     def test_gcp_runbook_rejects_a_root_scoped_tofu_command_without_chdir(self) -> None:
         relative = "infra/gcp/README.md"
         with tempfile.TemporaryDirectory() as directory:
