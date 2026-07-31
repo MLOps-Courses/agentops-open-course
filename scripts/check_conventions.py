@@ -1605,7 +1605,7 @@ def check_gcp_runbook(*, root: pathlib.Path = ROOT) -> list[Problem]:
 
 
 def check_skaffold_runbooks(*, root: pathlib.Path = ROOT) -> list[Problem]:
-    """Skaffold commands run beside its config because build paths are working-directory relative."""
+    """Reject root-relative configs and working-directory-dependent profile shorthand."""
     paths = sorted(path for base in (root / "docs", root / "infra") if base.exists() for path in base.rglob("*.md"))
     return [
         (
@@ -1615,6 +1615,31 @@ def check_skaffold_runbooks(*, root: pathlib.Path = ROOT) -> list[Problem]:
         for path in paths
         for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1)
         if "--filename infra/skaffold.yaml" in line
+        or re.search(r"\bskaffold\s+(?:run|delete)\s+-p\s+(?:local|gke)\b", line)
+    ]
+
+
+def check_eval_runtime_baseline(*, root: pathlib.Path = ROOT) -> list[Problem]:
+    """Keep the measured cost baseline bound to the scheduled Ollama runtime."""
+    workflow_path = root / ".github/workflows/eval.yml"
+    baseline_path = root / "agents/python/evals/cost_baseline.json"
+    try:
+        workflow = workflow_path.read_text(encoding="utf-8")
+        baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        return [(baseline_path.relative_to(root).as_posix(), f"could not read eval runtime evidence: {error}")]
+    release = re.search(r"/ollama/ollama/releases/download/(v\d+\.\d+\.\d+)/ollama-", workflow)
+    if release is None:
+        return [(workflow_path.relative_to(root).as_posix(), "could not identify the pinned Ollama release")]
+    expected = f"ollama version is {release.group(1).removeprefix('v')}"
+    actual = baseline.get("ollama_version") if isinstance(baseline, dict) else None
+    if actual == expected:
+        return []
+    return [
+        (
+            baseline_path.relative_to(root).as_posix(),
+            f"reviewed Ollama runtime is {actual!r}; scheduled Eval pins {expected!r}",
+        )
     ]
 
 
@@ -1787,6 +1812,7 @@ def check_docs() -> list[Problem]:
     problems += check_quickstarts(pages)
     problems += check_gcp_runbook()
     problems += check_skaffold_runbooks()
+    problems += check_eval_runtime_baseline()
     problems += check_routes(pages)
     return problems
 

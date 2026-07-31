@@ -29,8 +29,10 @@ jobs:
     env:
       BACKUP_EVIDENCE_MARKER: platform-backup-${{ github.run_id }}-${{ github.run_attempt }}
       GITHUB_TOKEN: ${{ github.token }}
-      TELEMETRY_LOG_MARKER: platform-telemetry-log-${{ github.run_id }}-${{ github.run_attempt }}
-      TELEMETRY_SENTINEL: platform-private-${{ github.run_id }}-${{ github.run_attempt }}
+      # Keep privacy canaries alphabetic: numeric run IDs can look like financial
+      # identifiers to Presidio and turn capture assertions into false positives.
+      TELEMETRY_LOG_MARKER: platform-telemetry-log-canary
+      TELEMETRY_SENTINEL: platform-private-content-canary
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -785,16 +787,38 @@ jobs:
             helm status kagent-crds --namespace kagent
           } 2>&1 | sanitize >"${diagnostics}/helm.txt" || true
           kubectl get pods --all-namespaces -o json |
-            jq '[
+            jq '
+            def safe_container_state:
+              if type != "object" then {}
+              else {
+                waiting: (if .waiting then {reason: .waiting.reason} else null end),
+                running: (if .running then {startedAt: .running.startedAt} else null end),
+                terminated: (
+                  if .terminated then
+                    (.terminated | {exitCode, reason, signal, startedAt, finishedAt})
+                  else null
+                  end
+                )
+              } | with_entries(select(.value != null))
+              end;
+            [
               .items[] | {
                 namespace: .metadata.namespace,
                 pod: .metadata.name,
                 containers: [
                   .status.containerStatuses[]? |
-                  {name, image, imageID, ready, restartCount, state, lastState}
+                  {
+                    name,
+                    image,
+                    imageID,
+                    ready,
+                    restartCount,
+                    state: (.state | safe_container_state),
+                    lastState: (.lastState | safe_container_state)
+                  }
                 ]
               }
-            ]' >"${diagnostics}/images.json" || true
+            ]' | sanitize >"${diagnostics}/images.json" || true
           while read -r namespace pod container; do
             kubectl logs --namespace "${namespace}" "${pod}" \
               --container "${container}" --tail=500 2>&1 |

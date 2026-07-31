@@ -81,13 +81,15 @@ jobs:
 
       - name: Install Ollama and serve the evaluation model
         # Pin both the release asset and GitHub-published SHA-256 instead of
-        # executing Ollama's floating install script.
+        # executing Ollama's floating install script. Hold the last qualified
+        # runtime: 0.32.5 omitted a guarded tool call and regressed measured
+        # cost, so any upgrade also needs a reviewed green baseline.
         run: |
           archive="${RUNNER_TEMP}/ollama-linux-amd64.tar.zst"
           curl --fail --show-error --location --retry 3 \
             --output "${archive}" \
-            "https://github.com/ollama/ollama/releases/download/v0.32.5/ollama-linux-amd64.tar.zst"
-          echo "f7d6bdbcf71b83aa8670c4e7dc4b6936c0952fcf8b114eaf6a11cbadb9684214  ${archive}" |
+            "https://github.com/ollama/ollama/releases/download/v0.31.2/ollama-linux-amd64.tar.zst"
+          echo "2c88f0f31a959bac5a3cad4cc5296ec568551d4aa79f548f554adb2b575b3133  ${archive}" |
             sha256sum --check -
           zstd --decompress --stdout "${archive}" | sudo tar -xf - -C /usr/local
           ollama --version

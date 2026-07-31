@@ -312,6 +312,13 @@ class SourceContractTests(unittest.TestCase):
         assert workflow.count("{port: 53, protocol: UDP}") == 1
         assert workflow.count("{port: 53, protocol: TCP}") == 1
 
+    def test_platform_privacy_canaries_survive_pii_redaction(self) -> None:
+        workflow = check_conventions.ROOT.joinpath(".github/workflows/platform.yml").read_text(encoding="utf-8")
+        assert "TELEMETRY_LOG_MARKER: platform-telemetry-log-canary" in workflow
+        assert "TELEMETRY_SENTINEL: platform-private-content-canary" in workflow
+        assert "def safe_container_state:" in workflow
+        assert ".terminated | {exitCode, reason, signal, startedAt, finishedAt}" in workflow
+
     def test_gcp_runbook_rejects_a_root_scoped_tofu_command_without_chdir(self) -> None:
         relative = "infra/gcp/README.md"
         with tempfile.TemporaryDirectory() as directory:
@@ -340,6 +347,37 @@ class SourceContractTests(unittest.TestCase):
             )
             problems = check_conventions.check_skaffold_runbooks(root=root)
         assert any("run from `infra/`" in message for _, message in problems)
+
+    def test_skaffold_runbooks_reject_working_directory_dependent_shorthand(self) -> None:
+        relative = "infra/README.md"
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            copy_contract_files(root, (relative,))
+            readme = root / relative
+            text = readme.read_text(encoding="utf-8")
+            needle = "skaffold delete --filename skaffold.yaml --profile local"
+            assert needle in text
+            readme.write_text(
+                text.replace(needle, "skaffold delete -p local", 1),
+                encoding="utf-8",
+            )
+            problems = check_conventions.check_skaffold_runbooks(root=root)
+        assert any("run from `infra/`" in message for _, message in problems)
+
+    def test_eval_runtime_cannot_drift_from_the_reviewed_cost_baseline(self) -> None:
+        files = (".github/workflows/eval.yml", "agents/python/evals/cost_baseline.json")
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            copy_contract_files(root, files)
+            baseline = root / files[1]
+            text = baseline.read_text(encoding="utf-8")
+            assert "ollama version is 0.31.2" in text
+            baseline.write_text(
+                text.replace("ollama version is 0.31.2", "ollama version is 0.32.5", 1),
+                encoding="utf-8",
+            )
+            problems = check_conventions.check_eval_runtime_baseline(root=root)
+        assert any("scheduled Eval pins" in message for _, message in problems)
 
     def test_ci_install_profile_cannot_drift_from_linting_page(self) -> None:
         files = (
