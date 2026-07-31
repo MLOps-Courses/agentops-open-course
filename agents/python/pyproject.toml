@@ -12,7 +12,7 @@ authors = [{ name = "Médéric HURIER", email = "agentops-open-course@fmind.dev"
 # --8<-- [start:runtime-dependencies]
 dependencies = [
   "aiosqlite>=0.22.1,<0.23", # async SQLite driver for ADK sessions and the A2A task store
-  "google-adk[a2a]>=2.6.0", # locked agent runtime + A2A serving; avoid the unused Spanner `db` extra
+  "google-adk[a2a]>=2.6.1", # locked agent runtime + A2A serving; avoid the unused Spanner `db` extra
   "a2a-sdk>=1.1.2", # A2A protocol types + server (Ch. 3.6); 1.x reworked the type surface — kept current with ADK's <2 cap
   # Model Context Protocol server (FastMCP) + client (McpToolset), Ch. 3.3.
   # Capped at <2 because the locked ADK declares `mcp<2`. Lift this bound only with an ADK

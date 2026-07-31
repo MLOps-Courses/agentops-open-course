@@ -86,7 +86,7 @@ requires-dist = [
     { name = "aiosqlite", specifier = ">=0.22.1,<0.23" },
     { name = "cryptography", specifier = ">=48.0.1,<49" },
     { name = "en-core-web-sm", url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl" },
-    { name = "google-adk", extras = ["a2a"], specifier = ">=2.6.0" },
+    { name = "google-adk", extras = ["a2a"], specifier = ">=2.6.1" },
     { name = "mcp", specifier = ">=1.28.1,<2" },
     { name = "openai", specifier = ">=2.51.0" },
     { name = "opentelemetry-exporter-otlp-proto-http", specifier = ">=1.42.0,<=1.42.1" },
@@ -791,7 +791,7 @@ wheels = [
 
 [[package]]
 name = "google-adk"
-version = "2.6.0"
+version = "2.6.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -820,9 +820,9 @@ dependencies = [
     { name = "watchdog" },
     { name = "websockets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/30/83/db3c747a3679f4c4c651e12351d660c8759fcdbcaca28dd44a48e155ff4a/google_adk-2.6.0.tar.gz", hash = "sha256:f0b30e26f22602c240faf0aea75b6b42b3487288da3335da3c8474bcc8c82f29", size = 3713485, upload-time = "2026-07-30T17:59:29.559Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/56/84/9eeb008e45edc5522e098b2a38c1e9d469630e20457fdae96852ea68d115/google_adk-2.6.1.tar.gz", hash = "sha256:3bb6fae4c859197ea4cb68045232bfc76c90b46fd0149da732bdfe6c47b6f0d1", size = 3721157, upload-time = "2026-07-31T21:15:53.115Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/84/5d/1864ab28ea2fe6f288c0a4b859e620819ac2ac48ddfe6f8096efb821f7c6/google_adk-2.6.0-py3-none-any.whl", hash = "sha256:f51556261cd2d53f45567ca3e9284299792549c57096f0b14c0ffe10a939c408", size = 4296977, upload-time = "2026-07-30T17:59:27.52Z" },
+    { url = "https://files.pythonhosted.org/packages/c0/f5/9fffcc19719b6919269810cdbd0a077fdde2c410f5591fc52384059cf55b/google_adk-2.6.1-py3-none-any.whl", hash = "sha256:f585bf99f401881da2fab5a8e7b3dfa55cc0e11cfcf22cf0a9abe9b163990566", size = 4305112, upload-time = "2026-07-31T21:15:50.207Z" },
 ]
 
 [package.optional-dependencies]
