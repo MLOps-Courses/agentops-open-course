@@ -28,6 +28,13 @@ _SUMMARY = re.compile(
     r"^[ \t]+Tests failed:\s*(\d+)\s*$"
 )
 
+REQUIRED_LIVE_CASES = (
+    "investigation-recalls-context",
+    "remediation-loads-skill",
+    "restart-needs-approval",
+    "resolve-needs-approval",
+)
+
 
 def summary_counts(output: str) -> tuple[int, int] | None:
     """Return counts from one subprocess's final authoritative ADK summary."""
@@ -146,7 +153,7 @@ def main() -> None:  # pragma: no cover - the model-backed subprocess belongs to
             command = [
                 sys.executable,
                 "-m",
-                "google.adk.cli",
+                "evals.governed_adk_eval",
                 "eval",
                 str(args.agent),
                 selector,

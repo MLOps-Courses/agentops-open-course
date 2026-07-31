@@ -35,7 +35,9 @@ try:  # pytest imports this as ``evals.cost_eval``; the CLI runs it with ``evals
         ask,
         load_model_observations,
         provider_error_messages,
+        tool_trajectory,
     )
+    from evals.run_adk_eval import REQUIRED_LIVE_CASES
 except ModuleNotFoundError:  # pragma: no cover - script-invocation fallback
     from mlflow_eval import (  # ty: ignore[unresolved-import]
         _evaluation_contract_digest,
@@ -44,7 +46,9 @@ except ModuleNotFoundError:  # pragma: no cover - script-invocation fallback
         ask,
         load_model_observations,
         provider_error_messages,
+        tool_trajectory,
     )
+    from run_adk_eval import REQUIRED_LIVE_CASES  # ty: ignore[unresolved-import]
 
 from agent.config import settings
 
@@ -123,6 +127,14 @@ def measure() -> dict[str, dict[str, int]]:
         result = retained[eval_id] if retained is not None else ask(inputs["turns"], eval_id)
         if errors := provider_error_messages(result):
             raise SystemExit(f"Measured model usage case {eval_id!r} contains provider errors: {'; '.join(errors)}")
+        if eval_id in REQUIRED_LIVE_CASES and not tool_trajectory(
+            outputs=result,
+            expectations=case["expectations"],
+        ):
+            raise SystemExit(
+                f"Measured model usage required case {eval_id!r} missed its tool trajectory; "
+                "refusing to compare or update a cost baseline."
+            )
         usage = result.get("usage")
         observed[eval_id] = _usage_cases(
             {eval_id: usage},
@@ -367,11 +379,12 @@ def _tolerance(raw: str | None) -> float:
 def main() -> None:
     """Measure per-case usage, then record or compare against the baseline."""
     update = "--update" in sys.argv[1:]
+    retained_transcript = bool(os.environ.get("AGENT_EVAL_OBSERVED_PATH"))
     model_digest = _model_digest()
     identity = _current_identity(model_digest)
     baseline: dict[str, dict[str, int]] | None = None
     tolerance = _DEFAULT_TOLERANCE
-    if not update and _BASELINE.exists():
+    if not update and _BASELINE.exists() and not retained_transcript:
         baseline = _baseline_cases(
             _read_json(_BASELINE),
             identity=identity,
@@ -384,6 +397,17 @@ def main() -> None:
     for eval_id in sorted(observed):
         usage = observed[eval_id]
         print(f"  {eval_id}: {usage['total_tokens']} tokens, {usage['model_calls']} model calls")  # noqa: T201
+
+    # The scheduled lane already paid for and retained this transcript. Preserve
+    # its candidate evidence before an intentional prompt/model identity change
+    # rejects comparison with the old baseline. Standalone runs still fail fast
+    # above so a stale baseline never triggers avoidable model calls.
+    if not update and _BASELINE.exists() and baseline is None:
+        baseline = _baseline_cases(
+            _read_json(_BASELINE),
+            identity=identity,
+        )
+        tolerance = _tolerance(os.environ.get("AGENT_COST_TOLERANCE"))
 
     if update or not _BASELINE.exists():
         _write_json(_BASELINE, measurement)

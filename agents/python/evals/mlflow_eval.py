@@ -34,6 +34,7 @@ from pydantic import BaseModel, Field
 
 from agent.config import settings
 from agent.domain import REFERENCE_DOMAIN
+from agent.governance import build_app
 from agent.model import close_model
 
 # Prompt selection is configured before ``agent.composition`` is imported.
@@ -358,9 +359,12 @@ async def _run(turns: list[str], eval_id: str, evaluation_agent: BaseAgent | Non
     if not isinstance(selected_agent, BaseAgent):
         raise RuntimeError("MLflow evaluation requires AGENT_ENTRYPOINT=agent.")
     user_id = _eval_user_id(eval_id)
-    runner = InMemoryRunner(agent=selected_agent, app_name=_EXPERIMENT)
+    # Evaluate the same App boundary production executes. A bare-agent runner
+    # silently drops the policy plugin and can certify behavior that never sees
+    # budget, compaction, redaction, action validation, or hardened tool data.
+    runner = InMemoryRunner(app=build_app(selected_agent))
     try:
-        session = await runner.session_service.create_session(app_name=_EXPERIMENT, user_id=user_id)
+        session = await runner.session_service.create_session(app_name=runner.app_name, user_id=user_id)
         responses: list[str] = []
         trajectories: list[list[dict[str, Any]]] = []
         # The concatenated tool-response text the agent actually received each turn.

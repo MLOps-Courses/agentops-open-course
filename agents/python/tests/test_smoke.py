@@ -3,9 +3,10 @@
 from google.adk import Agent
 
 from agent import composition
-from agent.composition import root_agent
+from agent.composition import app, root_agent
 from agent.config import AgentEntrypoint, settings
 from agent.delegation import coordinator_agent
+from agent.governance import AgentOpsPolicyPlugin, build_app
 from agent.workflow import triage_workflow
 
 
@@ -13,6 +14,16 @@ def test_root_agent_defined() -> None:
     assert isinstance(root_agent, Agent)
     assert root_agent.name == "agentops_agent"
     assert root_agent.model
+
+
+def test_app_factory_attaches_exactly_one_policy_plugin() -> None:
+    candidate = build_app(root_agent)
+    assert candidate.root_agent is root_agent
+    assert len(candidate.plugins) == 1
+    assert isinstance(candidate.plugins[0], AgentOpsPolicyPlugin)
+    assert app.root_agent is root_agent
+    assert len(app.plugins) == 1
+    assert isinstance(app.plugins[0], AgentOpsPolicyPlugin)
 
 
 def test_composition_selector_exposes_each_validated_entrypoint(monkeypatch) -> None:
@@ -39,6 +50,11 @@ def test_instruction_requires_plan_and_post_action_verification() -> None:
     instruction = str(root_agent.instruction)
     assert "concise, observable plan" in instruction
     assert "expected recovery evidence" in instruction
+    assert "call `recall_incident_context` and wait before" in instruction
+    assert "guarded-action request" in instruction
+    assert "decision-context read" in instruction
+    assert instruction.index("call `recall_incident_context`") < instruction.index("call `get_incident`")
+    assert "call `get_incident` first" not in instruction
     assert "Skill discovery returns only names and summaries" in instruction
     assert "then `load_skill`" in instruction
     assert "Evidence reads with data dependencies are sequential" in instruction
@@ -47,6 +63,8 @@ def test_instruction_requires_plan_and_post_action_verification() -> None:
     assert "infer a cause from an empty filtered result" in instruction
     assert "ADK creates its confirmation request" in instruction
     assert "gather and wait for every decision-context result" in instruction
+    assert "Never narrate a" in instruction
+    assert "future guarded call: emit it now" in instruction
     assert "never replace the" in instruction
     assert "built-in confirmation with a prose question" in instruction
     assert "Never claim confirmation was requested unless you" in instruction

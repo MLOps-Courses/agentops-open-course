@@ -8,6 +8,7 @@ from google.adk.evaluation.agent_evaluator import AgentEvaluator
 from google.adk.evaluation.metric_evaluator_registry import DEFAULT_METRIC_EVALUATOR_REGISTRY
 from google.adk.evaluation.metric_info_providers import TrajectoryEvaluatorMetricInfoProvider
 
+from evals.governed_adk_eval import install_app_policy
 from evals.required_trajectory import RequiredToolTrajectoryEvaluator
 from evals.runtime import isolated_state, require_attributable_runtime
 
@@ -15,6 +16,7 @@ from evals.runtime import isolated_state, require_attributable_runtime
 def main() -> None:
     """Evaluate schema-enforced reports with the same engine as ``adk eval``."""
     require_attributable_runtime()
+    install_app_policy()
     # AgentEvaluator does not register config-declared custom metrics itself,
     # so install the same locked trajectory contract used by the ADK CLI.
     DEFAULT_METRIC_EVALUATOR_REGISTRY.register_evaluator(

@@ -82,8 +82,8 @@ jobs:
       - name: Install Ollama and serve the evaluation model
         # Pin both the release asset and GitHub-published SHA-256 instead of
         # executing Ollama's floating install script. Hold the last qualified
-        # runtime: 0.32.5 omitted a guarded tool call and regressed measured
-        # cost, so any upgrade also needs a reviewed green baseline.
+        # runtime while #118 requalifies newer releases through the governed
+        # App; any upgrade also needs strict trajectories and a reviewed baseline.
         run: |
           archive="${RUNNER_TEMP}/ollama-linux-amd64.tar.zst"
           curl --fail --show-error --location --retry 3 \
@@ -260,7 +260,7 @@ jobs:
             echo
             echo "| Signal | Outcome | Contract |"
             echo "| --- | --- | --- |"
-            echo "| ADK trajectory | ${{ steps.adk.outcome }} | Required run verdict: aggregate floor plus strict skill/restart/resolve cases |"
+            echo "| ADK trajectory | ${{ steps.adk.outcome }} | Required run verdict: aggregate floor plus strict recall/skill/restart/resolve cases |"
             echo "| Structured report | ${{ steps.report.outcome }} | Required run verdict: strict case |"
             echo "| Bounded workflow | ${{ steps.workflow.outcome }} | Required run verdict: strict case |"
             echo "| MLflow scorers | ${{ steps.mlflow.outcome }} | Required run verdict: scorer floors |"

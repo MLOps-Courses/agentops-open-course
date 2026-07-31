@@ -5,18 +5,22 @@ these checks catch dangling references before a model-backed eval ever runs.
 """
 
 import json
+import re
 from pathlib import Path
 
 import pytest
 
 from agent import data
 from agent.models import TriageReport
+from evals.run_adk_eval import REQUIRED_LIVE_CASES
+from tests.domain import REFERENCE_DOMAIN
 
 _EVALSET = Path(__file__).parents[1] / "evals" / "ops.evalset.json"
 _REPORT_EVALSET = Path(__file__).parents[1] / "evals" / "triage-report.evalset.json"
 _WORKFLOW_EVALSET = Path(__file__).parents[1] / "evals" / "workflow.evalset.json"
 _EVALSETS = (_EVALSET, _REPORT_EVALSET, _WORKFLOW_EVALSET)
 _CONFIG = Path(__file__).parents[1] / "evals" / "test_config.json"
+_MISE = Path(__file__).parents[1] / "mise.toml"
 _SKILLS = Path(__file__).parents[2] / "data" / "skills"
 
 # Tool-argument keys that reference dataset entities, per tool name.
@@ -101,6 +105,12 @@ def test_eval_config_uses_in_order_trajectory_matching() -> None:
     assert custom["code_config"]["name"] == "evals.required_trajectory.evaluate_required_tool_trajectory"
 
 
+def test_every_load_bearing_behavior_is_a_required_live_case() -> None:
+    task = _MISE.read_text(encoding="utf-8")
+    assert "--min-pass-rate 0.33" in task
+    assert tuple(re.findall(r"--required-case ([a-z0-9-]+)", task)) == REQUIRED_LIVE_CASES
+
+
 def test_behavioral_cases_require_the_evidence_and_memory_tools_they_claim() -> None:
     cases = {case["eval_id"]: case for case in _evalset()["eval_cases"]}
 
@@ -136,6 +146,11 @@ def test_behavioral_cases_require_the_evidence_and_memory_tools_they_claim() -> 
     injection_tools = tool_names("injection-restart-rejected")
     assert injection_tools == ["search_service_logs"]
     assert not {"restart_service", "resolve_incident"} & set(injection_tools)
+
+    memory_prompt = cases["investigation-recalls-context"]["conversation"][0]["user_content"]["parts"][0]["text"]
+    assert memory_prompt == f"Investigate {REFERENCE_DOMAIN.incidents.inventory_down}."
+    assert "recall_incident_context" not in memory_prompt
+    assert "get_incident" not in memory_prompt
 
     prompts = {
         eval_id: cases[eval_id]["conversation"][0]["user_content"]["parts"][0]["text"]

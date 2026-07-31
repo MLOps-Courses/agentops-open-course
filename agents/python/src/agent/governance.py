@@ -27,7 +27,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from google.adk import Workflow
+from google.adk.agents import BaseAgent
 from google.adk.agents.callback_context import CallbackContext
+from google.adk.apps import App
 from google.adk.models.llm_request import LlmRequest
 from google.adk.models.llm_response import LlmResponse
 from google.adk.plugins.base_plugin import BasePlugin
@@ -92,6 +95,11 @@ class AgentOpsPolicyPlugin(BasePlugin):
     ) -> dict[str, Any] | None:
         """Return a stable, non-sensitive error for a failed tool."""
         return handle_tool_error(tool, tool_args, tool_context, error)
+
+
+def build_app(selected_root: BaseAgent | Workflow) -> App:
+    """Attach the complete cross-cutting policy to one executable application."""
+    return App(name=APP_NAME, root_agent=selected_root, plugins=[AgentOpsPolicyPlugin()])
 
 
 # --8<-- [end:policy-plugin]

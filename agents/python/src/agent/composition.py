@@ -11,11 +11,10 @@ from __future__ import annotations
 
 from google.adk import Agent, Workflow
 from google.adk.agents.llm_agent import ToolUnion
-from google.adk.apps import App
 
 from .actions import ACTION_TOOLS
 from .config import AgentEntrypoint, settings
-from .governance import APP_NAME, AgentOpsPolicyPlugin
+from .governance import build_app
 from .longterm import MEMORY_TOOLS
 from .mcp_client import ops_mcp_toolset
 from .memory import KNOWLEDGE_TOOLS
@@ -35,22 +34,26 @@ Operating rules:
 - When asked about incidents or a service, call the matching tool and report exactly what it returns.
 - For a multi-step investigation, first state a concise, observable plan: the target, next checks,
   expected recovery evidence, and the condition for stopping or escalating. Update it when evidence changes.
-- Evidence reads with data dependencies are sequential: call `get_incident` first and wait.
+- At the start of an incident investigation, call `recall_incident_context` and wait before
+  other reads. A guarded-action request that explicitly prescribes its decision-context read
+  sequence follows that sequence instead.
+- Evidence reads with data dependencies are sequential: call `get_incident` and wait.
   Reuse its returned `service` and `runbook` values verbatim; never guess or batch dependent calls.
 - For diagnosis, start with the affected service's unfiltered sample logs by calling
   `search_service_logs` with only the service. Filter only after reading that result, and never
   infer a cause from an empty filtered result.
 - Skill discovery returns only names and summaries. When a procedure applies or the engineer asks
   to load one, call `list_skills`, then `load_skill`, and follow the loaded body.
-- At the start of an investigation, call `recall_incident_context` to pick up prior findings; when
-  you learn something durable (attempted fix, outcome, decision), call `save_incident_note`.
+- When you learn something durable (attempted fix, outcome, decision), call `save_incident_note`.
 - To recommend a fix, consult the runbooks: an incident carries a `runbook` slug — fetch it with
   `get_runbook`, or use `search_runbooks` to find guidance by symptom. Cite the runbook you used.
 - Taking an action (restart_service, resolve_incident) changes state and needs human approval.
   When the engineer asks you to initiate one, gather and wait for every decision-context result,
-  then call the guarded tool so ADK creates its confirmation request. The request is not approval: never replace the
-  built-in confirmation with a prose question. Never claim confirmation was requested unless you
-  emitted the guarded tool call in this turn; the request does not mean the function ran.
+  then call the guarded tool in that turn so ADK creates its confirmation request. Never narrate a
+  future guarded call: emit it now or state why the evidence does not support it. The request is not
+  approval: never replace the built-in confirmation with a prose question.
+  Never claim confirmation was requested unless you emitted the guarded tool call in this turn;
+  the request does not mean the function ran.
   Approvals must carry a rationale. Report the audit result.
 - After an approved action, re-read the incident and affected service, compare the result with the
   expected recovery evidence, and save a factual outcome note. Never claim success from the action response alone.
@@ -132,5 +135,5 @@ root_agent = _select_root_agent()
 # The application boundary. ADK discovery prefers a module-level ``App`` over a bare
 # ``root_agent``, and the Runner takes it directly — so registering the policy plugin here
 # governs every entrypoint (conversational, workflow, coordinator) from one place.
-app = App(name=APP_NAME, root_agent=root_agent, plugins=[AgentOpsPolicyPlugin()])
+app = build_app(root_agent)
 # --8<-- [end:app]

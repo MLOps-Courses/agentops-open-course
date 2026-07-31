@@ -1,15 +1,137 @@
 """Tests for the truthful ADK evaluation process contract."""
 
 import argparse
+import asyncio
 import io
 import json
 from pathlib import Path
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
+from google.adk.agents.callback_context import CallbackContext
+from google.adk.models.llm_response import LlmResponse
+from google.adk.plugins import BasePlugin
+from google.adk.plugins.plugin_manager import PluginManager
 
-from evals import run_adk_eval
+from agent.governance import AgentOpsPolicyPlugin
+from evals import governed_adk_eval, run_adk_eval
 from evals.run_adk_eval import eval_case_ids, eval_case_selectors, pass_rate, summary_counts, verdict, verdict_counts
+
+
+class _FakeApp:
+    def __init__(self, root_agent: object, plugins: list[object]) -> None:
+        self.root_agent = root_agent
+        self.plugins = plugins
+
+    def model_copy(self, *, update: dict[str, list[object]]) -> "_FakeApp":
+        return _FakeApp(self.root_agent, update["plugins"])
+
+
+class _EvidencePlugin(BasePlugin):
+    async def after_model_callback(self, *, callback_context: CallbackContext, llm_response: LlmResponse) -> None:
+        del callback_context
+        llm_response.custom_metadata = {"evaluation-evidence": "recorded"}
+
+
+class _ReplacingPolicyPlugin(BasePlugin):
+    async def after_model_callback(
+        self, *, callback_context: CallbackContext, llm_response: LlmResponse
+    ) -> LlmResponse:
+        del callback_context
+        return llm_response
+
+
+def test_governed_runner_preserves_evaluator_plugins_before_policy(monkeypatch) -> None:
+    policy_plugin = AgentOpsPolicyPlugin()
+    evaluator_plugin = governed_adk_eval.BasePlugin(name="evaluator")
+    selected_root = object()
+    captured = {}
+
+    def fake_runner(**kwargs):
+        captured.update(kwargs)
+        return "runner"
+
+    monkeypatch.setattr(governed_adk_eval, "_ADK_RUNNER", fake_runner)
+    monkeypatch.setattr(
+        governed_adk_eval,
+        "build_app",
+        lambda root: _FakeApp(root, [policy_plugin]),
+    )
+    assert (
+        governed_adk_eval._governed_runner(  # noqa: SLF001 - pinned ADK seam contract
+            app_name="eval",
+            agent=selected_root,
+            plugins=[evaluator_plugin],
+        )
+        == "runner"
+    )
+    assert captured["app"].root_agent is selected_root
+    assert captured["app"].plugins[:-1] == [evaluator_plugin]
+    assert captured["app"].plugins[-1].name == "agentops_policy"
+    assert captured["app_name"] == "eval"
+    assert "agent" not in captured
+    assert "plugins" not in captured
+
+
+def test_evaluator_evidence_runs_before_a_policy_replacement(monkeypatch) -> None:
+    evidence_plugin = _EvidencePlugin(name="evaluation-evidence")
+    policy_plugin = _ReplacingPolicyPlugin(name="short-circuiting-policy")
+    captured = {}
+
+    def fake_runner(**kwargs):
+        captured.update(kwargs)
+        return "runner"
+
+    monkeypatch.setattr(governed_adk_eval, "_ADK_RUNNER", fake_runner)
+    monkeypatch.setattr(
+        governed_adk_eval,
+        "build_app",
+        lambda root: _FakeApp(root, [policy_plugin]),
+    )
+    governed_adk_eval._governed_runner(  # noqa: SLF001 - pinned ADK seam contract
+        agent=object(),
+        plugins=[evidence_plugin],
+    )
+
+    response = LlmResponse()
+    result = asyncio.run(
+        PluginManager(captured["app"].plugins).run_after_model_callback(
+            callback_context=cast(CallbackContext, None),
+            llm_response=response,
+        )
+    )
+    assert result is response
+    assert response.custom_metadata == {"evaluation-evidence": "recorded"}
+
+
+def test_governed_runner_rejects_duplicate_policy(monkeypatch) -> None:
+    policy_plugin = AgentOpsPolicyPlugin()
+    monkeypatch.setattr(
+        governed_adk_eval,
+        "build_app",
+        lambda root: _FakeApp(root, [policy_plugin]),
+    )
+    with pytest.raises(RuntimeError, match="already carries"):
+        governed_adk_eval._governed_runner(  # noqa: SLF001 - duplicate-policy guard
+            agent=object(),
+            plugins=[policy_plugin],
+        )
+
+
+def test_app_policy_installation_is_narrow_and_idempotent(monkeypatch) -> None:
+    monkeypatch.setattr(
+        governed_adk_eval.evaluation_generator,
+        "Runner",
+        governed_adk_eval._ADK_RUNNER,  # noqa: SLF001 - pinned ADK seam contract
+    )
+    governed_adk_eval.install_app_policy()
+    assert governed_adk_eval.evaluation_generator.Runner is governed_adk_eval._governed_runner  # noqa: SLF001
+    governed_adk_eval.install_app_policy()
+
+    monkeypatch.setattr(governed_adk_eval.evaluation_generator, "Runner", object())
+    with pytest.raises(RuntimeError, match="seam changed"):
+        governed_adk_eval.install_app_policy()
 
 
 @pytest.mark.parametrize(
@@ -168,6 +290,7 @@ def test_main_launches_one_process_per_case_and_aggregates_authoritative_summari
         f"{eval_set}:first",
         f"{eval_set}:second",
     ]
+    assert all(command[0][2] == "evals.governed_adk_eval" for command in commands)
     assert all(command[1]["stderr"] is run_adk_eval.subprocess.STDOUT for command in commands)
     assert len(set(state_dirs)) == 2
     assert all(not state_dir.exists() for state_dir in state_dirs)

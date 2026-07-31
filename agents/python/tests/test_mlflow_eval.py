@@ -19,6 +19,7 @@ from google.genai import types
 from mlflow.entities import Feedback
 
 from agent import actions, data
+from agent.governance import AgentOpsPolicyPlugin
 from agent.guardrails import validate_actions
 from evals import mlflow_eval
 from tests.domain import REFERENCE_DOMAIN
@@ -72,6 +73,7 @@ def test_tracking_uri_is_selected_before_composition_import_without_env(tmp_path
                 "INSTRUCTION = 'test instruction'",
                 "root_agent = object()",
                 "build_conversational_agent = lambda: root_agent",
+                "build_app = lambda selected_root: selected_root",
             ]
         )
         + "\n",
@@ -129,6 +131,7 @@ def test_temp_store_prompt_can_be_registered_then_loaded_by_a_pinned_child(tmp_p
                 "instruction = mlflow.genai.load_prompt(uri).template if uri else INSTRUCTION",
                 "root_agent = SimpleNamespace(instruction=instruction)",
                 "build_conversational_agent = lambda: root_agent",
+                "build_app = lambda selected_root: selected_root",
             ]
         )
         + "\n",
@@ -277,9 +280,9 @@ def test_run_reuses_one_session_and_closes_runner(monkeypatch) -> None:
     runners = []
 
     class FakeRunner:
-        def __init__(self, *, agent, app_name) -> None:
-            del agent
-            self.app_name = app_name
+        def __init__(self, *, app) -> None:
+            self.app = app
+            self.app_name = app.name
             self.session_service = SimpleNamespace(
                 create_session=self.create_session,
             )
@@ -359,6 +362,8 @@ def test_run_reuses_one_session_and_closes_runner(monkeypatch) -> None:
         ],
     }
     assert runners[0].closed is True
+    assert len(runners[0].app.plugins) == 1
+    assert isinstance(runners[0].app.plugins[0], AgentOpsPolicyPlugin)
 
 
 def test_run_converts_a_real_confirmation_pause_without_approving_or_mutating(monkeypatch) -> None:
@@ -400,8 +405,8 @@ def test_run_rejects_an_empty_conversation() -> None:
 
 def test_run_accumulates_token_and_call_usage(monkeypatch) -> None:
     class FakeRunner:
-        def __init__(self, *, agent, app_name) -> None:
-            del agent, app_name
+        def __init__(self, *, app) -> None:
+            self.app_name = app.name
             self.session_service = SimpleNamespace(create_session=self._session)
 
         async def _session(self, **_kwargs):

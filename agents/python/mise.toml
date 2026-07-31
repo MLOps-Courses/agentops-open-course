@@ -83,7 +83,8 @@ description = "Run strict ADK cases and enforce the aggregate plus critical-case
 env = { AGENT_ENTRYPOINT = "agent", _.file = { path = "../../.env", redact = true } }
 run = """
 uv run python evals/run_adk_eval.py evals/ops.evalset.json \
-  --min-pass-rate 0.25 \
+  --min-pass-rate 0.33 \
+  --required-case investigation-recalls-context \
   --required-case remediation-loads-skill \
   --required-case restart-needs-approval \
   --required-case resolve-needs-approval

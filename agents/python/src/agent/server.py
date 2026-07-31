@@ -43,8 +43,7 @@ from starlette.responses import JSONResponse
 from .composition import root_agent
 from .config import settings
 from .data import prepare_runtime_database, probe_runtime_database
-from .governance import APP_NAME as _APP_NAME
-from .governance import AgentOpsPolicyPlugin
+from .governance import build_app
 from .models import CURRENT_RUNTIME_SCHEMA_VERSION
 from .state import recover_interrupted_restore
 
@@ -545,7 +544,7 @@ def create_app(agent: BaseAgent | None = None) -> Starlette:
     # ``app=`` is ADK's recommended Runner form; the deprecated ``agent=``/``plugins=`` pair
     # would attach the policy to only this Runner instead of to the application.
     runner = _SessionSerializingRunner(
-        app=App(name=_APP_NAME, root_agent=selected_agent, plugins=[AgentOpsPolicyPlugin()]),
+        app=build_app(selected_agent),
         session_service=session_service,
     )
     task_engine = session_service.db_engine

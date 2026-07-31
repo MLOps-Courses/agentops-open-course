@@ -379,6 +379,59 @@ def test_measure_rejects_provider_fallback_before_recording_a_baseline(monkeypat
         cost_eval.measure()
 
 
+def test_measure_rejects_a_failed_required_trajectory(monkeypatch) -> None:
+    required_case = cost_eval.REQUIRED_LIVE_CASES[0]
+    expected_call = {"name": "recall_incident_context", "args": {"incident_id": "case-id"}}
+    monkeypatch.setattr(
+        cost_eval,
+        "_load_cases",
+        lambda: [
+            {
+                "inputs": {"eval_id": required_case, "turns": ["investigate"]},
+                "expectations": {"expected_tools": [[expected_call]]},
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        cost_eval,
+        "ask",
+        lambda *_args: {
+            "provider_errors": [[]],
+            "tools": [[]],
+            "usage": {"total_tokens": 10, "model_calls": 1},
+        },
+    )
+
+    with pytest.raises(SystemExit, match="missed its tool trajectory"):
+        cost_eval.measure()
+
+
+def test_measure_accepts_a_passing_required_trajectory(monkeypatch) -> None:
+    required_case = cost_eval.REQUIRED_LIVE_CASES[0]
+    expected_call = {"name": "recall_incident_context", "args": {"incident_id": "case-id"}}
+    monkeypatch.setattr(
+        cost_eval,
+        "_load_cases",
+        lambda: [
+            {
+                "inputs": {"eval_id": required_case, "turns": ["investigate"]},
+                "expectations": {"expected_tools": [[expected_call]]},
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        cost_eval,
+        "ask",
+        lambda *_args: {
+            "provider_errors": [[]],
+            "tools": [[expected_call]],
+            "usage": {"total_tokens": 10, "model_calls": 1},
+        },
+    )
+
+    assert cost_eval.measure() == {required_case: {"total_tokens": 10, "model_calls": 1}}
+
+
 def test_measure_reuses_the_exact_mlflow_transcript_when_configured(monkeypatch) -> None:
     monkeypatch.setenv("AGENT_EVAL_OBSERVED_PATH", "evals/model-observed.json")
     monkeypatch.setattr(
@@ -430,6 +483,37 @@ def test_main_rejects_an_incompatible_baseline_before_model_measurement(monkeypa
     monkeypatch.setattr(cost_eval.sys, "argv", ["cost_eval.py"])
     with pytest.raises(SystemExit, match="not 'qwen3:4b-instruct'"):
         cost_eval.main()
+
+
+def test_main_retains_scheduled_observation_before_rejecting_an_incompatible_baseline(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    baseline = tmp_path / "cost_baseline.json"
+    observed = tmp_path / "cost-observed.json"
+    baseline.write_text(
+        json.dumps(
+            _baseline(
+                {"lookup": {"total_tokens": 1, "model_calls": 1}},
+                model="qwen3:1.7b",
+                model_digest=None,
+            )
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("AGENT_EVAL_OBSERVED_PATH", "evals/model-observed.json")
+    monkeypatch.setattr(cost_eval, "_BASELINE", baseline)
+    monkeypatch.setattr(cost_eval, "_OBSERVED", observed)
+    monkeypatch.setattr(cost_eval, "_model_digest", lambda: None)
+    monkeypatch.setattr(cost_eval, "_current_identity", lambda _digest: _identity(model_digest=None))
+    monkeypatch.setattr(cost_eval, "measure", lambda: {"lookup": {"total_tokens": 2, "model_calls": 1}})
+    monkeypatch.setattr(cost_eval.sys, "argv", ["cost_eval.py"])
+
+    with pytest.raises(SystemExit, match="not 'qwen3:4b-instruct'"):
+        cost_eval.main()
+
+    document = json.loads(observed.read_text(encoding="utf-8"))
+    assert document["cases"] == {"lookup": {"total_tokens": 2, "model_calls": 1}}
 
 
 def test_main_rejects_invalid_baseline_json_before_model_measurement(monkeypatch, tmp_path) -> None:
