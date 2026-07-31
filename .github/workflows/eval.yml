@@ -237,7 +237,7 @@ jobs:
             agents/python/src/**/.adk/eval_history/*.evalset_result.json
           if-no-files-found: warn
           include-hidden-files: true
-          retention-days: 30
+          retention-days: 7
 
       - name: Upload the sanitized release evidence
         if: always()
@@ -248,7 +248,7 @@ jobs:
             agents/python/evals/model.json
             agents/python/evals/verdict.json
           if-no-files-found: error
-          retention-days: 90
+          retention-days: 7
 
       - name: Summarize all evaluation signals
         if: always()

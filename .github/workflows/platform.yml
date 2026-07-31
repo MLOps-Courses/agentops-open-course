@@ -803,7 +803,7 @@ jobs:
           name: platform-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/platform-diagnostics
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 7
 
       - name: Tear down every temporary resource
         id: teardown
@@ -861,7 +861,7 @@ jobs:
           name: platform-teardown-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/platform-teardown-diagnostics
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 7
 
       - name: Fail when teardown is incomplete
         if: steps.teardown.outcome == 'failure'

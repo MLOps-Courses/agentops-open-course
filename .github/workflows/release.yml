@@ -212,7 +212,7 @@ jobs:
             qualification.json
             evaluation-evidence.json
           if-no-files-found: error
-          retention-days: 90
+          retention-days: 7
 
   preflight:
     needs: qualify
@@ -457,7 +457,7 @@ jobs:
             ${{ matrix.name }}.sbom.spdx.json
             ${{ matrix.name }}.source.provenance.sigstore.json
           if-no-files-found: error
-          retention-days: 90
+          retention-days: 7
 
   promote:
     needs: publish
@@ -670,7 +670,7 @@ jobs:
             agent.digest.txt
             mlflow.digest.txt
           if-no-files-found: error
-          retention-days: 90
+          retention-days: 7
 
   seal:
     needs: promote
@@ -762,7 +762,7 @@ jobs:
             ${{ matrix.name }}.sbom.spdx.json
             ${{ matrix.name }}.provenance.sigstore.json
           if-no-files-found: error
-          retention-days: 90
+          retention-days: 7
 
   verify:
     needs: seal
@@ -925,7 +925,7 @@ jobs:
           name: ${{ matrix.name }}-verification
           path: ${{ matrix.name }}.verification.json
           if-no-files-found: error
-          retention-days: 90
+          retention-days: 7
 
   reconcile:
     needs: [promote, seal, verify, release]

@@ -64,7 +64,7 @@ jobs:
           name: freshness-report-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ env.REPORT_DIR }}
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 7
 
   post:
     needs: report

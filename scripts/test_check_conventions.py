@@ -282,6 +282,27 @@ class SourceContractTests(unittest.TestCase):
             )
         assert any("release_freshness.py" in message for _, message in problems)
 
+    def test_actions_artifacts_cannot_exceed_the_repository_retention_policy(self) -> None:
+        docs = ("docs/8. Community/8.2. Releases.md",)
+        owners = (
+            "AGENTS.md",
+            ".github/workflows/eval.yml",
+            ".github/workflows/freshness.yml",
+            ".github/workflows/platform.yml",
+            ".github/workflows/release.yml",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            copy_contract_files(root, (*docs, *owners))
+            workflow = root / ".github/workflows/freshness.yml"
+            text = workflow.read_text(encoding="utf-8")
+            workflow.write_text(text.replace("retention-days: 7", "retention-days: 8", 1), encoding="utf-8")
+            problems = check_conventions.check_actions_artifact_retention_contracts(
+                contract_pages(root, docs),
+                root=root,
+            )
+        assert any("exceeds the 7-day policy" in message for _, message in problems)
+
     def test_gcp_runbook_rejects_a_root_scoped_tofu_command_without_chdir(self) -> None:
         relative = "infra/gcp/README.md"
         with tempfile.TemporaryDirectory() as directory:

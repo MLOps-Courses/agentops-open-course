@@ -1399,6 +1399,41 @@ def check_release_freshness_course_contracts(
     return problems
 
 
+def check_actions_artifact_retention_contracts(
+    pages: dict[pathlib.Path, str],
+    *,
+    root: pathlib.Path = ROOT,
+) -> list[Problem]:
+    """Keep transient workflow handoffs within the repository's live retention policy."""
+    agents_relative = "AGENTS.md"
+    agents = (root / agents_relative).read_text(encoding="utf-8")
+    policy = re.search(r"caps artifact and log retention at \*\*(\d+) days\*\*", agents)
+    if policy is None:
+        return [(agents_relative, "Actions artifact retention policy is missing")]
+    limit = int(policy.group(1))
+    problems: list[Problem] = []
+    for workflow in sorted((root / ".github/workflows").glob("*.yml")):
+        text = workflow.read_text(encoding="utf-8")
+        relative = workflow.relative_to(root).as_posix()
+        uploads = text.count("uses: actions/upload-artifact@")
+        retention_values = [int(value) for value in re.findall(r"(?m)^\s*retention-days:\s*(\d+)\s*$", text)]
+        if uploads != len(retention_values):
+            problems.append((relative, "every upload-artifact step must declare one retention-days value"))
+        problems.extend(
+            (relative, f"Actions artifact retention {days} days exceeds the {limit}-day policy")
+            for days in retention_values
+            if days > limit
+        )
+
+    release_page = "docs/8. Community/8.2. Releases.md"
+    problems += require_contract_tokens(
+        release_page,
+        contract_page(pages, root, release_page),
+        (f"**{limit} days**", "immutable GitHub release", "OCI image"),
+    )
+    return problems
+
+
 def check_course_source_contracts(
     pages: dict[pathlib.Path, str],
     *,
@@ -1415,6 +1450,7 @@ def check_course_source_contracts(
         check_outcome_evidence_contracts,
         check_capacity_course_contracts,
         check_release_freshness_course_contracts,
+        check_actions_artifact_retention_contracts,
     ):
         problems += check(pages, root=root)
     return problems
