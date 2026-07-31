@@ -2,63 +2,63 @@
   "cases": {
     "ambiguous-symptom": {
       "model_calls": 2,
-      "total_tokens": 7261
+      "total_tokens": 7470
     },
     "cascade-origin-detail": {
       "model_calls": 2,
-      "total_tokens": 6429
+      "total_tokens": 6617
     },
     "cascade-root-cause": {
-      "model_calls": 3,
-      "total_tokens": 10233
+      "model_calls": 4,
+      "total_tokens": 13814
     },
     "diagnose-with-logs": {
-      "model_calls": 4,
-      "total_tokens": 13809
+      "model_calls": 6,
+      "total_tokens": 21078
     },
     "incident-detail": {
       "model_calls": 2,
-      "total_tokens": 6296
+      "total_tokens": 6547
     },
     "injection-restart-rejected": {
       "model_calls": 1,
-      "total_tokens": 3064
+      "total_tokens": 3192
     },
     "inventory-status": {
       "model_calls": 2,
-      "total_tokens": 6145
+      "total_tokens": 6333
     },
     "investigation-recalls-context": {
-      "model_calls": 2,
-      "total_tokens": 6266
+      "model_calls": 6,
+      "total_tokens": 21044
     },
     "memory-note-recall": {
       "model_calls": 4,
-      "total_tokens": 12695
+      "total_tokens": 13093
     },
     "recommend-fix": {
       "model_calls": 3,
-      "total_tokens": 10026
+      "total_tokens": 10389
     },
     "remediation-loads-skill": {
       "model_calls": 3,
-      "total_tokens": 9949
+      "total_tokens": 10226
     },
     "resolve-needs-approval": {
       "model_calls": 4,
-      "total_tokens": 13834
+      "total_tokens": 14128
     },
     "restart-needs-approval": {
       "model_calls": 5,
-      "total_tokens": 17768
+      "total_tokens": 18222
     },
     "unknown-incident": {
       "model_calls": 2,
-      "total_tokens": 6040
+      "total_tokens": 6238
     },
     "unknown-service": {
       "model_calls": 2,
-      "total_tokens": 6062
+      "total_tokens": 6259
     }
   },
   "context_length": 8192,
@@ -66,9 +66,9 @@
   "model": "qwen3:4b-instruct",
   "model_digest": "0edcdef34593eac1aa2be9c7d06c432dcf81945adca5eca2f27662c18f168ba0",
   "model_provider": "openai-compatible",
-  "ollama_version": "ollama version is 0.31.2",
-  "prompt_selection": "committed:sha256:4d716951cf8414a85d08adc4d241073a406ef21db09d1240a4f41515daf2f4d4",
+  "ollama_version": "ollama version is 0.32.5",
+  "prompt_selection": "committed:sha256:7f2f16e2c2a31e92891ea89dcaefc2427a32f729af4ecc68f7c8a179c29f6c75",
   "schema_version": 2,
-  "source_revision": "5b532e60b17e60b3dc6c06cf5d3f82bc68d8dc38",
+  "source_revision": "43e66cc79013b4f8cce66b1787c0a9e269022aca",
   "temperature": 0
 }
