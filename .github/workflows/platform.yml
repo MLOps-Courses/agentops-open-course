@@ -27,7 +27,7 @@ jobs:
     if: github.repository == 'MLOps-Courses/agentops-open-course'
     timeout-minutes: 60
     env:
-      BACKUP_EVIDENCE_MARKER: platform-backup-${{ github.run_id }}-${{ github.run_attempt }}
+      BACKUP_EVIDENCE_MARKER: platform-backup-canary
       GITHUB_TOKEN: ${{ github.token }}
       # Keep privacy canaries alphabetic: numeric run IDs can look like financial
       # identifiers to Presidio and turn capture assertions into false positives.
@@ -390,6 +390,36 @@ jobs:
 
       - name: Prove the in-cluster backup restores every persistent evidence type
         run: |
+          wait_for_job() {
+            local namespace="$1"
+            local job="$2"
+            local timeout_seconds="$3"
+            local deadline=$((SECONDS + timeout_seconds))
+            local condition
+            while ((SECONDS < deadline)); do
+              condition="$(
+                kubectl -n "${namespace}" get job "${job}" -o json |
+                  jq -r '
+                    if any(.status.conditions[]?; .type == "Complete" and .status == "True") then "complete"
+                    elif any(.status.conditions[]?; .type == "Failed" and .status == "True") then "failed"
+                    else "pending"
+                    end'
+              )"
+              case "${condition}" in
+                complete) return 0 ;;
+                failed)
+                  echo "::error::Job ${namespace}/${job} failed."
+                  kubectl -n "${namespace}" logs "job/${job}" || true
+                  return 1
+                  ;;
+              esac
+              sleep 2
+            done
+            echo "::error::Timed out waiting for Job ${namespace}/${job}."
+            kubectl -n "${namespace}" logs "job/${job}" || true
+            return 1
+          }
+
           agent_pod="$(
             kubectl -n agentops get pods \
               -l app.kubernetes.io/name=agentops-agent \
@@ -485,8 +515,7 @@ jobs:
                 ((.spec.template.spec.containers[0].env // []) +
                   [{name: "STATE_BACKUP_TIMESTAMP", value: $stamp}])' |
             kubectl create --filename -
-          kubectl -n agentops wait \
-            --for=condition=complete job/platform-state-backup --timeout=300s
+          wait_for_job agentops platform-state-backup 300
           kubectl -n agentops logs job/platform-state-backup
 
           agent_image="$(
@@ -744,8 +773,7 @@ jobs:
                     persistentVolumeClaim:
                       claimName: agentops-agent-state
           EOF
-          kubectl -n agentops wait \
-            --for=condition=complete job/platform-state-restore --timeout=300s
+          wait_for_job agentops platform-state-restore 300
           kubectl -n agentops logs job/platform-state-restore
           kubectl -n agentops patch agent agentops-agent --type=merge \
             --patch '{"spec":{"byo":{"deployment":{"replicas":1}}}}'

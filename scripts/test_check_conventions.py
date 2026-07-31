@@ -314,10 +314,13 @@ class SourceContractTests(unittest.TestCase):
 
     def test_platform_privacy_canaries_survive_pii_redaction(self) -> None:
         workflow = check_conventions.ROOT.joinpath(".github/workflows/platform.yml").read_text(encoding="utf-8")
+        assert "BACKUP_EVIDENCE_MARKER: platform-backup-canary" in workflow
         assert "TELEMETRY_LOG_MARKER: platform-telemetry-log-canary" in workflow
         assert "TELEMETRY_SENTINEL: platform-private-content-canary" in workflow
         assert "def safe_container_state:" in workflow
         assert ".terminated | {exitCode, reason, signal, startedAt, finishedAt}" in workflow
+        assert workflow.count("wait_for_job agentops platform-state-") == 2
+        assert "--for=condition=complete job/platform-state-" not in workflow
 
     def test_gcp_runbook_rejects_a_root_scoped_tofu_command_without_chdir(self) -> None:
         relative = "infra/gcp/README.md"
