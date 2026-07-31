@@ -71,7 +71,7 @@ MAX_COLLAPSIBLES: Final = 3
 SNIPPET_CHAPTERS: Final = ("docs/2. ", "docs/3. ")
 SNIPPET_DECLARATIONS: Final = ("# simplified", "# illustrative", "# pseudocode")
 SNIPPET_INCLUDE: Final = re.compile(r'--8<--\s+"([^"]+)"')
-TRUSTED_SNIPPET_SURFACES: Final = {
+SOURCE_SNIPPET_SURFACES: Final = {
     "TOML": ("docs/1. Setup/1.1. Python.md", "agents/python/pyproject.toml:runtime-dependencies"),
     "YAML": ("docs/5. Gateway/5.0. Gateway.md", "infra/agentgateway/host/config.yaml:host-mcp-bind"),
     "shell": ("docs/5. Gateway/5.1. Gateway Setup.md", "infra/scripts/gateway-host.sh:hardened-container-args"),
@@ -383,13 +383,13 @@ def check_snippet_targets(
     return problems
 
 
-def check_trusted_snippet_coverage(pages: dict[pathlib.Path, str]) -> list[Problem]:
+def check_source_snippet_coverage(pages: dict[pathlib.Path, str]) -> list[Problem]:
     """Ratchet the non-Python source formats learners are invited to trust."""
     problems: list[Problem] = []
-    for format_name, (relative, specification) in TRUSTED_SNIPPET_SURFACES.items():
+    for format_name, (relative, specification) in SOURCE_SNIPPET_SURFACES.items():
         text = pages.get(ROOT / relative, "")
         if f'--8<-- "{specification}"' not in text:
-            problems.append((relative, f"trusted {format_name} example must include {specification!r}"))
+            problems.append((relative, f"source-backed {format_name} example must include {specification!r}"))
     return problems
 
 
@@ -1727,7 +1727,7 @@ def check_docs() -> list[Problem]:
         for page, message in [(ROOT / path, message) for path, message in check_index_kinds(pages)]
     ]
     problems += check_navigation(pages)
-    problems += check_trusted_snippet_coverage(pages)
+    problems += check_source_snippet_coverage(pages)
     problems += check_documented_tasks(pages)
     problems += check_task_expansions(pages)
     problems += check_source_versions(pages)

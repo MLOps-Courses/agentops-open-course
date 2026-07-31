@@ -46,12 +46,12 @@ class SourceContractTests(unittest.TestCase):
             problems = check_conventions.check_snippet_targets(pathlib.Path("docs/example.md"), text, root=root)
         assert any("exactly one start and end marker" in message for _, message in problems)
 
-    def test_trusted_snippet_ratchet_covers_every_non_python_source_format(self) -> None:
+    def test_source_snippet_ratchet_covers_every_non_python_source_format(self) -> None:
         pages = {
             check_conventions.ROOT / relative: check_conventions.ROOT.joinpath(relative).read_text(encoding="utf-8")
-            for relative, _ in check_conventions.TRUSTED_SNIPPET_SURFACES.values()
+            for relative, _ in check_conventions.SOURCE_SNIPPET_SURFACES.values()
         }
-        assert check_conventions.check_trusted_snippet_coverage(pages) == []
+        assert check_conventions.check_source_snippet_coverage(pages) == []
 
     def test_mlflow_point_version_copy_is_rejected_from_feedback_prose(self) -> None:
         feedback = check_conventions.ROOT / "docs/7. Observability/7.4. Feedback.md"
