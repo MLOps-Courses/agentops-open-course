@@ -17,7 +17,7 @@ spec:
       serviceAccountName: agentops-agent
       env:
         - name: AGENT_MODEL
-          value: gemini-3.5-flash
+          value: gemini-3.6-flash
         - name: AGENT_MODEL_PROVIDER
           value: openai-compatible
         - name: AGENT_MCP_URL

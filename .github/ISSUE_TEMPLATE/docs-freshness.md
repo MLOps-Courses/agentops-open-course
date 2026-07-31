@@ -16,9 +16,9 @@ The quarterly `.github/workflows/freshness.yml` workflow appends a read-only rep
 
 ## Model & provider names
 
-- [ ] `gemini-3.5-flash` is still the correct optional Gemini/Vertex model id — `docs/0. Overview/0.4. Providers.md`, `docs/2. Agents/2.2. Models.md`, `docs/6. Platform/6.3. Platform Agents.md`, and the GKE gateway/agent manifests.
+- [ ] `gemini-3.6-flash` is still the latest stable optional Gemini/Vertex model id — `docs/0. Overview/0.4. Providers.md`, `docs/2. Agents/2.2. Models.md`, `docs/6. Platform/6.3. Platform Agents.md`, and the GKE gateway/agent manifests.
 - [ ] `qwen3:4b-instruct` is still the default local Ollama model and its weights remain Apache-2.0 licensed — `agents/python/src/agent/config.py`, `docs/0. Overview/0.4. Providers.md`, `docs/6. Platform/6.6. Platform Delivery.md`, and the local manifests.
-- [ ] `nomic-embed-text` still the embedding model — `agents/python/src/agent/config.py`, `docs/3. Capabilities/3.4. Memory.md`.
+- [ ] `nomic-embed-text` is still the embedding model — `agents/python/src/agent/config.py`, `docs/3. Capabilities/3.4. Memory.md`.
 
 ## Prices & cost inputs
 
@@ -44,13 +44,13 @@ The quarterly `.github/workflows/freshness.yml` workflow appends a read-only rep
 - [ ] AAIF still hosts MCP, agentgateway, and the AGENTS.md convention, and nothing donated since is missing — `docs/8. Community/8.6. AAIF.md`.
 - [ ] A2A still sits under the Linux Foundation directly rather than a sub-foundation — `docs/8. Community/8.6. AAIF.md`.
 - [ ] CNCF tiers still correct: Kubernetes, Prometheus, and OpenTelemetry Graduated; kagent still Sandbox — `docs/8. Community/8.6. AAIF.md`.
-- [ ] MLflow still under LF AI & Data, and every remaining steward/licence pairing in the map still holds (Grafana Labs CLA, Ollama, Qwen3, Google ADK) — `docs/8. Community/8.6. AAIF.md`.
+- [ ] MLflow still sits directly under the Linux Foundation, and every remaining steward/licence pairing in the map still holds (Grafana Labs CLA, Ollama, Qwen3, Google ADK) — `docs/8. Community/8.6. AAIF.md`.
 - [ ] The upstream issue-routing destinations still resolve to the tracker that owns each boundary — `docs/8. Community/8.6. AAIF.md`.
 
 ## Benchmarks & measured checkpoints
 
-- [ ] Retrieval benchmark checkpoint still reproduces (dataset commit, Ollama version, embed blob) — `docs/3. Capabilities/3.4. Memory.md` ("Measured checkpoint").
-- [ ] `qwen3:4b-instruct` serving-window / context-length note still matches `ollama show` output — `docs/3. Capabilities/3.4. Memory.md`.
+- [ ] The retrieval release checkpoint still reproduces (dataset commit, Ollama version, model manifest/blob, and index provenance) — `docs/3. Capabilities/3.4. Memory.md`.
+- [ ] `qwen3:4b-instruct` architecture maximum still matches `ollama show`, and the loaded serving window still matches `ollama ps` — `docs/3. Capabilities/3.4. Memory.md`.
 
 ## Wrap-up
 
