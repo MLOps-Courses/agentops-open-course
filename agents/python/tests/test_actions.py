@@ -16,12 +16,16 @@ from agent import actions, data, guardrails, tools
 from agent.circuit import CircuitOpenError
 from agent.models import CURRENT_AUDIT_SCHEMA_VERSION, MAX_AUDIT_RATIONALE_LENGTH
 from agent.resilience import ToolDeadlineError
+from tests.domain import REFERENCE_DOMAIN
 
 # The guardrail only reads tool.name and never touches the context, so a cast None is enough.
 _NO_CONTEXT = cast("ToolContext", None)
 _NO_CALLBACK_CONTEXT = cast("CallbackContext", None)
 _NO_LLM_REQUEST = cast("LlmRequest", None)
 _ACTIONS_BY_NAME = {tool.name: tool for tool in actions.ACTION_TOOLS}
+_INVENTORY = REFERENCE_DOMAIN.services.inventory
+_INVENTORY_INCIDENT = REFERENCE_DOMAIN.incidents.inventory_down
+_RESOLVED_INCIDENT = REFERENCE_DOMAIN.incidents.payments_errors
 
 
 def _approved_context(
@@ -56,16 +60,16 @@ def _audit_count() -> int:
 
 
 def test_restart_service_flips_status_and_audits() -> None:
-    before = data.get_service("inventory")
+    before = data.get_service(_INVENTORY)
     assert before is not None
     assert before.status == "down"
     result = _run_action(
         "restart_service",
-        {"name": "inventory"},
-        _approved_context({"rationale": "inventory is down during the incident"}),
+        {"name": _INVENTORY},
+        _approved_context({"rationale": f"{_INVENTORY} is down during the incident"}),
     )
     assert "result" in result
-    after = data.get_service("inventory")
+    after = data.get_service(_INVENTORY)
     assert after is not None
     assert after.status == "operational"
     assert result["audit"]["action"] == "restart_service"
@@ -74,19 +78,19 @@ def test_restart_service_flips_status_and_audits() -> None:
 
 
 def test_replayed_approved_restart_returns_original_audit_and_changes_state_once() -> None:
-    context = _approved_context({"rationale": "inventory is down during the incident"})
-    first = _run_action("restart_service", {"name": "inventory"}, context)
+    context = _approved_context({"rationale": f"{_INVENTORY} is down during the incident"})
+    first = _run_action("restart_service", {"name": _INVENTORY}, context)
     assert "result" in first
 
     # Prove a replay does not run UPDATE again by moving the service to a newer
     # state between deliveries of the same approved invocation.
     with closing(sqlite3.connect(data.db_path())) as connection:
-        connection.execute("UPDATE services SET status = 'degraded' WHERE name = 'inventory'")
+        connection.execute("UPDATE services SET status = 'degraded' WHERE name = ?", (_INVENTORY,))
         connection.commit()
 
-    replay = _run_action("restart_service", {"name": "inventory"}, context)
+    replay = _run_action("restart_service", {"name": _INVENTORY}, context)
     assert replay["audit"] == first["audit"]
-    service = data.get_service("inventory")
+    service = data.get_service(_INVENTORY)
     assert service is not None
     assert service.status == "degraded"
     assert _audit_count() == 1
@@ -105,23 +109,23 @@ def test_restart_handles_concurrent_service_removal(monkeypatch) -> None:
     monkeypatch.setattr(data, "restart_service_with_audit", lambda *_args, **_kwargs: None)
     result = _run_action(
         "restart_service",
-        {"name": "inventory"},
-        _approved_context({"rationale": "inventory is still down"}),
+        {"name": _INVENTORY},
+        _approved_context({"rationale": f"{_INVENTORY} is still down"}),
     )
     assert "error" in result
 
 
 def test_resolve_incident_marks_resolved() -> None:
-    before = data.get_incident("INC-002")
+    before = data.get_incident(_INVENTORY_INCIDENT)
     assert before is not None
     assert before.status == "open"
     result = _run_action(
         "resolve_incident",
-        {"incident_id": "INC-002"},
+        {"incident_id": _INVENTORY_INCIDENT},
         _approved_context({"rationale": "the rollback restored service"}),
     )
     assert "result" in result
-    incident = data.get_incident("INC-002")
+    incident = data.get_incident(_INVENTORY_INCIDENT)
     assert incident is not None
     assert incident.status == "resolved"
     assert incident.resolved_at
@@ -130,7 +134,7 @@ def test_resolve_incident_marks_resolved() -> None:
 def test_resolve_already_resolved_errors() -> None:
     result = _run_action(
         "resolve_incident",
-        {"incident_id": "INC-003"},
+        {"incident_id": _RESOLVED_INCIDENT},
         _approved_context({"rationale": "verify the resolved incident"}),
     )
     assert "error" in result
@@ -150,28 +154,29 @@ def test_resolve_handles_concurrent_resolution(monkeypatch) -> None:
     monkeypatch.setattr(data, "resolve_incident_with_audit", lambda *_args, **_kwargs: None)
     result = _run_action(
         "resolve_incident",
-        {"incident_id": "INC-002"},
+        {"incident_id": _INVENTORY_INCIDENT},
         _approved_context({"rationale": "the incident appears recovered"}),
     )
     assert "error" in result
 
 
 def test_action_audit_records_approver_rationale_and_context() -> None:
-    context = _approved_context({"rationale": "inventory is hard down; approved in the incident call"})
-    result = _run_action("restart_service", {"name": "inventory"}, context)
+    rationale = f"{_INVENTORY} is hard down; approved in the incident call"
+    context = _approved_context({"rationale": rationale})
+    result = _run_action("restart_service", {"name": _INVENTORY}, context)
     audit = result["audit"]
     assert audit["approved_by"] == "engineer"
     assert audit["session_id"] == "session-7"
     assert audit["invocation_id"] == "invocation-9"
-    assert audit["rationale"] == "inventory is hard down; approved in the incident call"
-    assert "inventory was down" in audit["context_summary"]
-    assert "INC-002" in audit["context_summary"]  # current open incident captured with the action
+    assert audit["rationale"] == rationale
+    assert f"{_INVENTORY} was down" in audit["context_summary"]
+    assert _INVENTORY_INCIDENT in audit["context_summary"]  # current open incident captured with the action
 
 
 def test_action_accepts_a_bare_string_rationale() -> None:
     result = _run_action(
         "resolve_incident",
-        {"incident_id": "INC-002"},
+        {"incident_id": _INVENTORY_INCIDENT},
         _approved_context("fixed by the 09:40 rollback"),
     )
     assert result["audit"]["rationale"] == "fixed by the 09:40 rollback"
@@ -179,14 +184,14 @@ def test_action_accepts_a_bare_string_rationale() -> None:
 
 
 def test_action_redacts_pii_and_credentials_before_audit_persistence() -> None:
-    rationale = "INC-002 approved by jane.doe@acme.com with token=super-secret-token-123456"
+    rationale = f"{_INVENTORY_INCIDENT} approved by jane.doe@acme.com with token=super-secret-token-123456"
     result = _run_action(
         "restart_service",
-        {"name": "inventory"},
+        {"name": _INVENTORY},
         _approved_context({"rationale": rationale}),
     )
     persisted = result["audit"]["rationale"]
-    assert "INC-002" in persisted
+    assert _INVENTORY_INCIDENT in persisted
     assert "jane.doe@acme.com" not in persisted
     assert "super-secret-token-123456" not in persisted
     assert "<EMAIL_ADDRESS>" in persisted
@@ -197,12 +202,12 @@ def test_action_rejects_an_overlong_rationale_without_mutation_or_audit() -> Non
     audit_count = _audit_count()
     result = _run_action(
         "restart_service",
-        {"name": "inventory"},
+        {"name": _INVENTORY},
         _approved_context({"rationale": "x" * (MAX_AUDIT_RATIONALE_LENGTH + 1)}),
     )
     assert "error" in result
     assert str(MAX_AUDIT_RATIONALE_LENGTH) in result["error"]
-    service = data.get_service("inventory")
+    service = data.get_service(_INVENTORY)
     assert service is not None
     assert service.status == "down"
     assert _audit_count() == audit_count
@@ -210,19 +215,19 @@ def test_action_rejects_an_overlong_rationale_without_mutation_or_audit() -> Non
 
 def test_action_rejects_a_missing_rationale() -> None:
     for payload in (None, {}, {"rationale": "   "}, ""):
-        result = _run_action("restart_service", {"name": "inventory"}, _approved_context(payload))
+        result = _run_action("restart_service", {"name": _INVENTORY}, _approved_context(payload))
         assert "error" in result, payload
         assert "rationale" in result["error"]
-    service = data.get_service("inventory")
+    service = data.get_service(_INVENTORY)
     assert service is not None
     assert service.status == "down"  # the refused action changed nothing
 
 
 def test_direct_calls_fail_closed_without_mutating() -> None:
-    result = actions.restart_service("inventory")
+    result = actions.restart_service(_INVENTORY)
     assert "error" in result
     assert "confirmation flow" in result["error"]
-    service = data.get_service("inventory")
+    service = data.get_service(_INVENTORY)
     assert service is not None
     assert service.status == "down"
 
@@ -236,22 +241,22 @@ def test_direct_calls_fail_closed_without_mutating() -> None:
     ],
 )
 def test_confirmed_actions_require_attributable_identity(context, missing) -> None:
-    result = _run_action("restart_service", {"name": "inventory"}, context)
+    result = _run_action("restart_service", {"name": _INVENTORY}, context)
     assert "error" in result
     assert missing in result["error"]
-    service = data.get_service("inventory")
+    service = data.get_service(_INVENTORY)
     assert service is not None
     assert service.status == "down"
 
 
 def test_public_function_rechecks_confirmation_when_called_directly() -> None:
     result = actions.restart_service(
-        "inventory",
+        _INVENTORY,
         _approved_context({"rationale": "not actually approved"}, confirmed=False),
     )
     assert "error" in result
     assert "has not been confirmed" in result["error"]
-    service = data.get_service("inventory")
+    service = data.get_service(_INVENTORY)
     assert service is not None
     assert service.status == "down"
 
@@ -279,10 +284,10 @@ def test_unconfirmed_call_pauses_for_approval() -> None:
         ),
     )
     tool = _ACTIONS_BY_NAME["restart_service"]
-    result = asyncio.run(tool.run_async(args={"name": "inventory"}, tool_context=context))
+    result = asyncio.run(tool.run_async(args={"name": _INVENTORY}, tool_context=context))
     assert "requires confirmation" in result["error"]
     assert requested  # the approval request went out
-    service = data.get_service("inventory")
+    service = data.get_service(_INVENTORY)
     assert service is not None
     assert service.status == "down"  # nothing ran
 
@@ -293,9 +298,9 @@ def test_rejected_confirmation_blocks_the_action() -> None:
         SimpleNamespace(tool_confirmation=SimpleNamespace(confirmed=False, payload=None)),
     )
     tool = _ACTIONS_BY_NAME["restart_service"]
-    result = asyncio.run(tool.run_async(args={"name": "inventory"}, tool_context=context))
+    result = asyncio.run(tool.run_async(args={"name": _INVENTORY}, tool_context=context))
     assert result == {"error": "This tool call is rejected."}
-    service = data.get_service("inventory")
+    service = data.get_service(_INVENTORY)
     assert service is not None
     assert service.status == "down"
 
@@ -309,9 +314,9 @@ def test_guardrail_blocks_bad_incident_id() -> None:
 
 def test_guardrail_allows_valid_incident_id() -> None:
     tool = _ACTIONS_BY_NAME["resolve_incident"]
-    args = {"incident_id": " inc-002 "}
+    args = {"incident_id": f" {_INVENTORY_INCIDENT.lower()} "}
     assert guardrails.validate_actions(tool, args, _NO_CONTEXT) is None
-    assert args["incident_id"] == "INC-002"
+    assert args["incident_id"] == _INVENTORY_INCIDENT
 
 
 def test_guardrail_blocks_empty_service_name() -> None:
@@ -323,9 +328,9 @@ def test_guardrail_blocks_empty_service_name() -> None:
 
 def test_guardrail_allows_valid_service_name() -> None:
     tool = _ACTIONS_BY_NAME["restart_service"]
-    args = {"name": " Inventory "}
+    args = {"name": f" {_INVENTORY.title()} "}
     assert guardrails.validate_actions(tool, args, _NO_CONTEXT) is None
-    assert args["name"] == "inventory"
+    assert args["name"] == _INVENTORY
 
 
 def test_guardrail_ignores_read_tools() -> None:
@@ -336,8 +341,8 @@ def test_guardrail_ignores_read_tools() -> None:
 def test_audit_log_is_append_only() -> None:
     _run_action(
         "restart_service",
-        {"name": "inventory"},
-        _approved_context({"rationale": "inventory is hard down"}),
+        {"name": _INVENTORY},
+        _approved_context({"rationale": f"{_INVENTORY} is hard down"}),
     )
     with (
         closing(sqlite3.connect(data.db_path())) as connection,
@@ -354,14 +359,14 @@ def test_action_and_audit_roll_back_together() -> None:
         connection.commit()
     with pytest.raises(data.DataAccessError, match="SQLite operation failed"):
         data.restart_service_with_audit(
-            "inventory",
+            _INVENTORY,
             actor="agentops-agent",
             approved_by="engineer",
-            rationale="inventory is hard down",
+            rationale=f"{_INVENTORY} is hard down",
             session_id="session-7",
             invocation_id="invocation-9",
         )
-    service = data.get_service("inventory")
+    service = data.get_service(_INVENTORY)
     assert service is not None
     assert service.status == "down"
 
@@ -392,8 +397,12 @@ def test_kill_switch_freezes_writes_before_approval(monkeypatch) -> None:
     """AGENT_WRITES_DISABLED refuses every guarded write with no state change."""
     monkeypatch.setattr(actions.settings, "writes_disabled", True)
     before = _audit_count()
-    restart = _run_action("restart_service", {"name": "inventory"}, _approved_context({"rationale": "runbook says so"}))
-    resolve = _run_action("resolve_incident", {"incident_id": "INC-002"}, _approved_context({"rationale": "fixed"}))
+    restart = _run_action("restart_service", {"name": _INVENTORY}, _approved_context({"rationale": "runbook says so"}))
+    resolve = _run_action(
+        "resolve_incident",
+        {"incident_id": _INVENTORY_INCIDENT},
+        _approved_context({"rationale": "fixed"}),
+    )
     assert "AGENT_WRITES_DISABLED" in restart["error"]
     assert "AGENT_WRITES_DISABLED" in resolve["error"]
     assert _audit_count() == before  # frozen: nothing was written or audited
@@ -402,7 +411,11 @@ def test_kill_switch_freezes_writes_before_approval(monkeypatch) -> None:
 def test_kill_switch_leaves_reads_and_approvals_working_when_clear(monkeypatch) -> None:
     """With the switch clear, an approved write still succeeds normally."""
     monkeypatch.setattr(actions.settings, "writes_disabled", False)
-    result = _run_action("restart_service", {"name": "inventory"}, _approved_context({"rationale": "runbook says so"}))
+    result = _run_action(
+        "restart_service",
+        {"name": _INVENTORY},
+        _approved_context({"rationale": "runbook says so"}),
+    )
     assert "restarted" in result["result"]
 
 

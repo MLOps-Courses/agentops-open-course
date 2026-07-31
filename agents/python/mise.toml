@@ -61,6 +61,22 @@ alias = "t"
 description = "Run the offline test suite with branch coverage"
 run = "uv run pytest --cov=agent --cov-branch --cov-report=term-missing:skip-covered --cov-fail-under=95"
 
+[tasks."test:critical"]
+description = "Repeat state, policy, privacy, and portability regressions under fixed hash seeds"
+run = """
+for seed in 1 17 97; do
+  PYTHONHASHSEED="${seed}" uv run pytest --no-cov \
+    tests/test_state.py \
+    tests/test_data.py \
+    tests/test_retrieval.py \
+    tests/test_server.py \
+    tests/test_governance.py \
+    tests/test_pii.py \
+    tests/test_required_trajectory.py \
+    tests/test_domain_portability.py
+done
+"""
+
 [tasks.eval]
 alias = "e"
 description = "Run strict ADK cases and enforce the aggregate plus critical-case floors"

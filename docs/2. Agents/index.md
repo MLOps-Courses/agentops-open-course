@@ -27,7 +27,7 @@ Read the sections by their kind, not just their order. **2.0 is conceptual**: th
 - **[2.0. Concepts](./2.0. Concepts.md)** _(concept)_: The ADK 2.x building blocks — Agent, Runner, Session, Events, Tools, and the graph Workflow.
 - **[2.1. First Agent](./2.1. First Agent.md)** _(hands-on)_: Inspect and run the AgentOps Agent end to end on local Qwen3.
 - **[2.2. Models](./2.2. Models.md)** _(reference)_: The default Ollama contract and the optional native Gemini branch.
-- **[2.3. Instructions](./2.3. Instructions.md)** _(reference)_: The system instruction — persona, operating rules, grounding, and structured output. Carries this chapter's required drill.
+- **[2.3. Instructions](./2.3. Instructions.md)** _(hands-on)_: The system instruction, its enforcement map, and a deterministic red/green trajectory contract.
 - **[2.4. Sessions](./2.4. Sessions.md)** _(reference)_: Persistent ADK sessions, **A2A** tasks (units of work exchanged between agents across process boundaries), lifecycle ownership, and resettable runtime state.
 - **[2.5. Dev Loop](./2.5. Dev Loop.md)** _(hands-on)_: Offline gates, interactive modes, model-backed evaluations, and failure diagnosis.
 
@@ -101,7 +101,7 @@ A green run proves the agent is assembled correctly, not that it reasons well. M
 **You are done when:**
 
 - `mise run test` finishes in `agents/python` with no failures and a coverage total above the enforced 95% threshold.
-- You finished the required drill in [2.3. Instructions](./2.3.%20Instructions.md#your-turn-which-eval-case-catches-a-rule-you-delete): you deleted one rule from `INSTRUCTION`, watched the offline suite stay green, and can name the eval case and the tool call that caught it.
+- You finished the required drill in [2.3. Instructions](./2.3.%20Instructions.md#your-turn-which-eval-case-catches-a-rule-you-delete): the focused offline contract went red without the runbook rule, green after the scoped restore, and the live-model comparison remained optional evidence.
 - You can name the one object every later chapter adds to, and the file that assembles it.
 - You can say which sub-page owns the model, which owns the instruction, which owns the session store, and which owns the dev loop.
 - You know which two pages ask you to run something and which three you will come back to as reference.

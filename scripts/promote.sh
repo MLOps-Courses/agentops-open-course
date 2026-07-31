@@ -96,7 +96,8 @@ printf '  test "$(git rev-parse HEAD)" = %q && test -z "$(git status --porcelain
 if [[ ${overlay} == gke ]]; then
 	printf '    mise run gke:deploy\n'
 else
-	printf '    cd infra && SKAFFOLD_DEFAULT_REPO=registry.localhost:5050 skaffold run --filename skaffold.yaml --profile local\n'
+	# shellcheck disable=SC2016
+	printf '    cd infra && AGENT_SOURCE_COMMIT="$(git rev-parse HEAD)" SKAFFOLD_DEFAULT_REPO=registry.localhost:5050 skaffold run --filename skaffold.yaml --profile local\n'
 fi
 cat <<'EOF'
 

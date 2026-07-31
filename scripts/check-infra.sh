@@ -16,11 +16,14 @@ require_cmd tflint gcp
 
 mkdir -p .agents/tmp
 tmp_dir=$(mktemp -d .agents/tmp/infra-check.XXXXXX)
+readonly kagent_schema_location='infra/kagent/schemas/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
 
 # Rendering must never consult the maintainer's active cluster. Skaffold and
 # Helmfile inspect KUBECONFIG even for offline renders, which can otherwise
 # trigger cloud authentication or make the result depend on the current context.
 export KUBECONFIG=/dev/null
+export AGENT_SOURCE_COMMIT
+AGENT_SOURCE_COMMIT="$(git rev-parse HEAD)"
 
 # The secured host profile references demo TLS/JWT material that stays
 # gitignored. Generate it on demand for validation, but remove it again when
@@ -52,7 +55,13 @@ for overlay in local gke; do
 	else
 		kubectl kustomize "infra/k8s/overlays/${overlay}" >"${rendered}"
 	fi
-	kubeconform -strict -ignore-missing-schemas -summary "${rendered}"
+	kubeconform \
+		-strict \
+		-kubernetes-version 1.36.0 \
+		-schema-location default \
+		-schema-location "${kagent_schema_location}" \
+		-summary \
+		"${rendered}"
 	kube-linter lint --fail-if-no-objects-found --with-color=false "${rendered}"
 
 	# Raw A2A is never a public workload port: only the in-namespace gateway
@@ -77,27 +86,66 @@ for overlay in local gke; do
 	[[ "${agent_egress_selector}" == "agentops-agent" ]]
 	[[ "${gateway_agent_target}" == "agentops-agent" ]]
 
-	# Keep the public gateway surface explicit. The course namespace uses all
-	# four listeners, while kagent needs only MCP and the model route.
+	# Keep gateway ingress source-and-port specific. The BYO agent uses MCP and
+	# the model route, the collector alone scrapes metrics, and only the kagent
+	# controller crosses namespaces. No pod needs the A2A listener: learners
+	# reach it through a temporary kubectl port-forward.
 	gateway_ingress='.kind == "NetworkPolicy" and .metadata.name == "agentgateway-ingress"'
 	gateway_ingress_selector="$(yq -r "select(${gateway_ingress}) | .spec.podSelector.matchLabels.\"app.kubernetes.io/name\"" "${rendered}")"
 	gateway_ingress_rules="$(yq -r "select(${gateway_ingress}) | .spec.ingress | length" "${rendered}")"
-	gateway_ingress_sources="$(yq -r "select(${gateway_ingress}) | .spec.ingress[].from[].namespaceSelector.matchLabels.\"kubernetes.io/metadata.name\"" "${rendered}" | sort | paste -sd, -)"
 	gateway_ingress_source_counts="$(yq -r "select(${gateway_ingress}) | .spec.ingress[].from | length" "${rendered}" | sort -n | paste -sd, -)"
-	gateway_ingress_source_shapes="$(yq -r "select(${gateway_ingress}) | .spec.ingress[].from[] | keys | sort | join(\",\")" "${rendered}" | sort | paste -sd, -)"
-	agentops_gateway_ports="$(yq -r "select(${gateway_ingress}) | .spec.ingress[] | select(.from[0].namespaceSelector.matchLabels.\"kubernetes.io/metadata.name\" == \"agentops\") | .ports[].port" "${rendered}" | sort -n | paste -sd, -)"
-	agentops_gateway_protocols="$(yq -r "select(${gateway_ingress}) | .spec.ingress[] | select(.from[0].namespaceSelector.matchLabels.\"kubernetes.io/metadata.name\" == \"agentops\") | .ports[].protocol" "${rendered}" | sort | paste -sd, -)"
+	agent_gateway_ports="$(yq -r "select(${gateway_ingress}) | .spec.ingress[] | select(.from[0].podSelector.matchLabels.\"app.kubernetes.io/name\" == \"agentops-agent\") | .ports[].port" "${rendered}" | sort -n | paste -sd, -)"
+	agent_gateway_namespace="$(yq -r "select(${gateway_ingress}) | .spec.ingress[] | select(.from[0].podSelector.matchLabels.\"app.kubernetes.io/name\" == \"agentops-agent\") | .from[0].namespaceSelector" "${rendered}")"
+	collector_gateway_ports="$(yq -r "select(${gateway_ingress}) | .spec.ingress[] | select(.from[0].podSelector.matchLabels.\"app.kubernetes.io/name\" == \"otel-collector\") | .ports[].port" "${rendered}" | sort -n | paste -sd, -)"
+	collector_gateway_namespace="$(yq -r "select(${gateway_ingress}) | .spec.ingress[] | select(.from[0].podSelector.matchLabels.\"app.kubernetes.io/name\" == \"otel-collector\") | .from[0].namespaceSelector" "${rendered}")"
 	kagent_gateway_ports="$(yq -r "select(${gateway_ingress}) | .spec.ingress[] | select(.from[0].namespaceSelector.matchLabels.\"kubernetes.io/metadata.name\" == \"kagent\") | .ports[].port" "${rendered}" | sort -n | paste -sd, -)"
-	kagent_gateway_protocols="$(yq -r "select(${gateway_ingress}) | .spec.ingress[] | select(.from[0].namespaceSelector.matchLabels.\"kubernetes.io/metadata.name\" == \"kagent\") | .ports[].protocol" "${rendered}" | sort | paste -sd, -)"
+	kagent_gateway_instance="$(yq -r "select(${gateway_ingress}) | .spec.ingress[] | select(.from[0].namespaceSelector.matchLabels.\"kubernetes.io/metadata.name\" == \"kagent\") | .from[0].podSelector.matchLabels.\"app.kubernetes.io/instance\"" "${rendered}")"
+	kagent_gateway_component="$(yq -r "select(${gateway_ingress}) | .spec.ingress[] | select(.from[0].namespaceSelector.matchLabels.\"kubernetes.io/metadata.name\" == \"kagent\") | .from[0].podSelector.matchLabels.\"app.kubernetes.io/component\"" "${rendered}")"
+	gateway_protocols="$(yq -r "select(${gateway_ingress}) | .spec.ingress[].ports[].protocol" "${rendered}" | sort | paste -sd, -)"
 	[[ "${gateway_ingress_selector}" == "agentgateway" ]]
-	[[ "${gateway_ingress_rules}" == "2" ]]
-	[[ "${gateway_ingress_sources}" == "agentops,kagent" ]]
-	[[ "${gateway_ingress_source_counts}" == "1,1" ]]
-	[[ "${gateway_ingress_source_shapes}" == "namespaceSelector,namespaceSelector" ]]
-	[[ "${agentops_gateway_ports}" == "3000,3001,4000,15020" ]]
-	[[ "${agentops_gateway_protocols}" == "TCP,TCP,TCP,TCP" ]]
+	[[ "${gateway_ingress_rules}" == "3" ]]
+	[[ "${gateway_ingress_source_counts}" == "1,1,1" ]]
+	[[ "${agent_gateway_ports}" == "3000,4000" ]]
+	[[ "${agent_gateway_namespace}" == "null" ]]
+	[[ "${collector_gateway_ports}" == "15020" ]]
+	[[ "${collector_gateway_namespace}" == "null" ]]
 	[[ "${kagent_gateway_ports}" == "3000,4000" ]]
-	[[ "${kagent_gateway_protocols}" == "TCP,TCP" ]]
+	[[ "${kagent_gateway_instance}" == "kagent" ]]
+	[[ "${kagent_gateway_component}" == "controller" ]]
+	[[ "${gateway_protocols}" == "TCP,TCP,TCP,TCP,TCP" ]]
+
+	# Collector ingress is source-and-port specific in the completed reference:
+	# gateway and kagent controller use OTLP/gRPC, the BYO agent uses OTLP/HTTP,
+	# and only the local Prometheus overlay may scrape the metrics exporter.
+	collector_ingress='.kind == "NetworkPolicy" and .metadata.name == "otel-collector-ingress"'
+	collector_ingress_rules="$(yq -r "select(${collector_ingress}) | .spec.ingress | length" "${rendered}")"
+	collector_ports="$(yq -r "select(${collector_ingress}) | .spec.ingress[].ports[].port" "${rendered}" | sort -n | paste -sd, -)"
+	gateway_otel_port="$(yq -r "select(${collector_ingress}) | .spec.ingress[] | select(.from[0].podSelector.matchLabels.\"app.kubernetes.io/name\" == \"agentgateway\") | .ports[0].port" "${rendered}")"
+	agent_otel_port="$(yq -r "select(${collector_ingress}) | .spec.ingress[] | select(.from[0].podSelector.matchLabels.\"app.kubernetes.io/name\" == \"agentops-agent\") | .ports[0].port" "${rendered}")"
+	kagent_otel_namespace="$(yq -r "select(${collector_ingress}) | .spec.ingress[] | select(.from[0].namespaceSelector) | .from[0].namespaceSelector.matchLabels.\"kubernetes.io/metadata.name\"" "${rendered}")"
+	kagent_otel_instance="$(yq -r "select(${collector_ingress}) | .spec.ingress[] | select(.from[0].namespaceSelector) | .from[0].podSelector.matchLabels.\"app.kubernetes.io/instance\"" "${rendered}")"
+	kagent_otel_component="$(yq -r "select(${collector_ingress}) | .spec.ingress[] | select(.from[0].namespaceSelector) | .from[0].podSelector.matchLabels.\"app.kubernetes.io/component\"" "${rendered}")"
+	kagent_otel_port="$(yq -r "select(${collector_ingress}) | .spec.ingress[] | select(.from[0].namespaceSelector) | .ports[0].port" "${rendered}")"
+	[[ "${collector_ingress_rules}" == "3" ]]
+	[[ "${collector_ports}" == "4317,4317,4318" ]]
+	[[ "${gateway_otel_port}" == "4317" ]]
+	[[ "${agent_otel_port}" == "4318" ]]
+	[[ "${kagent_otel_namespace}" == "kagent" ]]
+	[[ "${kagent_otel_instance}" == "kagent" ]]
+	[[ "${kagent_otel_component}" == "controller" ]]
+	[[ "${kagent_otel_port}" == "4317" ]]
+
+	metrics_ingress='.kind == "NetworkPolicy" and .metadata.name == "otel-collector-metrics-ingress"'
+	metrics_ingress_count="$(yq -r "select(${metrics_ingress}) | .metadata.name" "${rendered}" | awk 'NF { count++ } END { print count + 0 }')"
+	if [[ "${overlay}" == "local" ]]; then
+		metrics_source="$(yq -r "select(${metrics_ingress}) | .spec.ingress[0].from[0].podSelector.matchLabels.\"app.kubernetes.io/name\"" "${rendered}")"
+		metrics_port="$(yq -r "select(${metrics_ingress}) | .spec.ingress[0].ports[0].port" "${rendered}")"
+		[[ "${metrics_ingress_count}" == "1" ]]
+		[[ "${metrics_source}" == "prometheus" ]]
+		[[ "${metrics_port}" == "8889" ]]
+	else
+		[[ "${metrics_ingress_count}" == "0" ]]
+	fi
 
 	agent_model="$(yq -r 'select(.kind == "Agent" and .metadata.name == "agentops-agent") | .spec.byo.deployment.env[] | select(.name == "AGENT_MODEL") | .value' "${rendered}")"
 	agent_provider="$(yq -r 'select(.kind == "Agent" and .metadata.name == "agentops-agent") | .spec.byo.deployment.env[] | select(.name == "AGENT_MODEL_PROVIDER") | .value' "${rendered}")"
@@ -110,8 +158,12 @@ for overlay in local gke; do
 
 	backup_state_read_only="$(yq -r 'select(.kind == "CronJob" and .metadata.name == "agentops-state-backup") | .spec.jobTemplate.spec.template.spec.containers[] | select(.name == "backup") | .volumeMounts[] | select(.name == "state") | (.readOnly // false)' "${rendered}")"
 	backup_target_read_only="$(yq -r 'select(.kind == "CronJob" and .metadata.name == "agentops-state-backup") | .spec.jobTemplate.spec.template.spec.containers[] | select(.name == "backup") | .volumeMounts[] | select(.name == "backups") | (.readOnly // false)' "${rendered}")"
+	backup_arguments="$(yq -r 'select(.kind == "CronJob" and .metadata.name == "agentops-state-backup") | .spec.jobTemplate.spec.template.spec.containers[] | select(.name == "backup") | .args[]' "${rendered}")"
 	[[ "${backup_state_read_only}" == "true" ]]
 	[[ "${backup_target_read_only}" == "false" ]]
+	if rg -Fx -- '--lock-file' <<<"${backup_arguments}" >/dev/null; then
+		fail "backup CronJob must use the shared state-directory lock"
+	fi
 
 	if [[ "${overlay}" == "local" ]]; then
 		[[ "${agent_model}" == "qwen3:4b-instruct" ]]
@@ -169,41 +221,81 @@ for overlay in local gke; do
 	fi
 done
 
-# Execute the rendered backup CronJob's exact inline program against throwaway
-# SQLite state. A corrupt database must fail without publishing a visible
-# snapshot; a later valid run must publish one marked snapshot while ignoring an
-# unrelated hidden/incomplete directory.
-backup_program="${tmp_dir}/state-backup.py"
-yq -r '
-	select(.kind == "CronJob" and .metadata.name == "agentops-state-backup") |
-	.spec.jobTemplate.spec.template.spec.containers[] |
-	select(.name == "backup") |
-	.args[0]
-' "${tmp_dir}/local.yaml" >"${backup_program}"
-backup_state="${tmp_dir}/backup-state"
-backup_root="${tmp_dir}/backup-root"
-mkdir -p "${backup_state}" "${backup_root}"
-cp agents/data/incidents.db "${backup_state}/incidents.db"
-printf 'not a SQLite database\n' >"${backup_state}/zz-corrupt.db"
-if AGENT_STATE_DIR="${backup_state}" STATE_BACKUP_ROOT="${backup_root}" \
-	agents/python/.venv/bin/python "${backup_program}" >"${tmp_dir}/backup-expected-failure.log" 2>&1; then
-	echo "rendered backup program accepted a corrupt SQLite database" >&2
+# Resolve the NetworkPolicy selector against the pinned chart output. The
+# instance label is shared by the controller, UI, and PostgreSQL workloads, so
+# this check prevents a future selector change from admitting non-emitters.
+kagent_chart_render="${tmp_dir}/kagent-chart.yaml"
+helmfile --file infra/helmfile.yaml --quiet template >"${kagent_chart_render}"
+kagent_otel_sources="$(
+	yq -r '
+		select(
+			.kind == "Deployment" and
+			.metadata.namespace == "kagent" and
+			.spec.template.metadata.labels."app.kubernetes.io/instance" == "kagent" and
+			.spec.template.metadata.labels."app.kubernetes.io/component" == "controller"
+		) |
+		.metadata.name
+	' "${kagent_chart_render}" |
+		sort |
+		paste -sd, -
+)"
+[[ "${kagent_otel_sources}" == "kagent-controller" ]]
+
+# Every committed custom-resource schema records the immutable CRD chart that
+# produced it. A chart change therefore fails locally until schemas are reviewed
+# and regenerated; a misspelled spec field proves validation is active.
+kagent_crd_chart="$(yq -r '.releases[] | select(.name == "kagent-crds") | .chart' infra/helmfile.yaml)"
+kagent_schema_sources="$(jq -r '."x-agentops-source-chart"' infra/kagent/schemas/*.json | sort -u)"
+[[ "${kagent_schema_sources}" == "${kagent_crd_chart}" ]]
+if kubeconform \
+	-strict \
+	-kubernetes-version 1.36.0 \
+	-schema-location default \
+	-schema-location "${kagent_schema_location}" \
+	infra/kagent/fixtures/invalid-modelconfig-field.yaml >"${tmp_dir}/invalid-kagent.log" 2>&1; then
+	echo "invalid kagent field passed the pinned offline schema" >&2
 	exit 1
 fi
-leftover_backup_snapshot="$(find "${backup_root}" -mindepth 1 -maxdepth 1 -type d -print -quit)"
-if [[ -n "${leftover_backup_snapshot}" ]]; then
-	echo "rendered backup program published or retained a failed snapshot" >&2
-	exit 1
-fi
-rm "${backup_state}/zz-corrupt.db"
-mkdir "${backup_root}/.incomplete-check"
-AGENT_STATE_DIR="${backup_state}" STATE_BACKUP_ROOT="${backup_root}" \
-	agents/python/.venv/bin/python "${backup_program}" >"${tmp_dir}/backup-success.log"
-[[ -d "${backup_root}/.incomplete-check" ]]
-completed_backup_markers="$(find "${backup_root}" -mindepth 2 -maxdepth 2 -type f -name .complete | wc -l)"
-visible_backup_dirs="$(find "${backup_root}" -mindepth 1 -maxdepth 1 -type d ! -name '.*' | wc -l)"
-[[ "${completed_backup_markers}" -eq 1 ]]
-[[ "${visible_backup_dirs}" -eq 1 ]]
+grep -Fq "additional properties 'provder' not allowed" "${tmp_dir}/invalid-kagent.log"
+
+# The broad ingress shown in Chapter 6 is an explicit, temporary fixture, not a
+# resource included by either completed overlay. Keep its unsafe shape stable so
+# the exercise remains reproducible and easy to delete.
+kubeconform -strict -summary infra/k8s/exercises/otel-ingress-broad.yaml
+exercise_policy_name="$(yq -r '.metadata.name' infra/k8s/exercises/otel-ingress-broad.yaml)"
+exercise_sources="$(yq -r '.spec.ingress[0].from[].namespaceSelector.matchLabels."kubernetes.io/metadata.name"' infra/k8s/exercises/otel-ingress-broad.yaml | sort | paste -sd, -)"
+exercise_ports="$(yq -r '.spec.ingress[0].ports[].port' infra/k8s/exercises/otel-ingress-broad.yaml | sort -n | paste -sd, -)"
+[[ "${exercise_policy_name}" == "exercise-broad-otel-ingress" ]]
+[[ "${exercise_sources}" == "agentops,kagent" ]]
+[[ "${exercise_ports}" == "4317,4318,8889" ]]
+for rendered in "${tmp_dir}/local.yaml" "${tmp_dir}/gke.yaml"; do
+	if yq -e 'select(.kind == "NetworkPolicy" and .metadata.name == "exercise-broad-otel-ingress")' "${rendered}" >/dev/null; then
+		fail "${rendered}: temporary broad-ingress exercise leaked into a deployable overlay"
+	fi
+done
+
+# The deployable CronJob must use the same versioned state CLI as the host
+# wrappers. Keep this assertion exact so an illustrative one-off backup program
+# cannot silently diverge from the tested snapshot contract.
+backup_command="$(
+	yq -r '
+		select(.kind == "CronJob" and .metadata.name == "agentops-state-backup") |
+		.spec.jobTemplate.spec.template.spec.containers[] |
+		select(.name == "backup") |
+		.command | join(",")
+	' "${tmp_dir}/local.yaml"
+)"
+backup_args="$(
+	yq -r '
+		select(.kind == "CronJob" and .metadata.name == "agentops-state-backup") |
+		.spec.jobTemplate.spec.template.spec.containers[] |
+		select(.name == "backup") |
+		.args | join(",")
+	' "${tmp_dir}/local.yaml"
+)"
+[[ "${backup_command}" == "python,-m,agent.state,backup" ]]
+[[ "${backup_args}" == "--state-dir,/app/state,--backup-root,/backups,--keep,7" ]]
+./infra/scripts/backup-drill.sh
 
 # SOPS guard rail (Ch. 6.5): every manifest under infra/**/secrets/ must be
 # ciphertext — sops metadata present and each data/stringData value ENC[...] —
@@ -410,13 +502,34 @@ for gateway_config in infra/agentgateway/k3d/config.yaml infra/agentgateway/gke/
 	[[ "${profile_readiness_addr}" == "0.0.0.0:15021" ]]
 done
 
-docker compose -f infra/observability/compose.yaml config --quiet
+compose_config="${tmp_dir}/observability-compose.json"
+docker compose \
+	--project-name agentops-observability \
+	--file infra/observability/compose.yaml \
+	config \
+	--format json >"${compose_config}"
+compose_services="$(jq -r '.services | keys[]' "${compose_config}" | sort | paste -sd, -)"
+[[ "${compose_services}" == "alertmanager,grafana,loki,mlflow,otel-collector,prometheus" ]]
+jq -e '
+	.services |
+	to_entries |
+	all(
+		.value.user != null and
+		(.value.user | split(":")[0] != "0") and
+		.value.read_only == true and
+		(.value.cap_drop | index("ALL") != null) and
+		(.value.security_opt | map(startswith("no-new-privileges")) | any) and
+		(.value.mem_limit | tonumber) > 0 and
+		.value.pids_limit > 0 and
+		.value.cpus > 0
+	)
+' "${compose_config}" >/dev/null
 (cd infra && skaffold diagnose --yaml-only -f skaffold.yaml -p local) >"${tmp_dir}/skaffold-local.yaml"
 (cd infra && skaffold diagnose --yaml-only -f skaffold.yaml -p gke) >"${tmp_dir}/skaffold-gke.yaml"
 
 rendered="${tmp_dir}/skaffold-render.yaml"
 (
-	cd infra
+	cd infra || exit
 	skaffold render \
 		--filename skaffold.yaml \
 		--profile local \

@@ -21,6 +21,14 @@ from mlflow.entities import Feedback
 from agent import actions, data
 from agent.guardrails import validate_actions
 from evals import mlflow_eval
+from tests.domain import REFERENCE_DOMAIN
+
+_CACHE_INCIDENT = REFERENCE_DOMAIN.incidents.cache_memory
+_CACHE = REFERENCE_DOMAIN.services.cache
+_CHECKOUT = REFERENCE_DOMAIN.services.checkout
+_GATEWAY_INCIDENT = REFERENCE_DOMAIN.incidents.gateway_memory
+_INVENTORY = REFERENCE_DOMAIN.services.inventory
+_INVENTORY_INCIDENT = REFERENCE_DOMAIN.incidents.inventory_down
 
 _PASSING_METRICS = {
     "provider_available/mean": 1.0,
@@ -29,6 +37,16 @@ _PASSING_METRICS = {
     "response_facts/mean": 1.0,
     "tool_policy/mean": 1.0,
 }
+
+
+def _create_shadow_agent_package(package: Path) -> None:
+    """Create a focused agent fake while retaining production-owned leaf modules."""
+    package.mkdir()
+    production_package = Path(__file__).parents[1] / "src" / "agent"
+    package.joinpath("__init__.py").write_text(
+        f"__path__.append({str(production_package)!r})\n",
+        encoding="utf-8",
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -42,8 +60,7 @@ def isolate_model_observations(monkeypatch, tmp_path) -> Path:
 def test_tracking_uri_is_selected_before_composition_import_without_env(tmp_path) -> None:
     """A pinned child must see the evaluator's local store while building its agent."""
     package = tmp_path / "agent"
-    package.mkdir()
-    (package / "__init__.py").write_text("", encoding="utf-8")
+    _create_shadow_agent_package(package)
     (package / "config.py").write_text("settings = object()\n", encoding="utf-8")
     (package / "model.py").write_text("async def close_model(_model): pass\n", encoding="utf-8")
     (package / "composition.py").write_text(
@@ -88,8 +105,7 @@ def test_tracking_uri_is_selected_before_composition_import_without_env(tmp_path
 def test_temp_store_prompt_can_be_registered_then_loaded_by_a_pinned_child(tmp_path) -> None:
     """The registry URI used to register a prompt is available during child import."""
     package = tmp_path / "agent"
-    package.mkdir()
-    (package / "__init__.py").write_text("", encoding="utf-8")
+    _create_shadow_agent_package(package)
     (package / "model.py").write_text("async def close_model(_model): pass\n", encoding="utf-8")
     (package / "config.py").write_text(
         "\n".join(
@@ -176,7 +192,7 @@ class _ConfirmationOnlyLlm(BaseLlm):
                         function_call=types.FunctionCall(
                             id="restart-inventory",
                             name="restart_service",
-                            args={"name": "inventory"},
+                            args={"name": _INVENTORY},
                         )
                     )
                 ],
@@ -284,7 +300,7 @@ def test_run_reuses_one_session_and_closes_runner(monkeypatch) -> None:
                 args={
                     "originalFunctionCall": {
                         "name": "restart_service",
-                        "args": {"name": "inventory"},
+                        "args": {"name": _INVENTORY},
                     }
                 },
             )
@@ -323,7 +339,7 @@ def test_run_reuses_one_session_and_closes_runner(monkeypatch) -> None:
                     "args": {
                         "originalFunctionCall": {
                             "name": "restart_service",
-                            "args": {"name": "inventory"},
+                            "args": {"name": _INVENTORY},
                         }
                     },
                 },
@@ -335,7 +351,7 @@ def test_run_reuses_one_session_and_closes_runner(monkeypatch) -> None:
                     "args": {
                         "originalFunctionCall": {
                             "name": "restart_service",
-                            "args": {"name": "inventory"},
+                            "args": {"name": _INVENTORY},
                         }
                     },
                 },
@@ -349,21 +365,21 @@ def test_run_converts_a_real_confirmation_pause_without_approving_or_mutating(mo
     model = _ConfirmationOnlyLlm(model="confirmation-only")
     agent = Agent(
         name="confirmation_eval_agent",
-        instruction="Call restart_service for inventory.",
+        instruction=f"Call restart_service for {_INVENTORY}.",
         model=model,
         tools=[actions.ACTION_TOOLS[0]],
         before_tool_callback=validate_actions,
     )
     monkeypatch.setattr(mlflow_eval, "root_agent", agent)
-    before = data.get_service("inventory")
+    before = data.get_service(_INVENTORY)
     assert before is not None
     assert before.status.value == "down"
 
-    result = asyncio.run(mlflow_eval._run(["Restart inventory."], "confirmation-pause"))  # noqa: SLF001
+    result = asyncio.run(mlflow_eval._run([f"Restart {_INVENTORY}."], "confirmation-pause"))  # noqa: SLF001
 
     assert result["responses"] == [
         (
-            "The guarded restart_service action for service inventory is waiting for approval. "
+            f"The guarded restart_service action for service {_INVENTORY} is waiting for approval. "
             "Provide a rationale with the approval; no state change has occurred."
         )
     ]
@@ -372,7 +388,7 @@ def test_run_converts_a_real_confirmation_pause_without_approving_or_mutating(mo
         "adk_request_confirmation",
     ]
     assert model.calls == 1
-    after = data.get_service("inventory")
+    after = data.get_service(_INVENTORY)
     assert after is not None
     assert after.status.value == "down"
 
@@ -462,7 +478,7 @@ def test_response_and_policy_scorers_reject_false_green_results() -> None:
     }
     hallucinated = {
         "responses": ["INC-999 is resolved."],
-        "tools": [[{"name": "restart_service", "args": {"name": "inventory"}}]],
+        "tools": [[{"name": "restart_service", "args": {"name": _INVENTORY}}]],
     }
     assert mlflow_eval.response_facts(outputs=hallucinated, expectations=expectations) is False
     assert mlflow_eval.tool_policy(outputs=hallucinated, expectations=expectations) is False
@@ -499,32 +515,32 @@ def test_response_and_policy_scorers_reject_false_green_results() -> None:
 @pytest.mark.parametrize(
     ("response", "expected"),
     [
-        ("The inventory service is down.", True),
-        ("The inventory service is not down.", False),
-        ("Checkout is down, but inventory is operational.", False),
-        ("INC-007 is the resolved cache incident.", True),
-        ("INC-007 is not resolved.", False),
+        (f"The {_INVENTORY} service is down.", True),
+        (f"The {_INVENTORY} service is not down.", False),
+        (f"{_CHECKOUT.title()} is down, but {_INVENTORY} is operational.", False),
+        (f"{_CACHE_INCIDENT} is the resolved {_CACHE} incident.", True),
+        (f"{_CACHE_INCIDENT} is not resolved.", False),
     ],
 )
 def test_response_facts_enforces_subject_bound_polarity(response, expected) -> None:
-    if "INC-007" in response:
+    if _CACHE_INCIDENT in response:
         claims = [
             {
-                "subject": "inc-007",
+                "subject": _CACHE_INCIDENT.lower(),
                 "required": ["resolved"],
                 "forbidden": ["investigating", "open"],
             }
         ]
-        required_terms = ["inc-007", "resolved"]
+        required_terms = [_CACHE_INCIDENT.lower(), "resolved"]
     else:
         claims = [
             {
-                "subject": "inventory",
+                "subject": _INVENTORY,
                 "required": ["down"],
                 "forbidden": ["degraded", "operational"],
             }
         ]
-        required_terms = ["inventory", "down"]
+        required_terms = [_INVENTORY, "down"]
     expectations = {
         "response_contracts": [
             {
@@ -574,12 +590,12 @@ def test_response_facts_ties_action_negation_to_the_action_claim() -> None:
 def test_tool_policy_requires_exact_writes_but_allows_extra_reads() -> None:
     expected_note = {
         "name": "save_incident_note",
-        "args": {"incident_id": "INC-010", "note": "Raised the memory limit to 2Gi."},
+        "args": {"incident_id": _GATEWAY_INCIDENT, "note": "Raised the memory limit to 2Gi."},
     }
     expectations = {
         "expected_tools": [
             [
-                {"name": "get_incident", "args": {"incident_id": "INC-010"}},
+                {"name": "get_incident", "args": {"incident_id": _GATEWAY_INCIDENT}},
                 expected_note,
             ]
         ]
@@ -588,9 +604,9 @@ def test_tool_policy_requires_exact_writes_but_allows_extra_reads() -> None:
         "tools": [
             [
                 {"name": "list_incidents", "args": {}},
-                {"name": "get_incident", "args": {"incident_id": "INC-010"}},
+                {"name": "get_incident", "args": {"incident_id": _GATEWAY_INCIDENT}},
                 expected_note,
-                {"name": "recall_incident_context", "args": {"incident_id": "INC-010"}},
+                {"name": "recall_incident_context", "args": {"incident_id": _GATEWAY_INCIDENT}},
             ]
         ]
     }
@@ -601,14 +617,16 @@ def test_tool_policy_requires_exact_writes_but_allows_extra_reads() -> None:
         [
             {
                 "name": "save_incident_note",
-                "args": {"incident_id": "INC-002", "note": "Raised the memory limit to 2Gi."},
+                "args": {"incident_id": _INVENTORY_INCIDENT, "note": "Raised the memory limit to 2Gi."},
             }
         ],
         [expected_note, expected_note],
     ):
         assert (
             mlflow_eval.tool_policy(
-                outputs={"tools": [[{"name": "get_incident", "args": {"incident_id": "INC-010"}}, *actual_writes]]},
+                outputs={
+                    "tools": [[{"name": "get_incident", "args": {"incident_id": _GATEWAY_INCIDENT}}, *actual_writes]]
+                },
                 expectations=expectations,
             )
             is False

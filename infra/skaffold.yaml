@@ -14,10 +14,14 @@ build:
       context: ../agents
       docker:
         dockerfile: python/Dockerfile
+        buildArgs:
+          AGENT_SOURCE_COMMIT: "{{.AGENT_SOURCE_COMMIT}}"
     - image: agentops-mlflow
       context: mlflow
       docker:
         dockerfile: Dockerfile
+        buildArgs:
+          AGENT_SOURCE_COMMIT: "{{.AGENT_SOURCE_COMMIT}}"
 manifests:
   kustomize:
     paths:

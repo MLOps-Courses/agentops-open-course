@@ -10,18 +10,26 @@ spec:
   policyTypes: [Ingress]
   ingress:
     - from:
-        - namespaceSelector:
+        - podSelector:
             matchLabels:
-              kubernetes.io/metadata.name: agentops
+              app.kubernetes.io/name: agentops-agent
       ports:
         - { port: 3000, protocol: TCP }
-        - { port: 3001, protocol: TCP }
         - { port: 4000, protocol: TCP }
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: otel-collector
+      ports:
         - { port: 15020, protocol: TCP }
     - from:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: kagent
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: kagent
+              app.kubernetes.io/component: controller
       ports:
         - { port: 3000, protocol: TCP }
         - { port: 4000, protocol: TCP }
@@ -95,16 +103,29 @@ spec:
   policyTypes: [Ingress]
   ingress:
     - from:
-        - namespaceSelector:
+        - podSelector:
             matchLabels:
-              kubernetes.io/metadata.name: agentops
+              app.kubernetes.io/name: agentgateway
+      ports:
+        - { port: 4317, protocol: TCP }
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: agentops-agent
+      ports:
+        - { port: 4318, protocol: TCP }
+    - from:
+        # The kagent controller is the only cross-namespace OTLP emitter. Both
+        # selectors must match, so an unrelated pod in either namespace stays denied.
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: kagent
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: kagent
+              app.kubernetes.io/component: controller
       ports:
         - { port: 4317, protocol: TCP }
-        - { port: 4318, protocol: TCP }
-        - { port: 8889, protocol: TCP }
 ---
 # Only the collector writes OTLP logs to Loki; learners read the query API
 # through `kubectl port-forward`, which enters via the kubelet rather than

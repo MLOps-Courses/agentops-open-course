@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block extrahead %}
+  {% set current_page = page | default(none) %}
+  {% set current_title = current_page.title if current_page and current_page.title is defined else config.site_name %}
+  {% set current_description = current_page.meta.description if current_page and current_page.meta is defined and current_page.meta.description is defined else config.site_description %}
+  {% set current_url = current_page.canonical_url if current_page and current_page.canonical_url is defined else config.site_url %}
+  {% set is_homepage = current_url == config.site_url ~ "index.html" %}
+  {% set social_image = config.site_url ~ "assets/social-card.png" %}
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="{{ config.site_name }}">
+  <meta property="og:title" content="{{ current_title }}">
+  <meta property="og:description" content="{{ current_description }}">
+  <meta property="og:url" content="{{ current_url }}">
+  <meta property="og:image" content="{{ social_image }}">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="AgentOps Open Course: Agent, Gateway, Platform, and Evidence">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="{{ current_title }}">
+  <meta name="twitter:description" content="{{ current_description }}">
+  <meta name="twitter:image" content="{{ social_image }}">
+  <meta name="twitter:image:alt" content="AgentOps Open Course: Agent, Gateway, Platform, and Evidence">
+  {% if is_homepage %}
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "Course",
+        "name": "AgentOps Open Course",
+        "description": "{{ config.site_description }}",
+        "url": "{{ config.site_url }}",
+        "isAccessibleForFree": true,
+        "provider": {
+          "@type": "Organization",
+          "name": "MLOps Courses",
+          "url": "https://github.com/MLOps-Courses"
+        }
+      }
+    </script>
+  {% endif %}
+{% endblock %}

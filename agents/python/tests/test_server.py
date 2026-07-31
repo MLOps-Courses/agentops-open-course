@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 from importlib.metadata import version
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
@@ -25,6 +26,7 @@ from starlette.testclient import TestClient
 from agent import actions, data, server
 from agent.config import settings
 from agent.guardrails import handle_model_error, validate_actions
+from agent.models import CURRENT_AUDIT_SCHEMA_VERSION, CURRENT_RUNTIME_SCHEMA_VERSION
 
 
 def test_a2a_default_rejects_a_non_agent_entrypoint(monkeypatch) -> None:
@@ -159,13 +161,21 @@ def test_agent_card_is_public_and_does_not_expose_instruction() -> None:
 
 def test_app_factory_owns_closes_and_prepares_persistent_runtime(monkeypatch) -> None:
     original = server.prepare_runtime_database
+    original_recover = server.recover_interrupted_restore
     prepared = False
+    startup_order: list[str] = []
+
+    def tracked_recover(path: Path) -> None:
+        startup_order.append("recover")
+        original_recover(path)
 
     def tracked_prepare() -> Path:
         nonlocal prepared
+        startup_order.append("prepare")
         prepared = True
         return original()
 
+    monkeypatch.setattr(server, "recover_interrupted_restore", tracked_recover)
     monkeypatch.setattr(server, "prepare_runtime_database", tracked_prepare)
 
     async def exercise_lifespan() -> None:
@@ -179,6 +189,7 @@ def test_app_factory_owns_closes_and_prepares_persistent_runtime(monkeypatch) ->
 
         async with app.router.lifespan_context(app):
             assert prepared is True
+            assert startup_order == ["recover", "prepare"]
             await runtime.session_service.create_session(app_name="agentops-agent", user_id="test")
             await runtime.task_store.initialize()
 
@@ -594,7 +605,144 @@ def test_readiness_fails_when_the_session_store_is_unreachable() -> None:
         finally:
             runtime.task_engine = healthy_engine
         assert response.status_code == 503
-        assert any("session store unreachable" in problem for problem in response.json()["problems"])
+        assert any("session/task store invalid" in problem for problem in response.json()["problems"])
+
+
+def test_readiness_rejects_a_connectable_runtime_database_with_missing_tables() -> None:
+    with TestClient(server.create_app()) as client:
+        with closing(sqlite3.connect(settings.state_dir / "runtime.db")) as connection:
+            connection.execute("DROP TABLE tasks")
+            connection.commit()
+
+        response = client.get("/healthz")
+
+    assert response.status_code == 503
+    assert any("session/task store invalid" in problem for problem in response.json()["problems"])
+
+
+def test_readiness_rejects_runtime_schema_corruption_introduced_after_startup() -> None:
+    with TestClient(server.create_app()) as client:
+        with closing(sqlite3.connect(settings.state_dir / "runtime.db")) as connection:
+            connection.execute("UPDATE adk_internal_metadata SET value = '99' WHERE key = 'schema_version'")
+            connection.commit()
+
+        response = client.get("/healthz")
+
+    assert response.status_code == 503
+    assert any("session/task store invalid" in problem for problem in response.json()["problems"])
+
+
+def test_startup_rejects_future_audit_state_without_mutating_it() -> None:
+    path = data.db_path()
+    with closing(sqlite3.connect(path)) as connection:
+        connection.execute(
+            """
+            INSERT INTO audit_log
+                (schema_version, ts, actor, approved_by, rationale, context_summary,
+                 session_id, invocation_id, action, target, detail)
+            VALUES (?, '2026-07-31T08:00:00Z', 'future-agent', 'engineer',
+                    'future approval', 'future context', 'future-session',
+                    'future-invocation', 'restart_service', 'inventory', 'future detail')
+            """,
+            (CURRENT_AUDIT_SCHEMA_VERSION + 1,),
+        )
+        connection.commit()
+    before = path.read_bytes()
+
+    with (
+        pytest.raises(data.DataAccessError, match="Upgrade the application or select a compatible snapshot"),
+        TestClient(server.create_app()),
+    ):
+        pass
+
+    assert path.read_bytes() == before
+
+
+def test_startup_rejects_future_runtime_state_without_mutating_it() -> None:
+    settings.state_dir.mkdir(parents=True)
+    path = settings.state_dir / "runtime.db"
+    with closing(sqlite3.connect(path)) as connection:
+        connection.execute(
+            """
+            CREATE TABLE adk_internal_metadata (
+                "key" TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            )
+            """
+        )
+        connection.execute("INSERT INTO adk_internal_metadata VALUES ('schema_version', '99')")
+        connection.commit()
+    before = path.read_bytes()
+    incidents_path = settings.state_dir / "incidents.db"
+    assert not incidents_path.exists()
+
+    with (
+        pytest.raises(RuntimeError, match="Upgrade the application or select a compatible snapshot"),
+        TestClient(server.create_app()),
+    ):
+        pass
+
+    assert path.read_bytes() == before
+    assert not incidents_path.exists()
+
+
+def test_startup_rejects_incomplete_current_runtime_state_without_mutating_it() -> None:
+    settings.state_dir.mkdir(parents=True)
+    path = settings.state_dir / "runtime.db"
+    with closing(sqlite3.connect(path)) as connection:
+        connection.execute(
+            """
+            CREATE TABLE adk_internal_metadata (
+                "key" TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            )
+            """
+        )
+        connection.execute(
+            "INSERT INTO adk_internal_metadata VALUES ('schema_version', ?)",
+            (CURRENT_RUNTIME_SCHEMA_VERSION,),
+        )
+        connection.commit()
+    before = path.read_bytes()
+    incidents_path = settings.state_dir / "incidents.db"
+    assert not incidents_path.exists()
+
+    with (
+        pytest.raises(RuntimeError, match="incomplete current schema"),
+        TestClient(server.create_app()),
+    ):
+        pass
+
+    assert path.read_bytes() == before
+    assert not incidents_path.exists()
+
+
+def test_error_interceptor_cancellation_cannot_leak_state_into_a_later_task() -> None:
+    async def exercise() -> None:
+        interceptor = server._error_code_interceptor()  # noqa: SLF001 - cancellation cleanup boundary
+        assert interceptor.before_agent is not None
+        assert interceptor.after_event is not None
+        assert interceptor.after_agent is not None
+        request = cast("RequestContext", SimpleNamespace())
+        context = cast("server.ExecutorContext", SimpleNamespace())
+
+        await interceptor.before_agent(request)
+        await interceptor.after_event(
+            context,
+            cast("server.A2AEvent", SimpleNamespace(task_id="canceled-task")),
+            server.Event(author="test", error_code="MODEL_UNAVAILABLE"),
+        )
+        # Cancellation terminates the producer without calling after_agent.
+        await interceptor.before_agent(request)
+        later = cast(
+            "server.TaskStatusUpdateEvent",
+            SimpleNamespace(task_id="later-task", metadata={}),
+        )
+        restored = await interceptor.after_agent(context, later)
+
+        assert "adk_error_code" not in restored.metadata
+
+    asyncio.run(exercise())
 
 
 def test_a2a_requests_have_a_bounded_model_call_budget(monkeypatch) -> None:

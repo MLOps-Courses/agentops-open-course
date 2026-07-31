@@ -9,7 +9,7 @@ The same container images run on a local k3d cluster and a small GKE Standard cl
 - `k8s/base` and `k8s/overlays/{local,gke}` are the Kustomize deployment.
 - `k8s/base/secrets/` holds SOPS-encrypted Secret manifests (age recipient in the root `.sops.yaml`). `scripts/secrets.sh` generates the gitignored age key under `infra/secrets/`, then encrypts, decrypts, or edits manifests; deploy one with `scripts/secrets.sh decrypt <file> | kubectl apply -f -`. Encrypted files stay out of the Kustomize overlays so rendering never needs the private key.
 - `kagent` contains the BYO `Agent`, gateway `ModelConfig`, MCP registration, and a slim stable-chart values file.
-- `mlflow` builds a locked MLflow 3.14 image that runs as UID 10002.
+- `mlflow` builds a locked MLflow 3.15 image that runs as UID 10002.
 - `observability` is the loopback-only host stack for running the agent outside Kubernetes.
 - `gcp` is an OpenTofu module. It never runs kubectl or gcloud provisioners.
 
@@ -54,8 +54,7 @@ ollama serve
 ```bash
 export OLLAMA_HOST="$(docker network inspect k3d-local --format '{{(index .IPAM.Config 0).Gateway}}'):11434"
 ollama pull qwen3:4b-instruct
-cd infra
-SKAFFOLD_DEFAULT_REPO=registry.localhost:5050 skaffold dev -p local
+mise run platform:dev
 ```
 
 No Ingress or LoadBalancer is created. Open only the path being tested, and run each foreground forward in its own terminal:

@@ -29,6 +29,12 @@ Keep [0.7. Glossary](./0.%20Overview/0.7.%20Glossary.md) open when a term is unf
 
 You need [mise](https://mise.jdx.dev/) and [Ollama](https://ollama.com/download) on a Unix-like shell. No account, no API key, no `.env`:
 
+<!-- quickstart: unverified-preview -->
+
+!!! warning "This is an unverified preview"
+
+    This shortest path omits `mise run doctor`, `mise run check:core`, and `mise run test`. Use the guarded sequence in [1.0. System](./1.%20Setup/1.0.%20System.md) when any command fails or before trusting the checkout.
+
 ```bash
 git clone https://github.com/MLOps-Courses/agentops-open-course.git
 cd agentops-open-course

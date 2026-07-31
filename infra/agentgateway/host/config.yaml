@@ -4,6 +4,7 @@ config:
   logging:
     format: json
 
+# --8<-- [start:host-mcp-bind]
 binds:
   - port: 3000
     listeners:
@@ -14,6 +15,7 @@ binds:
                 - maxTokens: 120
                   tokensPerFill: 120
                   fillInterval: 60s
+              # --8<-- [end:host-mcp-bind]
               mcpAuthorization:
                 rules:
                   - 'mcp.tool.name == "list_incidents"'

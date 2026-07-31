@@ -13,11 +13,12 @@ permissions:
 
 concurrency:
   group: scan-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   repository:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     env:
       GITHUB_TOKEN: ${{ github.token }}
     steps:
@@ -28,12 +29,18 @@ jobs:
 
       - name: Install the pinned security tools
         uses: jdx/mise-action@9e7f7633ff6f6d6048a9418a68d48f288f50eb14 # v4.2.3
+        with:
+          install: false
+
+      - name: Install only repository scanners
+        run: mise install gitleaks trivy
 
       - name: Scan history, dependencies, secrets, and infrastructure
         run: mise run secure
 
   containers:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -53,7 +60,16 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Build ${{ matrix.name }} image
-        run: docker build --file "${{ matrix.dockerfile }}" --tag "${{ matrix.image }}" "${{ matrix.context }}"
+        env:
+          VERSION: scan-${{ github.sha }}
+        run: |
+          docker build \
+            --build-arg "AGENT_SOURCE_COMMIT=${GITHUB_SHA}" \
+            --build-arg "OCI_CREATED=$(git show -s --format=%cI HEAD)" \
+            --build-arg "OCI_VERSION=${VERSION}" \
+            --file "${{ matrix.dockerfile }}" \
+            --tag "${{ matrix.image }}" \
+            "${{ matrix.context }}"
 
       - name: Smoke-test ${{ matrix.name }} image runtime
         run: docker run --rm --entrypoint python "${{ matrix.image }}" -c "${{ matrix.smoke }}"
@@ -82,7 +98,8 @@ jobs:
     name: scan
     if: always()
     needs: [repository, containers]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
     steps:
       - name: Verify every scan passed
         env:

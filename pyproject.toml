@@ -6,11 +6,11 @@
 
 [project]
 name = "agentops-open-course"
-version = "0.3.5"
+version = "0.5.0"
 description = "Build, evaluate, secure, deploy, and operate production AI agents with Google ADK and an open-source AgentOps stack."
 authors = [{ name = "Médéric HURIER", email = "agentops-open-course@fmind.dev" }]
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.13,<3.14"
 license = "MIT"
 license-files = ["LICENSE"]
 dependencies = [

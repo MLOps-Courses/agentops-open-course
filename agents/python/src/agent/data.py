@@ -30,6 +30,44 @@ _AUDIT_IDEMPOTENCY_KEY_ROWS = (
     (1, "action", 0, "BINARY"),
     (2, "target", 0, "BINARY"),
 )
+_FUTURE_AUDIT_SCHEMA_GUIDANCE = (
+    "The runtime database contains audit rows with an unsupported application schema. "
+    "Upgrade the application or select a compatible snapshot before reading or changing this state"
+)
+
+
+def _reject_future_audit_schema(connection: sqlite3.Connection) -> None:
+    """Reject audit rows this application cannot parse without changing state."""
+    version_column_exists = (
+        connection.execute(
+            """
+            SELECT 1
+            FROM pragma_table_info('audit_log')
+            WHERE name = 'schema_version'
+            """
+        ).fetchone()
+        is not None
+    )
+    if not version_column_exists:
+        return
+    unsupported = connection.execute(
+        """
+        SELECT schema_version, typeof(schema_version)
+        FROM audit_log
+        WHERE typeof(schema_version) != 'integer'
+           OR schema_version < 1
+           OR schema_version > ?
+        ORDER BY id
+        LIMIT 1
+        """,
+        (CURRENT_AUDIT_SCHEMA_VERSION,),
+    ).fetchone()
+    if unsupported is not None:
+        raise DataAccessError(
+            f"{_FUTURE_AUDIT_SCHEMA_GUIDANCE}: found {unsupported[0]!r} "
+            f"with SQLite type {unsupported[1]!r}; supported versions are integers from "
+            f"1 through {CURRENT_AUDIT_SCHEMA_VERSION}."
+        )
 
 
 def _audit_idempotency_index_is_current(connection: sqlite3.Connection) -> bool:
@@ -126,6 +164,7 @@ def probe_runtime_database() -> Path:
                 """
             ).fetchone()
             idempotency_index_is_current = _audit_idempotency_index_is_current(connection)
+            _reject_future_audit_schema(connection)
         finally:
             connection.close()
     except DataAccessError:
@@ -223,6 +262,7 @@ def _connect_for_read() -> Iterator[sqlite3.Connection]:
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA query_only = ON")
         connection.execute("PRAGMA busy_timeout = 5000")
+        _reject_future_audit_schema(connection)
         yield connection
     except sqlite3.Error as error:
         raise DataAccessError(f"SQLite read failed for {path.name}") from error
@@ -235,6 +275,7 @@ def prepare_runtime_database() -> Path:
     path = db_path()
     with _connect() as connection:
         connection.execute("BEGIN IMMEDIATE")
+        _reject_future_audit_schema(connection)
         version_column = connection.execute(
             """
             SELECT type, "notnull", dflt_value

@@ -5,6 +5,13 @@ lib_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 source "${lib_dir}/lib.sh"
 
 profile=${1:-base}
+support_file="${lib_dir}/../SUPPORT.md"
+capacity_contract="$(sed -n 's/^<!-- local-platform-capacity: \(.*\) -->$/\1/p' "${support_file}")"
+if [[ ! ${capacity_contract} =~ ^total-ram-gib=([0-9]+)[[:space:]]+free-disk-gib=([0-9]+)$ ]]; then
+	fail "SUPPORT.md must declare one valid local-platform-capacity contract"
+fi
+readonly platform_total_ram_gib="${BASH_REMATCH[1]}"
+readonly platform_free_disk_gib="${BASH_REMATCH[2]}"
 
 # Each entry is "<command> <install task>": a missing tool names the one command
 # that materializes it instead of a single generic sentence for the whole tier.
@@ -39,6 +46,45 @@ add_platform_tier() {
 		rg k3d kubectl helm helmfile skaffold kubeconform kube-linter agentgateway sops age-keygen
 }
 
+add_gcp_tier() {
+	add_gateway_tier
+	add_tier "mise run install:platform" \
+		rg kubectl helm helmfile skaffold kubeconform tofu tflint
+	add_tier "mise run install:gcp" gcloud gke-gcloud-auth-plugin
+}
+
+report_linux_capacity() {
+	local available_kib disk_available_kib total_kib
+
+	if [[ -r /proc/meminfo ]]; then
+		total_kib=$(awk '$1 == "MemTotal:" { print $2 }' /proc/meminfo)
+		available_kib=$(awk '$1 == "MemAvailable:" { print $2 }' /proc/meminfo)
+		awk \
+			-v available="${available_kib}" \
+			-v planned="${platform_total_ram_gib}" \
+			-v total="${total_kib}" \
+			'BEGIN {
+				printf "capacity   %.1f GiB total RAM; %.1f GiB currently available", total / 1048576, available / 1048576
+				if (total < planned * 1048576) {
+					printf " (below the %s GiB local-platform planning value)", planned
+				}
+				printf "\n"
+			}'
+	fi
+
+	disk_available_kib=$(df -Pk . | awk 'NR == 2 { print $4 }')
+	awk \
+		-v available="${disk_available_kib}" \
+		-v planned="${platform_free_disk_gib}" \
+		'BEGIN {
+			printf "capacity   %.1f GiB free disk", available / 1048576
+			if (available < planned * 1048576) {
+				printf " (below the %s GiB local-platform planning value)", planned
+			}
+			printf "\n"
+		}'
+}
+
 case "${profile}" in
 base)
 	add_base_tier
@@ -57,10 +103,7 @@ platform)
 	;;
 gcp)
 	add_base_tier
-	add_platform_tier
-	# tofu and tflint ship with the platform tier; only the Cloud CLI needs install:gcp.
-	add_tier "mise run install:platform" tofu tflint
-	add_tier "mise run install:gcp" gcloud gke-gcloud-auth-plugin
+	add_gcp_tier
 	;;
 *)
 	printf 'usage: %s {base|model|gateway|platform|gcp}\n' "$0" >&2
@@ -115,10 +158,10 @@ gateway | platform | gcp)
 *) ;;
 esac
 
-case "${profile}" in
-platform | gcp)
+if [[ ${profile} == platform ]]; then
 	require_cgroup_v2 /sys/fs/cgroup
 	printf 'cgroup     v2 ready\n'
+	report_linux_capacity
 
 	if ! helm plugin list | rg -q '^diff[[:space:]]+3\.15\.10'; then
 		fail 'helm       helm-diff 3.15.10 is missing; run mise run install:platform'
@@ -133,11 +176,14 @@ platform | gcp)
 	else
 		printf 'cluster    not created yet; run mise run cluster:start when needed\n'
 	fi
-	;;
-*) ;;
-esac
+fi
 
 if [[ ${profile} == gcp ]]; then
+	if ! helm plugin list | rg -q '^diff[[:space:]]+3\.15\.10'; then
+		fail 'helm       helm-diff 3.15.10 is missing; run mise run install:platform'
+	fi
+	printf 'helm       helm-diff 3.15.10 ready\n'
+
 	project="${GCP_PROJECT_ID:-$(gcloud config get-value project 2>/dev/null || true)}"
 	if [[ -n ${project} ]]; then
 		gcloud projects describe "${project}" --format='value(projectId)' >/dev/null

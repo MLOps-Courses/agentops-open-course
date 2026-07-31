@@ -40,6 +40,7 @@
     .confirm pre { font-size: .78rem; overflow-x: auto; margin: .3rem 0; }
     @media (max-width: 32rem) { form { align-items: stretch; flex-direction: column; } }
     @media (forced-colors: active) { .state, .confirm { border: 2px solid ButtonText; } }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; } }
   </style>
 </head>
 <body>

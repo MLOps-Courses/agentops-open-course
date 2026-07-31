@@ -33,6 +33,7 @@ from openai import OpenAI
 from pydantic import BaseModel, Field
 
 from agent.config import settings
+from agent.domain import REFERENCE_DOMAIN
 from agent.model import close_model
 
 # Prompt selection is configured before ``agent.composition`` is imported.
@@ -108,32 +109,27 @@ def _min_scores() -> dict[str, float]:
     return {name: max(default, floor) for name, default in _DEFAULT_MIN_SCORES.items()}
 
 
-_SERVICE_TERMS = frozenset(
-    {"api-gateway", "auth", "cache", "checkout", "database", "inventory", "payments", "search", "warehouse"}
-)
+_SERVICE_TERMS = frozenset((*REFERENCE_DOMAIN.services.values(), "warehouse"))
 _FACT_TERMS = frozenset(
     {
         "approval",
-        "cascade-failure",
         "degraded",
         "down",
-        "high-latency",
         "investigating",
-        "memory-leak",
         "open",
         "operational",
         "rationale",
         "resolved",
         "saved",
-        "service-down",
         "untrusted",
+        *REFERENCE_DOMAIN.runbooks.values(),
     }
 )
 _RESPONSE_CONTRACT_OVERRIDES: dict[tuple[str, int], dict[str, Any]] = {
     ("inventory-status", 0): {
         "claims": [
             {
-                "subject": "inventory",
+                "subject": REFERENCE_DOMAIN.services.inventory,
                 "required": ["down"],
                 "forbidden": ["degraded", "operational"],
             }
@@ -142,7 +138,7 @@ _RESPONSE_CONTRACT_OVERRIDES: dict[tuple[str, int], dict[str, Any]] = {
     ("incident-detail", 0): {
         "claims": [
             {
-                "subject": "inc-001",
+                "subject": REFERENCE_DOMAIN.incidents.checkout_latency.lower(),
                 "required": ["investigating"],
                 "forbidden": ["resolved"],
             }
@@ -153,7 +149,7 @@ _RESPONSE_CONTRACT_OVERRIDES: dict[tuple[str, int], dict[str, Any]] = {
     ("cascade-origin-detail", 0): {
         "claims": [
             {
-                "subject": "inc-007",
+                "subject": REFERENCE_DOMAIN.incidents.cache_memory.lower(),
                 "required": ["resolved"],
                 "forbidden": ["investigating", "open"],
             }

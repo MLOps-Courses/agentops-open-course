@@ -5,17 +5,20 @@ from __future__ import annotations
 import asyncio
 import contextvars
 import os
+import sqlite3
 from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable
-from contextlib import aclosing, asynccontextmanager
+from contextlib import aclosing, asynccontextmanager, closing
 from dataclasses import dataclass
 from importlib.metadata import version
+from pathlib import Path
 from typing import Any, cast, override
 
 import uvicorn
 from a2a.server.agent_execution import RequestContext
 from a2a.server.events import Event as A2AEvent
 from a2a.server.events import EventQueue
-from a2a.server.tasks import DatabaseTaskStore, TaskStore, TaskUpdater
+from a2a.server.tasks import TaskStore, TaskUpdater
+from a2a.server.tasks.database_task_store import DatabaseTaskStore
 from a2a.types import AgentCapabilities, AgentCard, AgentInterface, AgentSkill, TaskStatusUpdateEvent
 from google.adk.a2a.converters.part_converter import A2APartToGenAIPartConverter
 from google.adk.a2a.converters.request_converter import AgentRunRequest, convert_a2a_request_to_agent_run_request
@@ -42,12 +45,35 @@ from .config import settings
 from .data import prepare_runtime_database, probe_runtime_database
 from .governance import APP_NAME as _APP_NAME
 from .governance import AgentOpsPolicyPlugin
+from .models import CURRENT_RUNTIME_SCHEMA_VERSION
+from .state import recover_interrupted_restore
 
 # The gateway-verified caller identity for the request currently being served.
 # A pure-ASGI middleware sets it from the trusted header (same task as the
 # executor, so the value is visible when the request converter runs); it is unset
 # outside a request, where the synthetic A2A id remains the identity.
 _VERIFIED_SUBJECT: contextvars.ContextVar[str | None] = contextvars.ContextVar("verified_subject", default=None)
+_RUNTIME_REQUIRED_COLUMNS = {
+    "adk_internal_metadata": frozenset({"key", "value"}),
+    "app_states": frozenset({"app_name", "state", "update_time"}),
+    "user_states": frozenset({"app_name", "user_id", "state", "update_time"}),
+    "sessions": frozenset({"app_name", "user_id", "id", "state", "create_time", "update_time"}),
+    "events": frozenset({"id", "app_name", "user_id", "session_id", "invocation_id", "timestamp", "event_data"}),
+    "tasks": frozenset(
+        {
+            "id",
+            "context_id",
+            "kind",
+            "owner",
+            "last_updated",
+            "status",
+            "artifacts",
+            "history",
+            "protocol_version",
+            "metadata",
+        }
+    ),
+}
 
 
 class _A2ASessionService(DatabaseSessionService):
@@ -302,10 +328,18 @@ def _error_code_interceptor() -> ExecuteInterceptor:
     """Carry ADK's structured error code onto the final A2A event.
 
     The maintained executor replaces error-event metadata with invocation
-    metadata immediately before enqueueing the terminal update. Task-keyed
-    state keeps concurrent streams isolated while retaining both contracts.
+    metadata immediately before enqueueing the terminal update. Context-local
+    state keeps concurrent streams isolated without leaving task-keyed residue
+    when cancellation bypasses ``after_agent``.
     """
-    error_codes: dict[str, str] = {}
+    error_code_context: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+        "a2a_error_code",
+        default=None,
+    )
+
+    async def clear(request: RequestContext) -> RequestContext:
+        error_code_context.set(None)
+        return request
 
     async def remember(
         executor_context: ExecutorContext,
@@ -313,9 +347,8 @@ def _error_code_interceptor() -> ExecuteInterceptor:
         adk_event: Event,
     ) -> A2AEvent:
         del executor_context
-        task_id = getattr(a2a_event, "task_id", None)
-        if adk_event.error_code and task_id:
-            error_codes[task_id] = str(adk_event.error_code)
+        if adk_event.error_code and getattr(a2a_event, "task_id", None):
+            error_code_context.set(str(adk_event.error_code))
         return a2a_event
 
     async def restore(
@@ -323,14 +356,135 @@ def _error_code_interceptor() -> ExecuteInterceptor:
         final_event: TaskStatusUpdateEvent,
     ) -> TaskStatusUpdateEvent:
         del executor_context
-        error_code = error_codes.pop(final_event.task_id, None)
+        error_code = error_code_context.get()
+        error_code_context.set(None)
         if error_code:
             # a2a-sdk 1.x models ``metadata`` as a protobuf Struct: mutate the
             # entry in place rather than reassigning the whole submessage.
             final_event.metadata["adk_error_code"] = error_code
         return final_event
 
-    return ExecuteInterceptor(after_event=remember, after_agent=restore)
+    return ExecuteInterceptor(before_agent=clear, after_event=remember, after_agent=restore)
+
+
+async def _probe_runtime_store(task_engine: AsyncEngine) -> None:
+    """Read and validate the bounded ADK session and A2A task schema."""
+    async with task_engine.connect() as connection:
+        integrity = (await connection.execute(text("PRAGMA quick_check(1)"))).scalar_one_or_none()
+        if integrity != "ok":
+            raise RuntimeError(f"runtime.db integrity check failed: {integrity or 'no result'}")
+        tables = set(
+            (
+                await connection.execute(
+                    text(
+                        """
+                        SELECT name
+                        FROM sqlite_schema
+                        WHERE type = 'table'
+                        """
+                    )
+                )
+            ).scalars()
+        )
+        missing_tables = _RUNTIME_REQUIRED_COLUMNS.keys() - tables
+        if missing_tables:
+            raise RuntimeError(f"runtime.db is missing tables: {', '.join(sorted(missing_tables))}")
+        schema_version = (
+            await connection.execute(
+                text(
+                    """
+                    SELECT value
+                    FROM adk_internal_metadata
+                    WHERE "key" = 'schema_version'
+                    """
+                )
+            )
+        ).scalar_one_or_none()
+        if schema_version != CURRENT_RUNTIME_SCHEMA_VERSION:
+            raise RuntimeError(
+                f"runtime.db has ADK schema {schema_version!r}; expected {CURRENT_RUNTIME_SCHEMA_VERSION!r}"
+            )
+        for table, required_columns in _RUNTIME_REQUIRED_COLUMNS.items():
+            columns = set(
+                (
+                    await connection.execute(
+                        text("SELECT name FROM pragma_table_info(:table)"),
+                        {"table": table},
+                    )
+                ).scalars()
+            )
+            missing_columns = required_columns - columns
+            if missing_columns:
+                raise RuntimeError(
+                    f"runtime.db table {table!r} is missing columns: {', '.join(sorted(missing_columns))}"
+                )
+
+
+def _preflight_existing_runtime_store(path: Path) -> None:
+    """Reject incompatible existing session/task state before upstream writes."""
+    if not path.exists():
+        return
+    try:
+        with closing(sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True, timeout=5)) as connection:
+            connection.execute("PRAGMA query_only = ON")
+            integrity = connection.execute("PRAGMA quick_check(1)").fetchone()
+            if integrity is None or integrity[0] != "ok":
+                status = "no result" if integrity is None else str(integrity[0])
+                raise RuntimeError(f"runtime.db integrity check failed before startup: {status}")
+            tables = {
+                row[0]
+                for row in connection.execute(
+                    """
+                    SELECT name
+                    FROM sqlite_schema
+                    WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+                    """
+                )
+            }
+            if not tables:
+                return
+            metadata_columns = {row[1] for row in connection.execute("PRAGMA table_info('adk_internal_metadata')")}
+            if {"key", "value"} <= metadata_columns:
+                row = connection.execute(
+                    """
+                    SELECT value
+                    FROM adk_internal_metadata
+                    WHERE "key" = 'schema_version'
+                    """
+                ).fetchone()
+                schema_version = row[0] if row is not None else None
+                if schema_version != CURRENT_RUNTIME_SCHEMA_VERSION:
+                    raise RuntimeError(
+                        f"runtime.db has ADK schema {schema_version!r}, but this application supports "
+                        f"{CURRENT_RUNTIME_SCHEMA_VERSION!r}. Upgrade the application or select a compatible snapshot."
+                    )
+                missing_tables = set(_RUNTIME_REQUIRED_COLUMNS) - tables
+                if missing_tables:
+                    raise RuntimeError(
+                        "runtime.db has an incomplete current schema and is missing tables: "
+                        f"{', '.join(sorted(missing_tables))}. Select a compatible snapshot before startup."
+                    )
+                for table, required_columns in _RUNTIME_REQUIRED_COLUMNS.items():
+                    columns = {
+                        row[0]
+                        for row in connection.execute(
+                            "SELECT name FROM pragma_table_info(?)",
+                            (table,),
+                        )
+                    }
+                    missing_columns = required_columns - columns
+                    if missing_columns:
+                        raise RuntimeError(
+                            f"runtime.db has an incomplete current schema: table {table!r} is missing columns "
+                            f"{', '.join(sorted(missing_columns))}. Select a compatible snapshot before startup."
+                        )
+                return
+            raise RuntimeError(
+                "runtime.db has an unsupported legacy or malformed schema. "
+                "Upgrade the application or select a compatible snapshot."
+            )
+    except sqlite3.Error as error:
+        raise RuntimeError("runtime.db could not be inspected read-only before startup") from error
 
 
 def _health_routes(runtime: Runtime) -> tuple[Callable[[Request], Awaitable[JSONResponse]], ...]:
@@ -347,10 +501,10 @@ def _health_routes(runtime: Runtime) -> tuple[Callable[[Request], Awaitable[JSON
         if not os.access(settings.state_dir, os.W_OK):
             problems.append(f"state directory is not writable: {settings.state_dir}")
         try:
-            async with runtime.task_engine.connect() as connection:
-                await connection.execute(text("SELECT 1"))
-        except Exception as error:  # session store: corrupt/unreachable SQLite
-            problems.append(f"session store unreachable: {type(error).__name__}")
+            async with asyncio.timeout(5):
+                await _probe_runtime_store(runtime.task_engine)
+        except Exception as error:  # readiness reports invalid, corrupt, slow, and unreachable state
+            problems.append(f"session/task store invalid: {type(error).__name__}")
         if problems:
             return JSONResponse({"status": "unready", "problems": problems}, status_code=503)
         return JSONResponse({"status": "ready"})
@@ -408,8 +562,14 @@ def create_app(agent: BaseAgent | None = None) -> Starlette:
     async def lifespan(_: Starlette):
         try:
             # The writable A2A process owns first-boot publication. Readiness
-            # remains a strictly read-only observation after startup.
+            # remains a strictly read-only observation after startup. Both
+            # upstream stores create their schemas lazily, so initialize them
+            # here before readiness is allowed to report success.
+            recover_interrupted_restore(settings.state_dir)
+            _preflight_existing_runtime_store(settings.state_dir / "runtime.db")
             prepare_runtime_database()
+            await runtime.session_service.prepare_tables()
+            await runtime.task_store.initialize()
             yield
         finally:
             await runtime.close()

@@ -11,6 +11,12 @@ from pydantic import ValidationError
 
 from agent import data
 from agent.models import CURRENT_AUDIT_SCHEMA_VERSION, AuditEntry
+from tests.domain import REFERENCE_DOMAIN
+
+_CHECKOUT = REFERENCE_DOMAIN.services.checkout
+_INVENTORY = REFERENCE_DOMAIN.services.inventory
+_INVENTORY_INCIDENT = REFERENCE_DOMAIN.incidents.inventory_down
+_RESOLVED_INCIDENT = REFERENCE_DOMAIN.incidents.payments_errors
 
 
 def _legacy_runtime_database() -> tuple[sqlite3.Connection, Path]:
@@ -37,7 +43,7 @@ def _insert_legacy_audit(connection: sqlite3.Connection, *, invocation_id: str, 
             "legacy-session",
             invocation_id,
             "restart_service",
-            "inventory",
+            _INVENTORY,
             detail,
         ),
     )
@@ -160,6 +166,79 @@ def test_runtime_probe_rejects_nocase_idempotency_index_without_writing() -> Non
         data.probe_runtime_database()
     assert path.read_bytes() == before
     assert path.stat().st_mtime_ns == before_mtime
+
+
+def test_future_audit_schema_is_rejected_before_probe_read_or_migration() -> None:
+    path = data.db_path()
+    with closing(sqlite3.connect(path)) as connection:
+        connection.execute(
+            """
+            INSERT INTO audit_log
+                (schema_version, ts, actor, approved_by, rationale, context_summary,
+                 session_id, invocation_id, action, target, detail)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                CURRENT_AUDIT_SCHEMA_VERSION + 1,
+                "2026-07-31T08:00:00Z",
+                "future-agent",
+                "engineer",
+                "future approval",
+                "future context",
+                "future-session",
+                "future-invocation",
+                "restart_service",
+                _INVENTORY,
+                "future detail",
+            ),
+        )
+        connection.commit()
+    before = path.read_bytes()
+    guidance = "Upgrade the application or select a compatible snapshot"
+
+    with pytest.raises(data.DataAccessError, match=guidance):
+        data.probe_runtime_database()
+    assert path.read_bytes() == before
+
+    with pytest.raises(data.DataAccessError, match=guidance):
+        data.list_incidents()
+    assert path.read_bytes() == before
+
+    with pytest.raises(data.DataAccessError, match=guidance):
+        data.prepare_runtime_database()
+    assert path.read_bytes() == before
+
+
+def test_invalid_audit_schema_type_is_rejected_before_probe_read_or_migration() -> None:
+    path = data.db_path()
+    with closing(sqlite3.connect(path)) as connection:
+        connection.execute("PRAGMA ignore_check_constraints = ON")
+        connection.execute(
+            """
+            INSERT INTO audit_log
+                (schema_version, ts, actor, approved_by, rationale, context_summary,
+                 session_id, invocation_id, action, target, detail)
+            VALUES ('future', '2026-07-31T08:00:00Z', 'future-agent', 'engineer',
+                    'invalid schema fixture', 'future context', 'invalid-session',
+                    'invalid-invocation', 'restart_service', ?, 'future detail')
+            """,
+            (_INVENTORY,),
+        )
+        connection.commit()
+    before = path.read_bytes()
+    guidance = "Upgrade the application or select a compatible snapshot"
+
+    with pytest.raises(data.DataAccessError, match=guidance):
+        data.probe_runtime_database()
+    assert path.read_bytes() == before
+
+    with pytest.raises(data.DataAccessError, match=guidance):
+        data.list_incidents()
+    assert path.read_bytes() == before
+
+    with pytest.raises(data.DataAccessError, match=guidance):
+        data.prepare_runtime_database()
+    assert path.read_bytes() == before
 
 
 def test_prepare_runtime_database_migrates_legacy_state_without_touching_seed() -> None:
@@ -318,7 +397,7 @@ def test_direct_writers_prepare_runtime_database(monkeypatch) -> None:
         session_id="session",
         invocation_id="append-invocation",
         action="noop",
-        target="checkout",
+        target=_CHECKOUT,
         detail="test",
     )
     identity = {
@@ -327,8 +406,11 @@ def test_direct_writers_prepare_runtime_database(monkeypatch) -> None:
         "rationale": "test approval",
         "session_id": "session",
     }
-    assert data.restart_service_with_audit("inventory", invocation_id="restart-invocation", **identity) is not None
-    assert data.resolve_incident_with_audit("INC-002", invocation_id="resolve-invocation", **identity) is not None
+    assert data.restart_service_with_audit(_INVENTORY, invocation_id="restart-invocation", **identity) is not None
+    assert (
+        data.resolve_incident_with_audit(_INVENTORY_INCIDENT, invocation_id="resolve-invocation", **identity)
+        is not None
+    )
     assert calls == 3
 
 
@@ -345,18 +427,19 @@ def test_atomic_mutations_return_none_for_unknown_or_resolved_rows() -> None:
         "invocation_id": "invocation",
     }
     assert data.restart_service_with_audit("unknown", **identity) is None
-    assert data.resolve_incident_with_audit("INC-003", **identity) is None
+    assert data.resolve_incident_with_audit(_RESOLVED_INCIDENT, **identity) is None
 
 
 def test_atomic_mutations_derive_context_from_locked_current_rows() -> None:
     with closing(sqlite3.connect(data.db_path())) as connection:
-        connection.execute("UPDATE services SET status = 'degraded' WHERE name = 'inventory'")
+        connection.execute("UPDATE services SET status = 'degraded' WHERE name = ?", (_INVENTORY,))
         connection.execute(
             """
             UPDATE incidents
             SET status = 'investigating', title = 'Fresh transaction state'
-            WHERE id = 'INC-002'
-            """
+            WHERE id = ?
+            """,
+            (_INVENTORY_INCIDENT,),
         )
         connection.commit()
     identity = {
@@ -367,12 +450,12 @@ def test_atomic_mutations_derive_context_from_locked_current_rows() -> None:
         "invocation_id": "invocation",
     }
 
-    restart = data.restart_service_with_audit("inventory", **identity)
+    restart = data.restart_service_with_audit(_INVENTORY, **identity)
     assert restart is not None
-    assert "service inventory was degraded" in restart.context_summary
-    assert "INC-002" in restart.context_summary
+    assert f"service {_INVENTORY} was degraded" in restart.context_summary
+    assert _INVENTORY_INCIDENT in restart.context_summary
 
-    resolution = data.resolve_incident_with_audit("INC-002", **identity)
+    resolution = data.resolve_incident_with_audit(_INVENTORY_INCIDENT, **identity)
     assert resolution is not None
     assert "(SEV1, investigating)" in resolution.context_summary
     assert "Fresh transaction state" in resolution.context_summary
@@ -386,18 +469,18 @@ def test_restart_replay_returns_original_audit_without_reapplying_mutation() -> 
         "session_id": "session",
         "invocation_id": "invocation",
     }
-    first = data.restart_service_with_audit("inventory", **identity)
+    first = data.restart_service_with_audit(_INVENTORY, **identity)
     assert first is not None
 
     # A later event changes the service again. Re-delivering the old invocation
     # must return its evidence without overwriting this newer state.
     with closing(sqlite3.connect(data.db_path())) as connection:
-        connection.execute("UPDATE services SET status = 'degraded' WHERE name = 'inventory'")
+        connection.execute("UPDATE services SET status = 'degraded' WHERE name = ?", (_INVENTORY,))
         connection.commit()
 
-    replay = data.restart_service_with_audit("inventory", **identity)
+    replay = data.restart_service_with_audit(_INVENTORY, **identity)
     assert replay == first
-    service = data.get_service("inventory")
+    service = data.get_service(_INVENTORY)
     assert service is not None
     assert service.status == "degraded"
     with closing(sqlite3.connect(data.db_path())) as connection:
@@ -405,9 +488,9 @@ def test_restart_replay_returns_original_audit_without_reapplying_mutation() -> 
             """
             SELECT COUNT(*)
             FROM audit_log
-            WHERE invocation_id = ? AND action = 'restart_service' AND target = 'inventory'
+            WHERE invocation_id = ? AND action = 'restart_service' AND target = ?
             """,
-            (identity["invocation_id"],),
+            (identity["invocation_id"], _INVENTORY),
         ).fetchone()
     assert count == (1,)
 
@@ -420,15 +503,16 @@ def test_resolve_replay_returns_original_audit_after_incident_is_resolved() -> N
         "session_id": "session",
         "invocation_id": "invocation",
     }
-    first = data.resolve_incident_with_audit("INC-002", **identity)
+    first = data.resolve_incident_with_audit(_INVENTORY_INCIDENT, **identity)
     assert first is not None
-    assert data.resolve_incident_with_audit("INC-002", **identity) == first
+    assert data.resolve_incident_with_audit(_INVENTORY_INCIDENT, **identity) == first
 
     later_invocation = {**identity, "invocation_id": "later-invocation"}
-    assert data.resolve_incident_with_audit("INC-002", **later_invocation) is None
+    assert data.resolve_incident_with_audit(_INVENTORY_INCIDENT, **later_invocation) is None
     with closing(sqlite3.connect(data.db_path())) as connection:
         count = connection.execute(
-            "SELECT COUNT(*) FROM audit_log WHERE action = 'resolve_incident' AND target = 'INC-002'"
+            "SELECT COUNT(*) FROM audit_log WHERE action = 'resolve_incident' AND target = ?",
+            (_INVENTORY_INCIDENT,),
         ).fetchone()
     assert count == (1,)
 
@@ -442,7 +526,7 @@ def test_audit_schema_rejects_duplicate_key_and_append_returns_original() -> Non
         session_id="session",
         invocation_id="invocation",
         action="noop",
-        target="checkout",
+        target=_CHECKOUT,
         detail="test",
     )
     assert entry.schema_version == CURRENT_AUDIT_SCHEMA_VERSION
@@ -462,6 +546,10 @@ def test_audit_schema_rejects_duplicate_key_and_append_returns_original() -> Non
     legacy_payload.pop("schema_version")
     with pytest.raises(ValidationError, match="schema_version"):
         AuditEntry.model_validate(legacy_payload)
+    future_payload = entry.model_dump(mode="json")
+    future_payload["schema_version"] = CURRENT_AUDIT_SCHEMA_VERSION + 1
+    with pytest.raises(ValidationError, match="schema_version"):
+        AuditEntry.model_validate(future_payload)
 
     replay = data.append_audit(
         actor=entry.actor,
@@ -503,12 +591,12 @@ def test_restart_context_is_read_after_acquiring_the_write_lock(monkeypatch) -> 
         with closing(sqlite3.connect(data.db_path(), timeout=0)) as competitor:
             competitor.execute("PRAGMA busy_timeout = 0")
             with pytest.raises(sqlite3.OperationalError, match="locked"):
-                competitor.execute("UPDATE services SET status = 'degraded' WHERE name = 'inventory'")
+                competitor.execute("UPDATE services SET status = 'degraded' WHERE name = ?", (_INVENTORY,))
         return context
 
     monkeypatch.setattr(data, "_restart_context", try_competing_write)
     entry = data.restart_service_with_audit(
-        "inventory",
+        _INVENTORY,
         actor="test",
         approved_by="engineer",
         rationale="test approval",
@@ -517,7 +605,7 @@ def test_restart_context_is_read_after_acquiring_the_write_lock(monkeypatch) -> 
     )
     assert competing_write_attempted is True
     assert entry is not None
-    assert "service inventory was down" in entry.context_summary
+    assert f"service {_INVENTORY} was down" in entry.context_summary
 
 
 def test_append_audit_rejects_a_missing_row_id() -> None:
@@ -532,6 +620,6 @@ def test_append_audit_rejects_a_missing_row_id() -> None:
             session_id="session",
             invocation_id="invocation",
             action="noop",
-            target="checkout",
+            target=_CHECKOUT,
             detail="test",
         )

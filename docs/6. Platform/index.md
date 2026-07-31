@@ -52,7 +52,7 @@ Every platform concern has one owning manifest, so a broken rollout has one plac
 
 This chapter covers:
 
-- **[6.0. Platform](./6.0. Platform.md)** _(concept)_: Understand what changes when the agent stops being a process you start and becomes a resource you declare.
+- **[6.0. Platform](./6.0. Platform.md)** _(hands-on)_: Understand process-to-cluster ownership and prove base-versus-overlay render propagation.
 - **[6.1. Containers](./6.1. Containers.md)** _(hands-on)_: Build the non-root agent image, then scan the exact artifact you built.
 - **[6.2. Platform Install](./6.2. Platform Install.md)** _(hands-on)_: Create the tracked cluster, install kagent, and start the workloads with Skaffold.
 - **[6.3. Platform Agents](./6.3. Platform Agents.md)** _(reference)_: Read the hardened BYO `Agent` and the `ModelConfig` that points it at the gateway.

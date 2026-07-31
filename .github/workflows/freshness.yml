@@ -1,7 +1,7 @@
-# Quarterly reminder to re-verify time-sensitive docs claims (versions, prices,
-# model names, benchmarks). Opens one tracking issue from the docs-freshness
-# template if none is already open, so each release cycle includes a freshness pass.
-name: Docs freshness reminder
+# Quarterly read-only evidence for time-sensitive course claims. The reporter
+# never updates a pin or opens a pull request; this workflow appends its Markdown
+# to one open freshness issue and deduplicates retries by workflow run id.
+name: Docs freshness report
 
 on:
   schedule:
@@ -11,34 +11,121 @@ on:
 
 permissions:
   contents: read
-  issues: write
 
 concurrency:
   group: freshness-${{ github.workflow }}
   cancel-in-progress: false
 
 jobs:
-  remind:
-    runs-on: ubuntu-latest
-    env:
-      GH_TOKEN: ${{ github.token }}
+  report:
+    if: github.repository == 'MLOps-Courses/agentops-open-course'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Open a freshness-audit issue when none is open
+      - name: Configure ephemeral report paths
+        run: |
+          {
+            echo "MISE_CONFIG_DIR=${RUNNER_TEMP}/mise-config"
+            echo "REPORT_DIR=${RUNNER_TEMP}/freshness-report"
+            echo "REPORT_PATH=${RUNNER_TEMP}/freshness-report/report.md"
+            echo "ISSUE_BODY_PATH=${RUNNER_TEMP}/freshness-report/issue-body.md"
+          } >> "$GITHUB_ENV"
+          mkdir -p "${RUNNER_TEMP}/freshness-report"
+
+      - name: Install the pinned mise resolver
+        uses: jdx/mise-action@9e7f7633ff6f6d6048a9418a68d48f288f50eb14 # v4.2.3
+        with:
+          # The pinned action verifies this release against mise's signed SHASUMS.
+          version: 2026.7.18
+          install: false
+          cache: false
+
+      - name: Run offline reporter fixtures
+        run: python3 -m unittest scripts/test_freshness_report.py
+
+      - name: Generate the read-only freshness report
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 scripts/freshness_report.py --run-id "$GITHUB_RUN_ID" --output "$REPORT_PATH"
+
+      - name: Prepare the issue template without its front matter
+        run: |
+          awk 'NR == 1 && /^---$/ { frontmatter = 1; next }
+               frontmatter && /^---$/ { frontmatter = 0; next }
+               !frontmatter' \
+            .github/ISSUE_TEMPLATE/docs-freshness.md > "$ISSUE_BODY_PATH"
+
+      - name: Upload the read-only report handoff
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: freshness-report-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.REPORT_DIR }}
+          if-no-files-found: error
+          retention-days: 14
+
+  post:
+    needs: report
+    if: needs.report.result == 'success' && github.repository == 'MLOps-Courses/agentops-open-course'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      issues: write
+    steps:
+      - name: Download the read-only report handoff
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: freshness-report-${{ github.run_id }}-${{ github.run_attempt }}
+          path: report
+
+      - name: Append the report to the idempotent freshness issue
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          # Idempotent: skip if a freshness audit is already open, so the quarterly
-          # cron never piles duplicates on an untriaged one.
-          open=$(gh issue list --state open --label documentation --search "freshness audit in:title" --json number --jq 'length')
-          if [ "$open" -gt 0 ]; then
-            echo "A freshness audit issue is already open; nothing to do."
+
+          issue_number="$(
+            gh issue list \
+              --repo "$GITHUB_REPOSITORY" \
+              --state open \
+              --label documentation \
+              --search "freshness audit in:title" \
+              --limit 100 \
+              --json number,title \
+              --jq 'map(select(.title | startswith("docs: freshness audit"))) | sort_by(.number) | .[0].number // empty'
+          )"
+
+          if [[ -z "$issue_number" ]]; then
+            month="$(date -u +%-m)"
+            quarter="$(( (month - 1) / 3 + 1 ))"
+            issue_url="$(
+              gh issue create \
+                --repo "$GITHUB_REPOSITORY" \
+                --title "docs: freshness audit for $(date -u +%Y)-Q${quarter}" \
+                --label documentation \
+                --body-file report/issue-body.md
+            )"
+            issue_number="${issue_url##*/}"
+            [[ "$issue_number" =~ ^[0-9]+$ ]]
+          fi
+
+          marker="<!-- freshness-report:${GITHUB_RUN_ID} -->"
+          existing_comment="$(
+            gh api \
+              --paginate \
+              "repos/${GITHUB_REPOSITORY}/issues/${issue_number}/comments?per_page=100" \
+              --jq ".[] | select(.body != null and (.body | contains(\"${marker}\"))) | .id"
+          )"
+          if [[ -n "$existing_comment" ]]; then
+            echo "Freshness report for workflow run ${GITHUB_RUN_ID} is already attached to issue #${issue_number}."
             exit 0
           fi
-          # Strip the leading YAML front matter; the checklist body becomes the issue.
-          body=$(awk 'NR==1 && /^---$/ {fm=1; next} fm && /^---$/ {fm=0; next} !fm' ".github/ISSUE_TEMPLATE/docs-freshness.md")
-          gh issue create \
-            --title "docs: freshness audit for $(date -u +%Y-Q$(( ($(date -u +%-m)-1)/3 + 1 )))" \
-            --label documentation \
-            --body "$body"
+
+          gh issue comment \
+            "$issue_number" \
+            --repo "$GITHUB_REPOSITORY" \
+            --body-file report/report.md

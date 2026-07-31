@@ -25,7 +25,7 @@ Skip **1.2. Containers** until Chapter 5 and **1.3. Kubernetes** until Chapter 6
 
 You install one staged CLI toolchain, two locked Python environments, and the local model used by Chapters 2-4. Docker, Kubernetes, and a cloud account wait until later chapters. Plan about two hours for the four required pages, much of it spent waiting on downloads.
 
-The agent uses one complete development/evaluation venv for simplicity. It includes MLflow client/evaluation libraries and ADK's local-evaluator dependency, while the separate MLflow server environment and platform/cloud CLIs wait for `mise run install:platform`. The runtime image stays lean by installing with `--no-dev`.
+The base agent venv contains runtime plus development/offline-test packages. Chapter 4 adds the heavier full-MLflow profile to that same locked environment with `cd agents/python && mise run install:eval`; the separate MLflow server environment and platform/cloud CLIs wait for `mise run install:platform`. The runtime image stays lean by installing with `--no-dev`.
 
 When a command in this chapter fails, match the symptom in [0.6. Troubleshooting](../0. Overview/0.6. Troubleshooting.md) or re-run the `doctor` for your tier. New to a term along the way? The [0.7. Glossary](../0. Overview/0.7. Glossary.md) defines every course term and links each back to where it is introduced.
 

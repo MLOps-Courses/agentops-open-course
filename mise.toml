@@ -27,7 +27,7 @@ age = "1.3.1" # age recipients/keys for SOPS; ships age-keygen
 ripgrep = "15.2.0"
 lychee = "0.24.2"
 jq = "1.8.2"
-gh = "2.96.0"
+gh = "2.97.0"
 gcloud = "578.0.0"
 "github:mikefarah/yq" = "4.53.3"
 "github:agentgateway/agentgateway" = "1.4.1"
@@ -62,7 +62,7 @@ run = [
 [tasks."install:tools:core"]
 hide = true # implementation detail of install:*; a learner picks a tier, never a tool list
 description = "Install only the tools used by learner and contributor core tasks"
-run = "mise install uv dprint lefthook gitleaks actionlint trivy sqlite sqlite@3.53.3 shellcheck shfmt lychee jq"
+run = "mise install uv dprint lefthook gitleaks actionlint trivy sqlite shellcheck shfmt lychee jq"
 
 [tasks."install:platform"]
 description = "Install the separate MLflow server, local platform, and GKE plan dependencies"
@@ -92,13 +92,25 @@ description = "Install every dependency used by the complete maintainer validati
 env = { MISE_CONFIG_DIR = ".agents/tmp/mise-config" }
 run = [
   # Bare `mise install` also installs tools from a user's global config. Keep
-  # this tier project-scoped and add the one maintainer-only repository tool
-  # explicitly; the other tiers own the rest of the pinned tool list.
+  # this tier project-scoped; the validation tier owns repository dependencies
+  # and this outer tier adds only cloud/release administration tools.
   "mise install gh",
-  "mise run install",
-  "mise run install:platform",
+  "mise run install:validation",
   "mise run install:gcp",
 ]
+
+[tasks."install:validation"]
+description = "Install every account-free dependency used by CI and local validation"
+env = { MISE_CONFIG_DIR = ".agents/tmp/mise-config" }
+run = [
+  "mise run install",
+  "cd agents/python && mise run install:eval",
+  "mise run install:platform",
+]
+
+[tasks."install:accessibility"]
+description = "Install the optional Chromium build and system libraries used by the browser accessibility smoke"
+run = "uv run --locked --script scripts/accessibility_browser.py --install-browser --with-deps"
 
 [tasks.doctor]
 # `doctor` and `doctor:base` were byte-identical tasks. One task, two names: the bare form is
@@ -148,15 +160,34 @@ depends = ["build:docs", "build:agent-image", "build:mlflow-image"]
 
 [tasks."build:docs"]
 description = "Build the static documentation site (Zensical → site/)"
-run = "uv run zensical build"
+run = [
+  "uv run zensical build",
+  "uv run python scripts/docs_routes.py site",
+]
 
 [tasks."build:agent-image"]
 description = "Build the non-root AgentOps Agent image"
-run = "docker build --file agents/python/Dockerfile --tag agentops-agent:dev agents"
+run = """
+docker build \
+  --build-arg "AGENT_SOURCE_COMMIT=$(git rev-parse HEAD)" \
+  --build-arg "OCI_CREATED=$(git show -s --format=%cI HEAD)" \
+  --build-arg "OCI_VERSION=$(uv version --short)" \
+  --file agents/python/Dockerfile \
+  --tag agentops-agent:dev \
+  agents
+"""
 
 [tasks."build:mlflow-image"]
 description = "Build the locked self-hosted MLflow image"
-run = "docker build --file infra/mlflow/Dockerfile --tag agentops-mlflow:3.14.0 infra/mlflow"
+run = """
+docker build \
+  --build-arg "AGENT_SOURCE_COMMIT=$(git rev-parse HEAD)" \
+  --build-arg "OCI_CREATED=$(git show -s --format=%cI HEAD)" \
+  --build-arg "OCI_VERSION=$(uv version --short)" \
+  --file infra/mlflow/Dockerfile \
+  --tag agentops-mlflow:3.15.0 \
+  infra/mlflow
+"""
 
 [tasks.promote]
 description = "Preflight source behavior and manifests, then print a guarded build/deploy handoff"
@@ -183,8 +214,8 @@ run = "dprint fmt"
 description = "Format the Python reference agent"
 run = [
   "cd agents/python && mise run format:python .",
-  "cd agents/python && uv run ruff check --select=I --fix ../../infra/mlflow/entrypoint.py ../../infra/scripts/loopback-relay.py ../../load/fake_model.py ../../scripts/check_conventions.py",
-  "cd agents/python && uv run ruff format ../../infra/mlflow/entrypoint.py ../../infra/scripts/loopback-relay.py ../../load/fake_model.py ../../scripts/check_conventions.py",
+  "cd agents/python && uv run ruff check --select=I --fix ../../infra/mlflow/entrypoint.py ../../infra/scripts/loopback-relay.py ../../load/fake_model.py ../../scripts/accessibility_browser.py ../../scripts/check_conventions.py ../../scripts/course_evidence.py ../../scripts/docs_routes.py ../../scripts/freshness_report.py ../../scripts/release_evidence.py ../../scripts/release_freshness.py ../../scripts/test_check_conventions.py ../../scripts/test_freshness_report.py ../../scripts/test_release_evidence.py ../../scripts/test_release_freshness.py",
+  "cd agents/python && uv run ruff format ../../infra/mlflow/entrypoint.py ../../infra/scripts/loopback-relay.py ../../load/fake_model.py ../../scripts/accessibility_browser.py ../../scripts/check_conventions.py ../../scripts/course_evidence.py ../../scripts/docs_routes.py ../../scripts/freshness_report.py ../../scripts/release_evidence.py ../../scripts/release_freshness.py ../../scripts/test_check_conventions.py ../../scripts/test_freshness_report.py ../../scripts/test_release_evidence.py ../../scripts/test_release_freshness.py",
 ]
 
 [tasks."format:shell"]
@@ -204,8 +235,8 @@ depends = ["check:infra", "check:licenses", "check:source", "check:vuln"]
 # Deliberately out of check:core and off the per-commit hook: a dependency audit is a function of
 # the lockfile and the advisory feed, not of the current diff, and it needs the network — which
 # would make an offline commit impossible. It stays in the maintainer gate and in CI.
-description = "Audit the locked Python dependencies against published advisories"
-run = "cd agents/python && mise run check:vuln"
+description = "Audit every lock-synchronized Python dependency profile against published advisories"
+run = "./scripts/check-vulnerabilities.sh"
 
 [tasks."check:core"]
 description = "Run the model-, container-, cluster-, and cloud-free course validation"
@@ -216,6 +247,7 @@ description = "Validate shared course sources without infrastructure or license 
 depends = [
   "check:data",
   "check:docs",
+  "check:freshness",
   "check:format",
   "check:links",
   "check:python",
@@ -232,9 +264,25 @@ run = "cd agents/data && mise run check"
 [tasks."check:docs"]
 description = "Build the course site"
 run = [
+  "uv run python -m unittest scripts/test_check_conventions.py",
+  "uv run python -m unittest scripts/test_release_evidence.py",
+  "uv run python -m unittest scripts/test_release_freshness.py",
   "uv run python scripts/check_conventions.py docs",
   "uv run zensical build",
+  "uv run python scripts/docs_routes.py site",
+  "uv run python scripts/check_conventions.py rendered site",
 ]
+
+[tasks."check:accessibility"]
+description = "Build and exercise the representative documentation and web-client accessibility surfaces"
+run = [
+  "mise run build:docs",
+  "uv run --locked --script scripts/accessibility_browser.py",
+]
+
+[tasks."check:freshness"]
+description = "Test the read-only external freshness reporter without network access"
+run = "uv run python -m unittest scripts/test_freshness_report.py"
 
 [tasks."check:format"]
 description = "Check Markdown and configuration formatting"
@@ -253,7 +301,7 @@ description = "Validate the installable Agent Skills under skills/"
 run = "uv run python scripts/check_conventions.py skills"
 
 [tasks."check:licenses"]
-description = "Verify repository, core, and optional MLflow dependency licenses"
+description = "Verify repository and every lock-synchronized dependency profile license"
 run = "./scripts/check-licenses.sh full"
 
 [tasks."check:licenses:core"]
@@ -264,9 +312,9 @@ run = "./scripts/check-licenses.sh core"
 description = "Lint, type-check, and audit the Python reference agent"
 run = [
   "cd agents/python && mise run check",
-  "cd agents/python && uv run ruff format --check ../../infra/mlflow/entrypoint.py ../../infra/scripts/loopback-relay.py ../../load/fake_model.py ../../scripts/check_conventions.py",
-  "cd agents/python && uv run ruff check ../../infra/mlflow/entrypoint.py ../../infra/scripts/loopback-relay.py ../../load/fake_model.py ../../scripts/check_conventions.py",
-  "cd agents/python && uv run ty check ../../infra/mlflow/entrypoint.py ../../infra/scripts/loopback-relay.py ../../load/fake_model.py ../../scripts/check_conventions.py",
+  "cd agents/python && uv run ruff format --check ../../infra/mlflow/entrypoint.py ../../infra/scripts/loopback-relay.py ../../load/fake_model.py ../../scripts/accessibility_browser.py ../../scripts/check_conventions.py ../../scripts/course_evidence.py ../../scripts/docs_routes.py ../../scripts/freshness_report.py ../../scripts/release_evidence.py ../../scripts/release_freshness.py ../../scripts/test_check_conventions.py ../../scripts/test_freshness_report.py ../../scripts/test_release_evidence.py ../../scripts/test_release_freshness.py",
+  "cd agents/python && uv run ruff check ../../infra/mlflow/entrypoint.py ../../infra/scripts/loopback-relay.py ../../load/fake_model.py ../../scripts/accessibility_browser.py ../../scripts/check_conventions.py ../../scripts/course_evidence.py ../../scripts/docs_routes.py ../../scripts/freshness_report.py ../../scripts/release_evidence.py ../../scripts/release_freshness.py ../../scripts/test_check_conventions.py ../../scripts/test_freshness_report.py ../../scripts/test_release_evidence.py ../../scripts/test_release_freshness.py",
+  "cd agents/python && uv run ty check ../../infra/mlflow/entrypoint.py ../../infra/scripts/loopback-relay.py ../../load/fake_model.py ../../scripts/accessibility_browser.py ../../scripts/check_conventions.py ../../scripts/course_evidence.py ../../scripts/docs_routes.py ../../scripts/freshness_report.py ../../scripts/release_evidence.py ../../scripts/release_freshness.py ../../scripts/test_check_conventions.py ../../scripts/test_freshness_report.py ../../scripts/test_release_evidence.py ../../scripts/test_release_freshness.py",
 ]
 
 [tasks."check:release-metadata"]
@@ -279,6 +327,7 @@ run = [
   "shfmt -d scripts infra/scripts",
   "shellcheck scripts/*.sh infra/scripts/*.sh",
   "scripts/test-lib.sh",
+  "infra/scripts/test-gcp-lab-audit.sh",
 ]
 
 [tasks."check:workflows"]
@@ -289,6 +338,14 @@ run = "actionlint .github/workflows/*.yml"
 alias = "t"
 description = "Run the Python agent test suite"
 run = "cd agents/python && mise run test"
+
+[tasks."course:evidence"]
+description = "Run deterministic learner gates and create a sanitized completion manifest"
+run = "uv run python scripts/course_evidence.py create"
+
+[tasks."course:evidence:verify"]
+description = "Verify a completion manifest from its exact clean source revision"
+run = "uv run python scripts/course_evidence.py verify"
 
 [tasks."gateway:host"]
 description = "Run the loopback-only host agentgateway container in the foreground"
@@ -345,12 +402,15 @@ description = "Run a deterministic OpenAI-compatible fake model on :11434 for pl
 run = "uv run --script load/fake_model.py"
 
 [tasks."observability:up"]
-description = "Start local MLflow, OpenTelemetry, Prometheus, and Grafana"
-run = "docker compose -f infra/observability/compose.yaml up --build --detach --wait"
+description = "Start and readiness-check the hardened local observability stack"
+run = "./infra/scripts/observability-up.sh"
 
 [tasks."observability:down"]
 description = "Stop local observability services while preserving their volumes"
-run = "docker compose -f infra/observability/compose.yaml down"
+run = [
+  "docker compose --project-name agentops-observability -f infra/observability/compose.yaml down",
+  "./scripts/check-observability.sh stopped",
+]
 
 [tasks."cluster:start"]
 description = "Create or resume the shared k3d local cluster and registry"
@@ -368,11 +428,11 @@ run = [
 description = "Build, push, and reconcile the local platform; leave workloads for explicit teardown"
 run = [
   "test \"$(kubectl config current-context)\" = k3d-local",
-  "cd infra && SKAFFOLD_DEFAULT_REPO=registry.localhost:5050 skaffold dev --filename skaffold.yaml --profile local --cleanup=false",
+  "cd infra && AGENT_SOURCE_COMMIT=\"$(git rev-parse HEAD)\" SKAFFOLD_DEFAULT_REPO=registry.localhost:5050 skaffold dev --filename skaffold.yaml --profile local --cleanup=false",
 ]
 
 [tasks."state:backup"]
-description = "Snapshot the agent SQLite state online-safely (VACUUM INTO)"
+description = "Snapshot the agent SQLite state online-safely (SQLite backup API)"
 run = "./infra/scripts/backup-state.sh"
 
 [tasks."state:restore"]
@@ -402,7 +462,9 @@ run = [
 description = "Scan staged changes and infrastructure before commit"
 run = [
   "gitleaks git --staged --verbose",
-  "trivy config --config trivy.yaml --exit-code 1 --tf-vars infra/gcp/terraform.tfvars.example .",
+  # Local agent caches and generated environments are intentionally outside
+  # Git; letting them influence a staged verdict makes the hook host-dependent.
+  "trivy config --config trivy.yaml --exit-code 1 --tf-vars infra/gcp/terraform.tfvars.example --skip-dirs .agents --skip-dirs .cache --skip-dirs .git --skip-dirs .venv --skip-dirs agents/python/.venv --skip-dirs infra/mlflow/.venv --skip-dirs site --skip-dirs infra/agentgateway/host/auth .",
 ]
 
 [tasks.clean]

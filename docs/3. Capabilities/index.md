@@ -15,7 +15,7 @@ description: Give the agent real powers — tools, skills, MCP, memory, workflow
 Your agent can now hold a conversation ([Chapter 2](../2. Agents/)). This chapter gives it things it can do — one capability per page, in reading order:
 
 - **[3.0. Packaging](./3.0. Packaging.md)** _(reference)_: The uv package, the lazy ADK import, and the entrypoints every later page depends on.
-- **[3.1. Tools](./3.1. Tools.md)** _(reference)_: Typed functions the agent calls to read incidents, service status, and logs.
+- **[3.1. Tools](./3.1. Tools.md)** _(hands-on)_: Typed reads, guarded writes, and a bounded local capability prototype.
 - **[3.2. Skills](./3.2. Skills.md)** _(reference)_: Written procedures the agent loads only when the task needs them.
 - **[3.3. MCP](./3.3. MCP.md)** _(hands-on)_: Those same read tools served over a protocol, and the server you can call yourself.
 - **[3.4. Memory](./3.4. Memory.md)** _(reference)_: What the agent keeps between turns and sessions, and how it looks a runbook up.
@@ -141,7 +141,7 @@ Model-backed behavior remains separate because a green offline suite proves wiri
 **You are done when:**
 
 - `mise run test` passes in `agents/python`, with no model server and no network running.
-- The chapter's required drill is done: the `## Your turn` in [3.1. Tools](./3.1.%20Tools.md#your-turn-how-do-you-ship-a-get_oncall_schedule-read-tool) ships a `get_oncall_schedule` read tool, and `uv run pytest tests/test_tools.py tests/test_data.py` covers both a valid lookup and a rejected invalid input.
+- The chapter's required drill is done: [3.1. Tools](./3.1.%20Tools.md#your-turn-how-do-you-prototype-a-get_oncall_schedule-read-tool) proves a local `get_oncall_schedule` slice with valid and rejected inputs, proves the public MCP surface stayed fixed, then removes only the experiment files.
 - You can name the sub-page that owns each capability, and the module behind it.
 - You can point at the one branch in `composition.py` that decides whether reads run locally or over MCP.
 - Without reopening Chapter 2: you can say why the model can only ever _ask_ for a state change, and name the two tools it has to ask for.

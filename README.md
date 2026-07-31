@@ -172,6 +172,7 @@ mise run doctor     # base docs/Python entry prerequisites
 mise run format:core # dprint + Ruff + shfmt
 mise run check:core # static gate without Docker or infrastructure execution
 mise run test       # deterministic offline tests with branch coverage
+mise run course:evidence # clean-revision completion manifest from both gates
 
 mise run install:maintainer # complete platform/security toolchain and environments
 mise run format             # core plus OpenTofu

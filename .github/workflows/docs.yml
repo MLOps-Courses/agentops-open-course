@@ -4,6 +4,7 @@ name: Docs
 on:
   push:
     branches: [main]
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -11,27 +12,35 @@ permissions:
 
 concurrency:
   group: docs-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Install tools using mise
+      - name: Select the pinned tool manager
         uses: jdx/mise-action@9e7f7633ff6f6d6048a9418a68d48f288f50eb14 # v4.2.3
+        with:
+          install: false
+
+      - name: Install only the documentation toolchain
+        run: |
+          mise install uv
+          uv sync --locked
 
       - name: Validate and build the site
         run: mise run check:docs
 
       - name: Configure GitHub Pages
-        if: ${{ github.event.repository.has_pages }}
+        if: ${{ github.event_name != 'pull_request' && github.event.repository.has_pages }}
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
 
       - name: Upload Pages artifact
-        if: ${{ github.event.repository.has_pages }}
+        if: ${{ github.event_name != 'pull_request' && github.event.repository.has_pages }}
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: site
@@ -40,10 +49,34 @@ jobs:
         if: ${{ !github.event.repository.has_pages }}
         run: echo "::notice::Docs validated; Pages deployment is disabled for this repository."
 
-  deploy:
+  accessibility:
+    name: Browser accessibility
     needs: build
-    if: ${{ github.event.repository.has_pages }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Select the pinned tool manager
+        uses: jdx/mise-action@9e7f7633ff6f6d6048a9418a68d48f288f50eb14 # v4.2.3
+        with:
+          install: false
+
+      - name: Install only the documentation and browser toolchains
+        run: |
+          mise install uv
+          uv sync --locked
+          mise run install:accessibility
+
+      - name: Run the browser accessibility acceptance
+        run: mise run check:accessibility
+
+  deploy:
+    needs: [build, accessibility]
+    if: ${{ github.event_name != 'pull_request' && github.event.repository.has_pages }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     permissions:
       pages: write
       id-token: write

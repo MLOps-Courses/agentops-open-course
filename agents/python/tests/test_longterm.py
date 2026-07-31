@@ -6,6 +6,11 @@ from typing import cast
 from google.adk.tools.tool_context import ToolContext
 
 from agent import longterm
+from tests.domain import REFERENCE_DOMAIN
+
+_CHECKOUT_INCIDENT = REFERENCE_DOMAIN.incidents.checkout_latency
+_INVENTORY = REFERENCE_DOMAIN.services.inventory
+_INVENTORY_INCIDENT = REFERENCE_DOMAIN.incidents.inventory_down
 
 
 def _context(user_id: str, session_id: str) -> ToolContext:
@@ -14,36 +19,40 @@ def _context(user_id: str, session_id: str) -> ToolContext:
 
 def test_notes_persist_across_simulated_sessions() -> None:
     yesterday = _context("engineer", "session-mon")
-    longterm.save_incident_note("INC-002", "Restarted inventory; crash-loop persists.", yesterday)
+    longterm.save_incident_note(
+        _INVENTORY_INCIDENT,
+        f"Restarted {_INVENTORY}; crash-loop persists.",
+        yesterday,
+    )
     today = _context("engineer", "session-tue")  # a brand-new conversation
-    recalled = longterm.recall_incident_context("INC-002", today)
+    recalled = longterm.recall_incident_context(_INVENTORY_INCIDENT, today)
     assert recalled["count"] == 1
     assert "crash-loop persists" in recalled["notes"][0]["note"]
 
 
 def test_recall_without_filter_returns_newest_first() -> None:
     context = _context("engineer", "session-1")
-    longterm.save_incident_note("INC-001", "checked latency graphs", context)
-    longterm.save_incident_note("INC-002", "escalated to fulfillment", context)
+    longterm.save_incident_note(_CHECKOUT_INCIDENT, "checked latency graphs", context)
+    longterm.save_incident_note(_INVENTORY_INCIDENT, "escalated to fulfillment", context)
     recalled = longterm.recall_incident_context(tool_context=context)
     assert recalled["count"] == 2
-    assert recalled["notes"][0]["incident_id"] == "INC-002"  # newest first
+    assert recalled["notes"][0]["incident_id"] == _INVENTORY_INCIDENT  # newest first
 
 
 def test_memory_is_isolated_per_user() -> None:
-    longterm.save_incident_note("INC-002", "private note from alice", _context("alice", "s1"))
-    recalled = longterm.recall_incident_context("INC-002", _context("bob", "s2"))
+    longterm.save_incident_note(_INVENTORY_INCIDENT, "private note from alice", _context("alice", "s1"))
+    recalled = longterm.recall_incident_context(_INVENTORY_INCIDENT, _context("bob", "s2"))
     assert recalled["count"] == 0
 
 
 def test_notes_are_redacted_before_persisting() -> None:
     context = _context("engineer", "s1")
     longterm.save_incident_note(
-        "INC-002",
+        _INVENTORY_INCIDENT,
         "paged jane.doe@acme.com with api_key=super-secret-api-key-123456",
         context,
     )
-    recalled = longterm.recall_incident_context("INC-002", context)
+    recalled = longterm.recall_incident_context(_INVENTORY_INCIDENT, context)
     assert "jane.doe@acme.com" not in str(recalled)
     assert "super-secret-api-key-123456" not in str(recalled)
     assert "<EMAIL_ADDRESS>" in str(recalled)
@@ -53,7 +62,11 @@ def test_notes_are_redacted_before_persisting() -> None:
 
 def test_kill_switch_refuses_note_before_state_write(monkeypatch) -> None:
     monkeypatch.setattr(longterm.settings, "writes_disabled", True)
-    result = longterm.save_incident_note("INC-002", "Restarted inventory.", _context("engineer", "s1"))
+    result = longterm.save_incident_note(
+        _INVENTORY_INCIDENT,
+        f"Restarted {_INVENTORY}.",
+        _context("engineer", "s1"),
+    )
     assert "AGENT_WRITES_DISABLED" in result["error"]
     assert not (longterm.settings.state_dir / "memory.db").exists()
 
@@ -62,14 +75,14 @@ def test_invalid_inputs_are_rejected() -> None:
     context = _context("engineer", "s1")
     assert "error" in longterm.save_incident_note("ticket-9", "note", context)
     assert "orphaned memory" in longterm.save_incident_note("INC-999", "note", context)["error"]
-    assert "error" in longterm.save_incident_note("INC-002", "   ", context)
-    assert "error" in longterm.save_incident_note("INC-002", "x" * 2001, context)
+    assert "error" in longterm.save_incident_note(_INVENTORY_INCIDENT, "   ", context)
+    assert "error" in longterm.save_incident_note(_INVENTORY_INCIDENT, "x" * 2001, context)
     assert "error" in longterm.recall_incident_context("not-an-id", context)
 
 
 def test_direct_calls_use_a_stable_anonymous_identity() -> None:
-    longterm.save_incident_note("INC-001", "saved without a session")
-    recalled = longterm.recall_incident_context("INC-001")
+    longterm.save_incident_note(_CHECKOUT_INCIDENT, "saved without a session")
+    recalled = longterm.recall_incident_context(_CHECKOUT_INCIDENT)
     assert recalled["count"] == 1
 
 
@@ -81,8 +94,8 @@ def test_memory_lives_in_the_disposable_state_dir() -> None:
 
 
 def test_forget_user_memory_erases_only_that_user() -> None:
-    longterm.save_incident_note("INC-002", "alice private note", _context("alice", "s1"))
-    longterm.save_incident_note("INC-001", "bob private note", _context("bob", "s2"))
+    longterm.save_incident_note(_INVENTORY_INCIDENT, "alice private note", _context("alice", "s1"))
+    longterm.save_incident_note(_CHECKOUT_INCIDENT, "bob private note", _context("bob", "s2"))
     result = longterm.forget_user_memory("alice")
     assert result["forgotten"] == {"user_id": "alice", "count": 1}
     assert longterm.recall_incident_context(tool_context=_context("alice", "s3"))["count"] == 0

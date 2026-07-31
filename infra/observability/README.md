@@ -1,12 +1,14 @@
 # Local observability
 
-The optional local stack is self-hosted and account-free: MLflow 3.14 stores traces and artifacts, OpenTelemetry Collector receives OTLP and derives RED metrics with `spanmetrics`, Prometheus stores metrics and evaluates the course alert rules, Alertmanager groups the fired alerts, Loki stores logs, and Grafana queries both. Every host port is bound to loopback.
+The optional local stack is self-hosted and account-free: MLflow 3.15 stores traces and artifacts, OpenTelemetry Collector receives OTLP and derives RED metrics with `spanmetrics`, Prometheus stores metrics and evaluates the course alert rules, Alertmanager groups the fired alerts, Loki stores logs, and Grafana queries both. Every host port is bound to loopback.
 
 From the repository root:
 
 ```bash
 mise run observability:up
 ```
+
+The task verifies every endpoint and container hardening contract. If startup or readiness fails, it removes only the `agentops-observability` project containers while preserving their named volumes.
 
 Point the agent at `OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318`, then use:
 

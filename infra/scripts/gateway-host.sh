@@ -296,6 +296,7 @@ build_docker_args() {
 
 	config_directory="$(dirname -- "${config_path}")"
 
+	# --8<-- [start:hardened-container-args]
 	docker_args=(
 		run
 		--pull missing
@@ -306,6 +307,7 @@ build_docker_args() {
 		--tmpfs "/tmp:rw,noexec,nosuid,nodev,size=16m,mode=1777"
 		--add-host "host.docker.internal:${host_alias_ip:-host-gateway}"
 	)
+	# --8<-- [end:hardened-container-args]
 	if [[ "${lifecycle}" != "validate" ]]; then
 		docker_args+=(
 			--network "${network_name}"

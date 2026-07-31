@@ -16,7 +16,7 @@ import mlflow
 
 from agent import data
 from agent.memory import search_runbooks
-from agent.retrieval import semantic_search
+from agent.retrieval import index_provenance, semantic_search
 
 try:  # package import under pytest; direct CLI runs with ``evals/`` on sys.path[0]
     from evals.runtime import isolated_state
@@ -60,8 +60,10 @@ def main() -> None:
         for k in _K_VALUES:
             metrics[f"keyword_hit_rate_at_{k}"] = hit_rate(keyword_slugs, k)
             metrics[f"semantic_hit_rate_at_{k}"] = hit_rate(semantic_slugs, k)
+        provenance = index_provenance() or {}
     with mlflow.start_run(run_name="retrieval-eval"):
         mlflow.log_metrics(metrics)
+        mlflow.log_params({f"index_{key}": str(value) for key, value in provenance.items()})
         mlflow.set_tag("eval", "retrieval-quality")
 
     print(f"Retrieval quality over {len(cases())} incident queries:")  # noqa: T201 - CLI output

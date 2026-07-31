@@ -2,8 +2,8 @@ cff-version: 1.2.0
 message: If you use this course or its reference software in teaching, research, or practice, please cite it using this metadata.
 title: AgentOps Open Course
 type: software
-version: 0.3.5
-date-released: "2026-07-30"
+version: 0.5.0
+date-released: "2026-07-31"
 authors:
   - family-names: Hurier
     given-names: Médéric

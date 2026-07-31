@@ -4,6 +4,56 @@ All notable changes to the AgentOps Open Course are documented here. The format 
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-07-31
+
+### Added
+
+- Added a versioned, hash-verified state snapshot format and one shared state CLI for host and Kubernetes backup, validation, process-serialized crash recovery, and failure-injection drills.
+- Added semantic-index provenance for corpus, model artifact, vector dimensions, and chunking format, with serialized generation swaps and safe keyword fallback.
+- Added a typed domain fixture and portability contract that exercises a second domain across tools, PII policy, A2A, ADK trajectories, and MLflow evaluation.
+- Added deterministic learner-exercise contracts, route and source-drift checks, released-URL preservation, rendered accessibility checks, social metadata, and machine-readable course evidence.
+- Added five hermetic dependency-profile audits plus repository, license, observability, and container-image checks shared by local tasks and CI.
+- Added quarterly freshness evidence with compatibility-hold metadata, reviewed upstream provenance, and issue-based human follow-up.
+- Added exact-candidate Platform and Eval workflows plus release qualification, digest-bound image promotion, attestation verification, and cleanup evidence.
+- Added least-privilege state-backup resources, Kubernetes policy fixtures, and isolated GKE deployment and teardown guidance.
+
+### Changed
+
+- Upgraded the supported stack to current compatible stable releases, including Google ADK 2.6, MLflow 3.15, OpenAI 2.51, spaCy 3.8.14, PyArrow 25, SQLite 3.53.4, K3s 1.36.2, and kubeconform 1.36.
+- Constrained Python to 3.13 until the locked ADK and GenAI dependency chain supports 3.14 without runtime warnings.
+- Split the learner runtime from model-backed evaluation dependencies so the default installation remains smaller and account-free.
+- Made course requirements, costs, dependency pins, task expansions, ports, support boundaries, and release procedures derive from or validate against one repository authority.
+- Reworked the capstone around the shipped portability seam and an evidence matrix that distinguishes deterministic proof from learner-owned domain outcomes.
+- Restricted GitHub Actions to SHA-pinned, explicitly allowed actions and strengthened branch, tag, environment, CodeQL, Dependabot, secret-scanning, and immutable-release controls.
+- Made the optional GCP path use a clean committed source revision, isolated credentials and Kubernetes context, explicit resource inventories, and a plan-before-destroy teardown.
+- Made model-backed release evidence retain a whitelisted six-signal verdict, exact run identity, model digest, and scorer versions without prompts, responses, or tool data.
+
+### Fixed
+
+- Rejected future audit schemas before readiness, reads, migrations, or writes and made failed migrations and restores preserve byte-identical input state.
+- Prevented stale or partially rebuilt semantic vectors from being presented as current after corpus, model, dimension, or chunker changes.
+- Rejected embedding-model alias changes around query or corpus generation before publishing or querying a mismatched vector generation.
+- Replaced probabilistic required exercises and broad directory restores with deterministic offline checks, dirty-worktree preflights, and named-file cleanup.
+- Closed documentation drift across dependency versions, tool profiles, CLI expansions, route ordering, setup tiers, retrieval behavior, and release evidence.
+- Made CI concurrency, permissions, job scopes, diagnostics, and scheduled evidence explicit while keeping all required pull-request gates deterministic.
+- Made release lookup, run qualification, SPDX attestation matching, image cleanup, and package-index publication retry-safe and fail-closed.
+- Made GKE delivery authenticate Docker explicitly, select the exact cluster context, publish only a clean source SHA, and document complete application and infrastructure cleanup.
+- Made optional GKE cleanup capture exact CSI handles across both course namespaces, accept a valid empty partial-deploy inventory, and restore only APIs enabled by that lab.
+- Made a failed host-observability readiness check tear down its project-scoped containers while preserving named volumes.
+
+### Security
+
+- Tightened Kubernetes network policies to exact callers and ports, plus backup-job privileges, non-root images, read-only filesystems, capabilities, seccomp, service-account tokens, and state access.
+- Added complete lockfile, history, configuration, container, license, and vulnerability scanning without relying on mutable user-level tool configuration.
+- Kept GitHub secret scanning and push protection enabled; repository-plan-dependent advanced validity and non-provider checks remain outside the claimed contract.
+
+### Migration and rollback
+
+- Run `mise run install:maintainer`, then the complete `format`, `check`, `test`, `scan`, and `build` gates after updating an existing checkout.
+- Existing runtime state is migrated through the versioned state boundary. Take and validate a snapshot before upgrading; future schemas fail closed.
+- Roll back source and images together to the previous supported release, then restore only a snapshot whose manifest and schema are accepted by that release.
+- The GCP module remains plan-first and project-neutral. Review the saved destroy plan and exact resource inventory before removing an optional lab.
+
 ## [0.3.5] - 2026-07-30
 
 ### Added
@@ -128,7 +178,8 @@ All notable changes to the AgentOps Open Course are documented here. The format 
 - Untrusted tool-output sanitization is enabled by default.
 - Release publishing now pushes and signs the exact local image that passed the pre-push scan instead of rebuilding it.
 
-[unreleased]: https://github.com/MLOps-Courses/agentops-open-course/compare/v0.3.5...HEAD
+[unreleased]: https://github.com/MLOps-Courses/agentops-open-course/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/MLOps-Courses/agentops-open-course/releases/tag/v0.5.0
 [0.3.5]: https://github.com/MLOps-Courses/agentops-open-course/releases/tag/v0.3.5
 [0.2.0]: https://github.com/MLOps-Courses/agentops-open-course/releases/tag/v0.2.0
 [0.1.1]: https://github.com/MLOps-Courses/agentops-open-course/releases/tag/v0.1.1

@@ -1,6 +1,8 @@
-// Zensical 0.0.51 renders its search UI in an open shadow root. Until the
-// alpha theme supplies these semantics itself, add the missing names and
-// combobox relationship without coupling to its minified CSS class names.
+// The locked Zensical renderer exposes its search UI through an open shadow
+// root. Pin this reviewed compatibility boundary so a renderer bump must
+// revalidate the shim before it can ship.
+const SEARCH_SHIM_ZENSICAL = "0.0.52";
+
 function repairSearchAccessibility(root) {
     const input = root.querySelector('input[role="combobox"]');
     if (!input || input.dataset.accessibilityReady) return;
@@ -26,6 +28,9 @@ function repairSearchAccessibility(root) {
 }
 
 function repairAccessibility() {
+    const generator = document.querySelector('meta[name="generator"]')?.content;
+    if (generator !== `zensical-${SEARCH_SHIM_ZENSICAL}`) return;
+
     document.querySelectorAll('input.md-option[aria-hidden="true"]').forEach((input) => {
         input.disabled = true;
     });

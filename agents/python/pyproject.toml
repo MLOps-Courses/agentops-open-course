@@ -3,23 +3,23 @@
 
 [project]
 name = "agentops-agent"
-version = "0.3.5"
+version = "0.5.0"
 description = "The AgentOps Open Course reference agent, built with Google ADK 2.x."
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.13,<3.14"
 license = "MIT" # the code license text lives at agents/LICENSE
 authors = [{ name = "Médéric HURIER", email = "agentops-open-course@fmind.dev" }]
 # --8<-- [start:runtime-dependencies]
 dependencies = [
   "aiosqlite>=0.22.1,<0.23", # async SQLite driver for ADK sessions and the A2A task store
-  "google-adk[a2a]>=2.4.0", # locked agent runtime + A2A serving; avoid the unused Spanner `db` extra
+  "google-adk[a2a]>=2.6.0", # locked agent runtime + A2A serving; avoid the unused Spanner `db` extra
   "a2a-sdk>=1.1.2", # A2A protocol types + server (Ch. 3.6); 1.x reworked the type surface — kept current with ADK's <2 cap
   # Model Context Protocol server (FastMCP) + client (McpToolset), Ch. 3.3.
   # Capped at <2 because the locked ADK declares `mcp<2`. Lift this bound only with an ADK
   # release that supports MCP 2.x; keeping the direct dependency aligned makes the inherited
   # compatibility constraint explicit.
   "mcp>=1.28.1,<2",
-  "openai>=2.49.0", # OSS SDK used by ADK OpenAILlm for direct Ollama or agentgateway
+  "openai>=2.51.0", # OSS SDK used by ADK OpenAILlm for direct Ollama or agentgateway
   "opentelemetry-exporter-otlp-proto-http>=1.42.0,<=1.42.1", # match ADK's OTel cap; export to Collector/MLflow
   "pydantic-settings>=2.14.2",
   "presidio-analyzer==2.2.364", # paired release; 2.2.363 caps cryptography below the security floor
@@ -27,7 +27,7 @@ dependencies = [
   "spacy>=3.8,<3.9", # Presidio's NLP engine; pinned to match the en_core_web_sm model below
   "en-core-web-sm", # small English spaCy model for Presidio (URL-pinned in [tool.uv.sources])
   "tldextract>=5.3.1,<6", # offline email recognition uses its bundled public-suffix snapshot directly
-  "cryptography>=48.0.1,<49", # latest MLflow-compatible line and floor for GHSA-537c-gmf6-5ccf
+  "cryptography>=48.0.1,<49", # latest Presidio-compatible line and floor for GHSA-537c-gmf6-5ccf
   "sqlite-vec>=0.1.6",
   "sqlalchemy[asyncio]>=2.0.51,<2.1", # persistent SQLite sessions/tasks without cloud database adapters
 ]
@@ -46,27 +46,27 @@ dev = [
   # Add only that SDK plus the local scorers instead of ADK's broad `eval` extra,
   # which also pulls the unused LiteLLM-backed evaluator.
   "google-cloud-aiplatform>=1.163.0,<2",
-  "hypothesis>=6.163.0",
+  "hypothesis>=6.164.0",
   "jinja2>=3.1.4,<4", # security floor for spaCy's runtime template dependency
   "lefthook>=2.1.9",
   # mlflow-skinny, not mlflow: the offline suite only imports the tracing, entity,
   # and scorer types. The tracking server, model flavors, and the numeric stack they
   # drag in (pyarrow, scipy, scikit-learn, matplotlib) live in the `eval` group.
-  "mlflow-skinny>=3.14",
-  "pandas>=2.2.3", # `mlflow.genai` imports it eagerly, so the offline suite needs it
+  "mlflow-skinny>=3.15,<3.16",
+  "pandas>=2.2.3,<3", # `mlflow.genai` imports it eagerly; MLflow 3.15 excludes pandas 3
   "pip-audit>=2.7.3",
   "pytest>=9.1.1",
   "pytest-cov>=7.1.0",
-  "ruff>=0.15.21",
-  "ty>=0.0.64,<0.1", # pre-1.0: pin a compatible range until it stabilizes
+  "ruff>=0.16.1",
+  "ty>=0.0.65,<0.1", # pre-1.0: pin a compatible range until it stabilizes
   "validate-pyproject>=0.25",
 ]
 # The MLflow/rouge evaluation chain (Ch. 4.4, 7.0), opt-in via `mise run install:eval`.
 # Roughly 350 MB of wheels that Chapters 2-3 never touch, on top of the 2.5 GB model
 # pull — the difference between a laptop that can start the course and one that cannot.
 eval = [
-  "mlflow>=3.14", # GenAI eval (LLM judges) + prompt registry + tracking server
-  "pyarrow>=24.0.0", # security floor for the MLflow dependency tree
+  "mlflow>=3.15,<3.16", # GenAI eval (LLM judges) + prompt registry + tracking server
+  "pyarrow>=25.0.0,<26", # current MLflow-compatible line for the evaluation data path
   "rouge-score>=0.1.2",
   "tabulate>=0.9",
 ]
@@ -74,6 +74,34 @@ eval = [
 [tool.uv]
 # `uv sync` must not pull the eval chain; `mise run install:eval` adds it explicitly.
 default-groups = ["dev"]
+
+[[tool.agentops.compatibility-holds]]
+package = "mcp"
+constraint = "<2"
+owner = "google-adk"
+owner-constraints = ["mcp<2"]
+validation = "MCP/A2A boundary tests"
+
+[[tool.agentops.compatibility-holds]]
+package = "opentelemetry-exporter-otlp-proto-http"
+constraint = "<=1.42.1"
+owner = "google-adk"
+owner-constraints = ["opentelemetry-api<=1.42.1", "opentelemetry-sdk<=1.42.1"]
+validation = "telemetry unit tests + Platform"
+
+[[tool.agentops.compatibility-holds]]
+package = "cryptography"
+constraint = "<49"
+owner = "presidio-anonymizer"
+owner-constraints = ["cryptography<49.0.0"]
+validation = "privacy tests + vulnerability audit"
+
+[[tool.agentops.compatibility-holds]]
+package = "pandas"
+constraint = "<3"
+owner = "mlflow"
+owner-constraints = ["pandas<3"]
+validation = "MLflow evaluation tests"
 
 [tool.uv.sources]
 # Pin the small English spaCy model as a reproducible wheel (locked in uv.lock, offline after sync).
@@ -131,6 +159,9 @@ select = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
+"../../scripts/test_*.py" = [
+  "S101", # repository unittest fixtures use concise assertions
+]
 "src/agent/config_check.py" = [
   "T201", # the config:check CLI prints its report to stdout by design
 ]

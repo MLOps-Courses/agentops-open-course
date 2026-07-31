@@ -24,6 +24,7 @@ The course teaches the complete lifecycle of one **AgentOps Agent** with Google 
 - **Docs mirror source.** Critical Python excerpts use checked `pymdownx.snippets` regions from `agents/python`; commands/manifests match `infra`. Prefer a short exact excerpt plus a source link over a second pseudo-implementation.
 - **Every course page is an FAQ.** It starts with YAML `description` front matter, contains at least one H2, and every H2 ends in `?`. `scripts/check_conventions.py` enforces this and the page frame below.
 - **Seed and state stay separate.** `agents/data/incidents.db` is never mutated. Host writes go to `agents/python/.state`; Kubernetes agent/MCP processes share `agentops-agent-state` so reads remain coherent with approved writes. Only the A2A startup and direct write boundary may prepare or migrate runtime state; probes and read tools stay read-only.
+- **Restore is crash-recoverable, not an instantaneous multi-file rename.** Stop every writer first. `agent.state` serializes backup/restore with a process lock and fsyncs a three-phase journal; A2A startup recovers an interrupted transaction before schema preflight or publication. Never bypass that boundary with direct file copies or delete unexplained `.restore-*` evidence.
 - **Reads and writes have different authority.** Six read/runbook tools can be direct locally or MCP through `AGENT_MCP_URL`. The MCP toolset passes `tool_filter=MCP_READ_TOOL_NAMES` (`mcp_client.py`), so a server cannot widen the surface by advertising more tools. `restart_service` and `resolve_incident` remain in-process, require ADK confirmation, validate targets, and append audit evidence in the same transaction. Replays with the same invocation, action, and target return the original audit row without mutating state again.
 - **Policy is attached once, at the app boundary.** `src/agent/governance.py` holds `AgentOpsPolicyPlugin`, an ADK `BasePlugin` registered on the `App` that `composition.py` exports as `app` (also re-exported by `src/agent/__init__.py`, which ADK discovery prefers over a bare `root_agent`). Its hooks fire for every agent, sub-agent, and workflow node, so adding an agent cannot lose the policy. Two properties are load-bearing: the before-model order is budget → compaction → redaction, and the first non-`None` return short-circuits the rest. Never reintroduce a per-agent callback list — that is what let nine copies of the same six callbacks accumulate.
 - **Skills and retrieved data have different trust.** The carve-out is keyed on the ADK `LoadSkillTool` **type**, which only the locally built `skill_toolset()` constructs — not on the tool's name, which any MCP server could claim. That result is reviewed repository instruction, so it bypasses injection neutralization and spotlighting while retaining recursive PII/credential redaction. Every other tool result stays data-hardened by default.
@@ -52,7 +53,7 @@ Use the repository files and locks as version authority — never a number copie
 - Container images (agentgateway, OpenTelemetry Collector, Loki, Prometheus, …): digest-pinned at their use site under `infra/k8s/` and `infra/observability/`.
 - Python interpreter: `.python-version`.
 
-This file owns the stable network contract, because nothing else does: MCP `:3000`, A2A `:3001`, OpenAI-compatible model `:4000`, gateway metrics `:15020`, host gateway readiness `:15021`, raw MCP `:8000`, raw A2A `:8080`, ADK web UI `:8002`, documentation preview `:8003`, MLflow `:5000`, OTLP `:4317/:4318`, Prometheus `:9090`, and host Grafana `:3002`.
+This file owns the stable network inventory, while `scripts/check_conventions.py` maps every entry to its executable owner: MCP `:3000`, A2A `:3001`, OpenAI-compatible model `:4000`, gateway metrics `:15020`, host gateway readiness `:15021`, raw MCP `:8000`, raw A2A `:8080`, web client `:8001`, ADK web UI `:8002`, documentation preview `:8003`, Ollama `:11434`, MLflow `:5000`, OTLP `:4317/:4318`, collector metrics `:8889`, Prometheus `:9090`, Alertmanager `:9093`, host Grafana `:3002`, Loki `:3100`, and the local registry `:5050`.
 
 ## Development commands
 
@@ -117,11 +118,13 @@ The `eval:*` tasks (`eval`, `eval:workflow`, `eval:report`, `eval:mlflow`, `eval
 
 The host gateway is `infra/agentgateway/host/config.yaml`. Host quickstarts use the digest-pinned container wrapper exposed by the `gateway:host*` tasks; every published listener binds to `127.0.0.1`. On native Linux, the wrapper owns a bridge-address-only relay so its container can reach MCP, A2A, and Ollama while those upstream processes remain bound to host loopback. The raw agentgateway binary currently listens on all interfaces and is an advanced/manual path, not a learner quickstart.
 
-Kubernetes begins in Chapter 6. Local Kubernetes is created only from `infra/k3d.yaml`, uses `registry.localhost:5050`, and is deployed from `infra/` with:
+Kubernetes begins in Chapter 6. Local Kubernetes is created only from `infra/k3d.yaml`, uses `registry.localhost:5050`, and is deployed from the repository root with:
 
 ```bash
-SKAFFOLD_DEFAULT_REPO=registry.localhost:5050 skaffold dev -p local
+mise run platform:dev
 ```
+
+That task derives `AGENT_SOURCE_COMMIT` from `HEAD`; raw Skaffold commands must provide the same exact-source value because `infra/skaffold.yaml` refuses an untraceable image build.
 
 Do not start host Compose observability while the in-cluster stack is forwarded on the same ports. No profile creates an Ingress, LoadBalancer, or public application endpoint; clients use temporary port-forwards through agentgateway.
 
@@ -165,7 +168,7 @@ Continue to [<next page>](link) when <the condition that matters>.
 - On a hands-on page the learner must reach a runnable command within the first two H2 sections. `docs/2. Agents/2.1. First Agent.md` is the reference for that shape.
 - Admonition vocabulary is fixed: `abstract` for the page frame, `success` for end-of-page takeaways, `warning` for common mistakes, `danger` for destructive/costly/security actions, `tip` for an optional shortcut, `info` for skippable background, `note` for a neutral aside. The same message must use the same type everywhere it appears.
 - Prose rules: open each H2 with a concrete sentence of 25 words or fewer; keep sentences under ~35 words and at most one em-dash pair per paragraph; cap inline cross-links at two per paragraph and push the rest to a closing "Owned by …" line; define an unfamiliar term at first use in 15 words or fewer; use full page names as link labels, never a bare `[5.2]`.
-- Accessibility is content, not decoration: adjacent prose must communicate every new or changed Mermaid diagram's actors, relationships, and sequence; never rely on color alone; link dense unfamiliar terms to glossary anchors. `ACCESSIBILITY.md` is the public contract, and issue #68 tracks the legacy retrofit.
+- Accessibility is content, not decoration: adjacent `**Diagram in words:**` prose must communicate every new or changed Mermaid diagram's actors, relationships, and sequence; never rely on color alone; link dense unfamiliar terms to glossary anchors. `ACCESSIBILITY.md` is the public contract; `docs/diagram-legacy.txt` is an exact-hash ratchet for previously reviewed diagrams, not permission for new exemptions.
 - Keep prose practical and question-led; finish technical pages with verification and, where relevant, teardown.
 - Use only `1.` for ordered Markdown list items.
 - A `--8<--` snippet include must sit inside a fenced code block. A bare include is rendered as Markdown, so a leading `#` comment in the region becomes an `<h1>`.

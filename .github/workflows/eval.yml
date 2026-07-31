@@ -38,7 +38,7 @@ concurrency:
 
 jobs:
   evaluate:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Guard forks and mirrors: the weekly model download and long CPU inference only
     # make sense on the canonical repository. Elsewhere the job is skipped, not failed.
     if: github.repository == 'MLOps-Courses/agentops-open-course'
@@ -70,6 +70,11 @@ jobs:
 
       - name: Install the pinned toolchain
         uses: jdx/mise-action@9e7f7633ff6f6d6048a9418a68d48f288f50eb14 # v4.2.3
+        with:
+          install: false
+
+      - name: Install only the evaluation toolchain
+        run: mise install uv
 
       - name: Install agent dependencies
         run: cd agents/python && mise run install:eval
@@ -81,8 +86,8 @@ jobs:
           archive="${RUNNER_TEMP}/ollama-linux-amd64.tar.zst"
           curl --fail --show-error --location --retry 3 \
             --output "${archive}" \
-            "https://github.com/ollama/ollama/releases/download/v0.31.2/ollama-linux-amd64.tar.zst"
-          echo "2c88f0f31a959bac5a3cad4cc5296ec568551d4aa79f548f554adb2b575b3133  ${archive}" |
+            "https://github.com/ollama/ollama/releases/download/v0.32.5/ollama-linux-amd64.tar.zst"
+          echo "f7d6bdbcf71b83aa8670c4e7dc4b6936c0952fcf8b114eaf6a11cbadb9684214  ${archive}" |
             sha256sum --check -
           zstd --decompress --stdout "${archive}" | sudo tar -xf - -C /usr/local
           ollama --version
@@ -156,6 +161,59 @@ jobs:
           AGENT_EVAL_OBSERVED_PATH: evals/model-observed.json
         run: cd agents/python && mise run eval:ground 2>&1 | tee evals/ground-eval.log
 
+      - name: Write the sanitized evaluation verdict
+        if: always()
+        env:
+          ADK_OUTCOME: ${{ steps.adk.outcome }}
+          COST_OUTCOME: ${{ steps.cost.outcome }}
+          GROUND_OUTCOME: ${{ steps.ground.outcome }}
+          MLFLOW_OUTCOME: ${{ steps.mlflow.outcome }}
+          REPORT_OUTCOME: ${{ steps.report.outcome }}
+          WORKFLOW_OUTCOME: ${{ steps.workflow.outcome }}
+        run: |
+          jq -n \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg sha "$GITHUB_SHA" \
+            --arg run_id "$GITHUB_RUN_ID" \
+            --arg run_attempt "$GITHUB_RUN_ATTEMPT" \
+            --arg model "$AGENT_MODEL" \
+            --arg digest "${EVAL_MODEL_DIGEST:-}" \
+            --arg adk "$ADK_OUTCOME" \
+            --arg report "$REPORT_OUTCOME" \
+            --arg workflow "$WORKFLOW_OUTCOME" \
+            --arg mlflow "$MLFLOW_OUTCOME" \
+            --arg cost "$COST_OUTCOME" \
+            --arg ground "$GROUND_OUTCOME" \
+            '{
+              schema_version: 1,
+              repository: $repository,
+              sha: $sha,
+              run: {
+                id: ($run_id | tonumber),
+                attempt: ($run_attempt | tonumber),
+                url: (
+                  "https://github.com/" + $repository + "/actions/runs/" + $run_id
+                )
+              },
+              model: {
+                name: $model,
+                digest: $digest
+              },
+              signals: {
+                adk_trajectory: $adk,
+                structured_report: $report,
+                bounded_workflow: $workflow,
+                mlflow_scorers: $mlflow,
+                cost_regression: $cost,
+                groundedness: $ground
+              },
+              overall: (
+                [$adk, $report, $workflow, $mlflow, $cost, $ground] |
+                if all(. == "success") then "success" else "failure" end
+              ),
+              privacy: "sanitized verdict only; no prompts, responses, tool data, or model transcripts"
+            }' > agents/python/evals/verdict.json
+
       - name: Upload evaluation results
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -173,12 +231,24 @@ jobs:
             agents/python/evals/ground-observed.json
             agents/python/evals/model-observed.json
             agents/python/evals/model.json
+            agents/python/evals/verdict.json
             agents/python/evals/mlflow.db
             agents/python/mlruns
             agents/python/src/**/.adk/eval_history/*.evalset_result.json
           if-no-files-found: warn
           include-hidden-files: true
-          retention-days: 7
+          retention-days: 30
+
+      - name: Upload the sanitized release evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: eval-release-evidence-${{ github.run_id }}
+          path: |
+            agents/python/evals/model.json
+            agents/python/evals/verdict.json
+          if-no-files-found: error
+          retention-days: 90
 
       - name: Summarize all evaluation signals
         if: always()

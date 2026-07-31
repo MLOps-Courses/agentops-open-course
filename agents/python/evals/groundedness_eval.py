@@ -28,6 +28,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+from agent.domain import REFERENCE_DOMAIN
+
 try:  # pytest imports this as ``evals.groundedness_eval``; the CLI runs it with ``evals/`` on sys.path[0]
     from evals.mlflow_eval import (
         _SERVICE_TERMS,
@@ -47,20 +49,15 @@ except ModuleNotFoundError:  # pragma: no cover - script-invocation fallback
 
 # Runbook slugs shipped under agents/data/runbooks; a runbook the answer cites
 # must have surfaced in a tool response (get_runbook / search_runbooks) that turn.
-_RUNBOOK_SLUGS = frozenset(
-    {
-        "cascade-failure",
-        "deployment-rollback",
-        "disk-full",
-        "elevated-errors",
-        "high-latency",
-        "memory-leak",
-        "service-down",
-    }
-)
+_RUNBOOK_SLUGS = frozenset(REFERENCE_DOMAIN.runbooks.values())
 # Patterns for the identifier-shaped entities an answer can fabricate.
 _ID_PATTERNS = (r"inc-\d+", r"sev\d+")
-_AMBIGUOUS_SERVICE_TERMS = frozenset({"cache", "search"})
+_AMBIGUOUS_SERVICE_TERMS = frozenset(
+    {
+        REFERENCE_DOMAIN.services.cache,
+        REFERENCE_DOMAIN.services.search,
+    }
+)
 _OBSERVED = Path(__file__).parent / "ground-observed.json"
 
 

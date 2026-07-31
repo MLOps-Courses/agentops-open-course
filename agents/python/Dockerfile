@@ -55,6 +55,18 @@ RUN ln -sfn /usr/bin/python3 /app/.venv/bin/python \
 FROM cgr.dev/chainguard/wolfi-base@sha256:003627df3c1e1bba0c4116afcddb314aca9594ee2328c7e876a8081a6c988b2e AS runtime
 # --8<-- [end:runtime-base]
 
+ARG AGENT_SOURCE_COMMIT=unknown
+ARG OCI_CREATED=1970-01-01T00:00:00Z
+ARG OCI_VERSION=dev
+LABEL org.opencontainers.image.created="${OCI_CREATED}" \
+      org.opencontainers.image.description="Executable Google ADK reference agent for the AgentOps Open Course" \
+      org.opencontainers.image.documentation="https://agentops-open-course.fmind.dev/" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.revision="${AGENT_SOURCE_COMMIT}" \
+      org.opencontainers.image.source="https://github.com/MLOps-Courses/agentops-open-course" \
+      org.opencontainers.image.title="AgentOps Agent" \
+      org.opencontainers.image.version="${OCI_VERSION}"
+
 # --8<-- [start:apk-pins]
 # Exact apk pins keep the runtime reproducible. Wolfi is a *rolling* repository:
 # it removes superseded package versions, so these pins periodically stop
@@ -68,6 +80,7 @@ RUN apk add --no-cache \
 
 ENV PATH=/app/.venv/bin:$PATH \
     PYTHONUNBUFFERED=1 \
+    AGENT_SOURCE_COMMIT=${AGENT_SOURCE_COMMIT} \
     AGENT_DATA_DIR=/app/data \
     AGENT_STATE_DIR=/app/state \
     AGENT_A2A_BIND_HOST=0.0.0.0 \

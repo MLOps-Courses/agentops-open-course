@@ -9,6 +9,13 @@ from agent import actions, data, memory, tools
 from agent import agent as agent_module
 from agent.composition import root_agent
 from agent.longterm import MEMORY_TOOLS
+from tests.domain import REFERENCE_DOMAIN
+
+_CHECKOUT = REFERENCE_DOMAIN.services.checkout
+_CHECKOUT_INCIDENT = REFERENCE_DOMAIN.incidents.checkout_latency
+_HIGH_LATENCY_RUNBOOK = REFERENCE_DOMAIN.runbooks.high_latency
+_INVENTORY = REFERENCE_DOMAIN.services.inventory
+_PAYMENTS = REFERENCE_DOMAIN.services.payments
 
 
 def test_list_incidents_returns_all_by_default() -> None:
@@ -30,9 +37,9 @@ def test_list_incidents_rejects_invalid_status() -> None:
 
 
 def test_list_incidents_filters_by_service() -> None:
-    result = tools.list_incidents(service="checkout")
+    result = tools.list_incidents(service=_CHECKOUT)
     assert result["count"] >= 1
-    assert all(incident["service"] == "checkout" for incident in result["incidents"])
+    assert all(incident["service"] == _CHECKOUT for incident in result["incidents"])
 
 
 def test_list_incidents_rejects_invalid_service() -> None:
@@ -40,9 +47,9 @@ def test_list_incidents_rejects_invalid_service() -> None:
 
 
 def test_get_incident_known_and_unknown() -> None:
-    known = tools.get_incident("INC-001")
-    assert known["incident"]["id"] == "INC-001"
-    assert known["incident"]["runbook"] == "high-latency"
+    known = tools.get_incident(_CHECKOUT_INCIDENT)
+    assert known["incident"]["id"] == _CHECKOUT_INCIDENT
+    assert known["incident"]["runbook"] == _HIGH_LATENCY_RUNBOOK
 
     unknown = tools.get_incident("INC-999")
     assert "error" in unknown
@@ -50,7 +57,7 @@ def test_get_incident_known_and_unknown() -> None:
 
 
 def test_get_service_status_includes_open_incidents() -> None:
-    result = tools.get_service_status("checkout")
+    result = tools.get_service_status(_CHECKOUT)
     assert result["service"]["status"] == "degraded"
     assert all(incident["status"] != "resolved" for incident in result["open_incidents"])
 
@@ -58,12 +65,12 @@ def test_get_service_status_includes_open_incidents() -> None:
 def test_get_service_status_unknown_lists_known() -> None:
     result = tools.get_service_status("nope")
     assert "error" in result
-    assert "checkout" in result["error"]
+    assert _CHECKOUT in result["error"]
     assert "error" in tools.get_service_status("../checkout")
 
 
 def test_search_service_logs_filters_and_orders() -> None:
-    result = tools.search_service_logs("inventory", query="ERROR", limit=2)
+    result = tools.search_service_logs(_INVENTORY, query="ERROR", limit=2)
     assert result["count"] == 2
     assert all("ERROR" in line for line in result["lines"])
     assert "stock lookup" in result["lines"][0]
@@ -71,8 +78,8 @@ def test_search_service_logs_filters_and_orders() -> None:
 
 def test_search_service_logs_rejects_bad_inputs() -> None:
     assert "error" in tools.search_service_logs("../../etc")
-    assert "error" in tools.search_service_logs("checkout", limit=0)
-    assert "error" in tools.search_service_logs("payments")
+    assert "error" in tools.search_service_logs(_CHECKOUT, limit=0)
+    assert "error" in tools.search_service_logs(_PAYMENTS)
 
 
 def test_append_audit_writes_entry() -> None:
@@ -85,7 +92,7 @@ def test_append_audit_writes_entry() -> None:
         session_id="session-1",
         invocation_id="invocation-1",
         action="noop",
-        target="checkout",
+        target=_CHECKOUT,
         detail="unit test",
     )
     assert entry.actor == "test"

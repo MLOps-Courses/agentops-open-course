@@ -37,13 +37,13 @@ require_cmd() {
 	fail "missing ${command_name}: run 'mise install' to materialize the pinned toolchain"
 }
 
-# require_cgroup_v2 <cgroup-root> — Kubernetes 1.35 refuses its default kubelet
-# startup on cgroup v1. Check the host before k3d creates a partial cluster.
+# require_cgroup_v2 <cgroup-root> — Kubernetes 1.35 removed cgroup v1 support.
+# Check the host before the pinned k3s line creates a partial cluster.
 require_cgroup_v2() {
 	local cgroup_root="$1"
 
 	if [[ -r ${cgroup_root}/cgroup.controllers ]]; then
 		return 0
 	fi
-	fail "cgroup v2 required for pinned Kubernetes 1.35; enable the unified cgroup hierarchy before running local k3d"
+	fail "cgroup v2 required for pinned Kubernetes; enable the unified cgroup hierarchy before running local k3d"
 }

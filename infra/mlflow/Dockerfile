@@ -32,6 +32,18 @@ COPY --chmod=0444 entrypoint.py /opt/mlflow/entrypoint.py
 FROM cgr.dev/chainguard/wolfi-base@sha256:003627df3c1e1bba0c4116afcddb314aca9594ee2328c7e876a8081a6c988b2e
 # --8<-- [end:runtime-base]
 
+ARG AGENT_SOURCE_COMMIT=unknown
+ARG OCI_CREATED=1970-01-01T00:00:00Z
+ARG OCI_VERSION=dev
+LABEL org.opencontainers.image.created="${OCI_CREATED}" \
+      org.opencontainers.image.description="Locked self-hosted MLflow server for the AgentOps Open Course" \
+      org.opencontainers.image.documentation="https://agentops-open-course.fmind.dev/" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.revision="${AGENT_SOURCE_COMMIT}" \
+      org.opencontainers.image.source="https://github.com/MLOps-Courses/agentops-open-course" \
+      org.opencontainers.image.title="AgentOps MLflow" \
+      org.opencontainers.image.version="${OCI_VERSION}"
+
 # --8<-- [start:apk-pins]
 # Same rolling-repository caveat as the agent image: Wolfi drops superseded
 # package versions, so these exact pins periodically stop resolving. Refresh

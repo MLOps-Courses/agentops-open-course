@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title description">
+  <title id="title">AgentOps Open Course</title>
+  <desc id="description">An executable, local-first course for building, evaluating, securing, and operating one production-shaped AI agent.</desc>
+  <!-- Export from docs/assets: convert -background none social-card.svg -resize 1200x630 -depth 8 -strip social-card.png -->
+  <defs>
+    <style>
+      @font-face {
+        font-family: "Outfit";
+        src: url("fmind/Outfit-Variable.ttf");
+      }
+      @font-face {
+        font-family: "Inter";
+        src: url("fmind/Inter-Variable.ttf");
+      }
+      .heading { font-family: "Outfit", sans-serif; font-weight: 650; }
+      .body { font-family: "Inter", sans-serif; }
+    </style>
+  </defs>
+
+  <rect width="1200" height="630" fill="#0F172A"/>
+  <rect x="54" y="54" width="1092" height="522" rx="24" fill="#1E293B" stroke="#334155" stroke-width="2"/>
+  <rect x="54" y="54" width="10" height="522" rx="5" fill="#646CFF"/>
+
+  <image x="1018" y="86" width="78" height="78" href="fmind/logo.webp" xlink:href="fmind/logo.webp"/>
+  <text x="104" y="124" class="body" fill="#CBD5E1" font-size="24" letter-spacing="2">MLOPS COURSES</text>
+  <text x="104" y="222" class="heading" fill="#F8FAFC" font-size="70">AgentOps Open Course</text>
+  <text x="104" y="278" class="body" fill="#CBD5E1" font-size="29">Build, evaluate, secure, and operate one production-shaped AI agent.</text>
+
+  <g transform="translate(104 350)">
+    <rect width="214" height="92" rx="14" fill="#0F172A" stroke="#646CFF" stroke-width="2"/>
+    <text x="107" y="39" text-anchor="middle" class="heading" fill="#F8FAFC" font-size="25">Agent</text>
+    <text x="107" y="68" text-anchor="middle" class="body" fill="#CBD5E1" font-size="18">ADK · tools · state</text>
+
+    <path d="M 214 46 H 252" stroke="#CBD5E1" stroke-width="3"/>
+    <path d="M 244 38 L 254 46 L 244 54" fill="none" stroke="#CBD5E1" stroke-width="3"/>
+
+    <rect x="254" width="214" height="92" rx="14" fill="#0F172A" stroke="#646CFF" stroke-width="2"/>
+    <text x="361" y="39" text-anchor="middle" class="heading" fill="#F8FAFC" font-size="25">Gateway</text>
+    <text x="361" y="68" text-anchor="middle" class="body" fill="#CBD5E1" font-size="18">MCP · A2A · policy</text>
+
+    <path d="M 468 46 H 506" stroke="#CBD5E1" stroke-width="3"/>
+    <path d="M 498 38 L 508 46 L 498 54" fill="none" stroke="#CBD5E1" stroke-width="3"/>
+
+    <rect x="508" width="214" height="92" rx="14" fill="#0F172A" stroke="#646CFF" stroke-width="2"/>
+    <text x="615" y="39" text-anchor="middle" class="heading" fill="#F8FAFC" font-size="25">Platform</text>
+    <text x="615" y="68" text-anchor="middle" class="body" fill="#CBD5E1" font-size="18">Kubernetes · delivery</text>
+
+    <path d="M 722 46 H 760" stroke="#CBD5E1" stroke-width="3"/>
+    <path d="M 752 38 L 762 46 L 752 54" fill="none" stroke="#CBD5E1" stroke-width="3"/>
+
+    <rect x="762" width="230" height="92" rx="14" fill="#0F172A" stroke="#646CFF" stroke-width="2"/>
+    <text x="877" y="39" text-anchor="middle" class="heading" fill="#F8FAFC" font-size="25">Evidence</text>
+    <text x="877" y="68" text-anchor="middle" class="body" fill="#CBD5E1" font-size="18">tests · eval · telemetry</text>
+  </g>
+
+  <text x="104" y="514" class="body" fill="#F8FAFC" font-size="23">Local-first · open source · executable reference</text>
+  <text x="1096" y="514" text-anchor="end" class="body" fill="#CBD5E1" font-size="21">agentops-open-course.fmind.dev</text>
+</svg>

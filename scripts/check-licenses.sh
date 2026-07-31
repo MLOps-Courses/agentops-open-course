@@ -4,7 +4,7 @@ lib_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib.sh
 source "${lib_dir}/lib.sh"
 
-require_cmd jq base
+require_cmd cmp base jq rg uv sha256sum
 
 profile=${1:-full}
 readonly profile
@@ -54,6 +54,7 @@ trap 'rm -rf -- "${inventory_dir}"' EXIT
 
 check_repository_licenses() {
 	local software_license
+	local font_license=docs/assets/fmind/OFL-1.1.txt
 
 	test -f LICENSE
 	test -f docs/LICENSE.txt
@@ -63,33 +64,107 @@ check_repository_licenses() {
 			return 1
 		fi
 	done
+	test -f "${font_license}"
+	rg -Fq "Copyright (c) 2016 The Inter Project Authors" "${font_license}"
+	rg -Fq "Copyright 2021 The Outfit Project Authors" "${font_license}"
+	rg -Fq "SIL OPEN FONT LICENSE Version 1.1" "${font_license}"
 
-	printf 'repository licenses: MIT software + CC BY 4.0 course content\n'
+	printf 'repository licenses: MIT software + CC BY 4.0 course content + OFL 1.1 fonts\n'
 }
 
-collect_inventory() {
-	local label=$1
-	local python=$2
-	local output=$3
-	local install_task=$4
-
-	if [[ ! -x ${python} ]]; then
-		printf '%s: missing environment; run mise run %s\n' "${python}" "${install_task}" >&2
-		return 1
-	fi
-	if [[ ! -x ${pip_licenses} ]]; then
-		printf '%s: missing license checker; run mise run install:core\n' "${pip_licenses}" >&2
-		return 1
-	fi
+write_inventory() {
+	local environment=$1
+	local output=$2
 
 	"${pip_licenses}" \
-		--python "${python}" \
+		--python "${environment}/bin/python" \
 		--from mixed \
 		--with-license-file \
 		--no-license-path \
 		--format json \
 		>"${output}"
-	printf '%s dependencies: inventory collected\n' "${label}"
+	jq -S 'sort_by(.Name | ascii_downcase)' "${output}" >"${output}.canonical"
+	mv "${output}.canonical" "${output}"
+}
+
+sync_inventory() {
+	local label=$1
+	local slug=$2
+	local project=$3
+	local dependency_profile=$4
+	local output=$5
+	local environment="${inventory_dir}/venvs/${slug}"
+	local contaminated="${inventory_dir}/${slug}-contaminated.json"
+	local resynchronized="${inventory_dir}/${slug}-resynchronized.json"
+	local site_packages
+	local -a groups=()
+	local inventory_digest
+
+	if [[ ! -x ${pip_licenses} ]]; then
+		printf '%s: missing license checker; run mise run install:core\n' "${pip_licenses}" >&2
+		return 1
+	fi
+
+	case "${dependency_profile}" in
+	runtime) groups=(--no-default-groups) ;;
+	development) ;;
+	evaluation) groups=(--group eval) ;;
+	*) fail "unknown dependency profile '${dependency_profile}'" ;;
+	esac
+
+	# UV_PROJECT_ENVIRONMENT makes the inventory independent of every ambient
+	# project .venv. `uv sync` removes undeclared packages, so a clean checkout
+	# and a previously populated workstation resolve the same lock-owned set.
+	UV_PROJECT_ENVIRONMENT="${environment}" \
+		uv sync \
+		--project "${project}" \
+		--locked \
+		--no-install-project \
+		--quiet \
+		"${groups[@]}"
+
+	write_inventory "${environment}" "${output}"
+
+	# Prove the exact-sync claim rather than trusting uv's documented default.
+	# A fake proprietary distribution must appear before resynchronization, then
+	# disappear, leaving a byte-identical lock-owned inventory.
+	site_packages="$("${environment}/bin/python" -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')"
+	mkdir -p "${site_packages}/agentops_ambient_contaminant-9.9.dist-info"
+	printf '%s\n' \
+		'Metadata-Version: 2.1' \
+		'Name: agentops-ambient-contaminant' \
+		'Version: 9.9' \
+		'License: Proprietary' \
+		>"${site_packages}/agentops_ambient_contaminant-9.9.dist-info/METADATA"
+	printf '%s\n' 'uv' >"${site_packages}/agentops_ambient_contaminant-9.9.dist-info/INSTALLER"
+	printf '%s\n' \
+		'agentops_ambient_contaminant-9.9.dist-info/METADATA,,' \
+		'agentops_ambient_contaminant-9.9.dist-info/INSTALLER,,' \
+		'agentops_ambient_contaminant-9.9.dist-info/RECORD,,' \
+		>"${site_packages}/agentops_ambient_contaminant-9.9.dist-info/RECORD"
+	write_inventory "${environment}" "${contaminated}"
+	jq -e '.[] | select(.Name == "agentops-ambient-contaminant" and .License == "Proprietary")' \
+		"${contaminated}" >/dev/null || fail "${label}: ambient contamination fixture was not observable"
+
+	UV_PROJECT_ENVIRONMENT="${environment}" \
+		uv sync \
+		--project "${project}" \
+		--locked \
+		--no-install-project \
+		--quiet \
+		"${groups[@]}"
+	write_inventory "${environment}" "${resynchronized}"
+	if [[ -e ${site_packages}/agentops_ambient_contaminant-9.9.dist-info ]] || ! cmp -s "${output}" "${resynchronized}"; then
+		fail "${label}: a pre-populated environment changed the lock-synchronized inventory"
+	fi
+	printf '%s dependencies: clean and pre-populated inventory verdicts are identical\n' "${label}"
+
+	inventory_digest=$(sha256sum "${output}")
+	inventory_digest=${inventory_digest%% *}
+	printf '%s dependencies: lock-synchronized %s profile (%s)\n' \
+		"${label}" \
+		"${dependency_profile}" \
+		"${inventory_digest}"
 }
 
 check_python_environment() {
@@ -128,16 +203,10 @@ check_embedded_license() {
 	local package=$3
 	local expected=$4
 
-	# Absent is not a violation, but present-and-unverifiable is. Some of these packages arrive
-	# only through MLflow, which now lives in the agent project's optional `eval` dependency
-	# group — so a default `mise run install` legitimately has no huey or skops to inspect,
-	# while `mise run install:eval` does. Skipping silently would let a real license regression
-	# hide behind an uninstalled package, so say which case this was.
 	if ! jq -e --arg package "${package}" '[.[] | select(.Name == $package)] | length > 0' \
 		"${inventory_file}" >/dev/null; then
-		printf '%s: %s is not installed in this profile; embedded license not checked\n' \
-			"${label}" "${package}"
-		return 0
+		printf '%s: expected %s in this audited profile\n' "${label}" "${package}" >&2
+		return 1
 	fi
 
 	if ! jq -e \
@@ -156,32 +225,37 @@ check_embedded_license() {
 }
 
 check_repository_licenses
-collect_inventory "documentation" .venv/bin/python "${inventory_dir}/documentation.json" install:core &
-documentation_pid=$!
-collect_inventory "agent" agents/python/.venv/bin/python "${inventory_dir}/agent.json" install:core &
-agent_pid=$!
-mlflow_pid=
+pids=()
+sync_inventory "documentation" documentation . development "${inventory_dir}/documentation.json" &
+pids+=("$!")
+sync_inventory "agent runtime" agent-runtime agents/python runtime "${inventory_dir}/agent-runtime.json" &
+pids+=("$!")
+sync_inventory "agent development" agent-development agents/python development "${inventory_dir}/agent-development.json" &
+pids+=("$!")
 if [[ ${profile} == full ]]; then
-	collect_inventory "MLflow" infra/mlflow/.venv/bin/python "${inventory_dir}/mlflow.json" install:maintainer &
-	mlflow_pid=$!
+	sync_inventory "agent evaluation" agent-evaluation agents/python evaluation "${inventory_dir}/agent-evaluation.json" &
+	pids+=("$!")
+	sync_inventory "MLflow runtime" mlflow-runtime infra/mlflow runtime "${inventory_dir}/mlflow.json" &
+	pids+=("$!")
 fi
 
 inventory_failed=0
-wait "${documentation_pid}" || inventory_failed=1
-wait "${agent_pid}" || inventory_failed=1
-if [[ -n ${mlflow_pid} ]]; then
-	wait "${mlflow_pid}" || inventory_failed=1
-fi
+for pid in "${pids[@]}"; do
+	wait "${pid}" || inventory_failed=1
+done
 if ((inventory_failed)); then
 	exit 1
 fi
 
 check_python_environment "documentation" "${inventory_dir}/documentation.json"
-check_python_environment "agent" "${inventory_dir}/agent.json" google-crc32c huey skops
-check_embedded_license "agent" "${inventory_dir}/agent.json" google-crc32c 'Apache License'
-check_embedded_license "agent" "${inventory_dir}/agent.json" huey 'Permission is hereby granted'
-check_embedded_license "agent" "${inventory_dir}/agent.json" skops 'MIT License'
+check_python_environment "agent runtime" "${inventory_dir}/agent-runtime.json"
+check_python_environment "agent development" "${inventory_dir}/agent-development.json" google-crc32c
+check_embedded_license "agent development" "${inventory_dir}/agent-development.json" google-crc32c 'Apache License'
 if [[ ${profile} == full ]]; then
+	check_python_environment "agent evaluation" "${inventory_dir}/agent-evaluation.json" google-crc32c huey skops
+	check_embedded_license "agent evaluation" "${inventory_dir}/agent-evaluation.json" google-crc32c 'Apache License'
+	check_embedded_license "agent evaluation" "${inventory_dir}/agent-evaluation.json" huey 'Permission is hereby granted'
+	check_embedded_license "agent evaluation" "${inventory_dir}/agent-evaluation.json" skops 'MIT License'
 	check_python_environment "MLflow" "${inventory_dir}/mlflow.json" google-crc32c huey skops
 	check_embedded_license "MLflow" "${inventory_dir}/mlflow.json" google-crc32c 'Apache License'
 	check_embedded_license "MLflow" "${inventory_dir}/mlflow.json" huey 'Permission is hereby granted'

@@ -13,6 +13,21 @@ output "cluster_zone" {
   value       = google_container_cluster.agentops.location
 }
 
+output "region" {
+  description = "GCP region containing the subnet, registry, and bucket."
+  value       = var.region
+}
+
+output "network_name" {
+  description = "Dedicated VPC network name."
+  value       = google_compute_network.agentops.name
+}
+
+output "subnetwork_name" {
+  description = "Dedicated regional subnet name."
+  value       = google_compute_subnetwork.agentops.name
+}
+
 output "cluster_dns_ip" {
   description = "ClusterIP used by kube-dns inside the configured service CIDR."
   value       = cidrhost(var.services_cidr, 10)
@@ -41,4 +56,9 @@ output "agentgateway_service_account" {
 output "mlflow_service_account" {
   description = "GSA impersonated by the MLflow Kubernetes ServiceAccount."
   value       = google_service_account.mlflow.email
+}
+
+output "node_service_account" {
+  description = "Google service account used by the GKE node."
+  value       = google_service_account.nodes.email
 }

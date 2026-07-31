@@ -15,7 +15,9 @@ permissions:
 
 concurrency:
   group: platform-${{ github.ref }}
-  cancel-in-progress: false
+  # Preserve every main run as release evidence; only a superseded branch
+  # dispatch is disposable.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   platform:
@@ -24,18 +26,32 @@ jobs:
     # sense on the canonical repository. Elsewhere the job is skipped, not failed.
     if: github.repository == 'MLOps-Courses/agentops-open-course'
     timeout-minutes: 60
+    env:
+      BACKUP_EVIDENCE_MARKER: platform-backup-${{ github.run_id }}-${{ github.run_attempt }}
+      GITHUB_TOKEN: ${{ github.token }}
+      TELEMETRY_LOG_MARKER: platform-telemetry-log-${{ github.run_id }}-${{ github.run_attempt }}
+      TELEMETRY_SENTINEL: platform-private-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Install the pinned toolchain
+      - name: Select the pinned tool manager
         uses: jdx/mise-action@9e7f7633ff6f6d6048a9418a68d48f288f50eb14 # v4.2.3
+        with:
+          # Installing every [tools] entry would pull the account-bound Google
+          # Cloud CLI into this account-free local-platform proof.
+          install: false
 
-      - name: Install project dependencies
-        run: mise run install:maintainer
+      - name: Install only the account-free platform dependencies
+        run: |
+          mise install uv k3d kubectl helm helmfile skaffold jq
+          ./scripts/install-helm-diff.sh
 
-      - name: Verify the cgroup-v2 platform prerequisites
-        run: mise run doctor:platform
+      - name: Verify the cgroup-v2 and container prerequisites
+        run: |
+          test -r /sys/fs/cgroup/cgroup.controllers
+          docker info >/dev/null
+          helm plugin list | grep -Eq '^diff[[:space:]]+3\.15\.10'
 
       - name: Create the pinned cluster and install kagent
         run: |
@@ -55,6 +71,8 @@ jobs:
             "until curl -fsS 'http://${bridge}:11434/healthz' >/dev/null; do sleep 1; done"
 
       - name: Build and deploy the local overlay
+        env:
+          AGENT_SOURCE_COMMIT: ${{ github.sha }}
         run: |
           cd infra
           SKAFFOLD_DEFAULT_REPO=registry.localhost:5050 \
@@ -70,50 +88,736 @@ jobs:
             jq -e '[.items[] | select(.spec.type != "ClusterIP")] | length == 0'
           test -z "$(kubectl get ingress --all-namespaces --no-headers 2>/dev/null)"
 
-      - name: Prove the in-cluster backup and offline restore contracts
+      - name: Prove gateway ingress is caller and port specific
         run: |
-          kubectl -n agentops create job \
-            --from=cronjob/agentops-state-backup state-backup-drill
-          kubectl -n agentops wait \
-            --for=condition=complete job/state-backup-drill --timeout=180s
-          kubectl -n agentops logs job/state-backup-drill
-          kubectl -n agentops delete job state-backup-drill
-          mise run state:drill
+          cleanup() {
+            kubectl delete pod,networkpolicy \
+              gateway-denied-probe gateway-probe-egress \
+              --namespace agentops --ignore-not-found --wait=true >/dev/null
+            kubectl delete pod,networkpolicy \
+              gateway-allowed-probe gateway-denied-probe gateway-probe-egress \
+              --namespace kagent --ignore-not-found --wait=true >/dev/null
+          }
+          trap cleanup EXIT
+          kubectl apply -f - <<'EOF'
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: gateway-denied-probe
+            namespace: agentops
+            labels:
+              app.kubernetes.io/name: unrelated-probe
+          spec:
+            restartPolicy: Never
+            automountServiceAccountToken: false
+            securityContext:
+              runAsNonRoot: true
+              seccompProfile:
+                type: RuntimeDefault
+            containers:
+              - name: curl
+                image: curlimages/curl:8.21.0@sha256:7c12af72ceb38b7432ab85e1a265cff6ae58e06f95539d539b654f2cfa64bb13
+                command: [sleep, "300"]
+                securityContext:
+                  allowPrivilegeEscalation: false
+                  capabilities:
+                    drop: [ALL]
+          ---
+          apiVersion: networking.k8s.io/v1
+          kind: NetworkPolicy
+          metadata:
+            name: gateway-probe-egress
+            namespace: agentops
+          spec:
+            podSelector:
+              matchLabels:
+                app.kubernetes.io/name: unrelated-probe
+            policyTypes: [Egress]
+            egress:
+              - to:
+                  - podSelector:
+                      matchLabels:
+                        app.kubernetes.io/name: agentgateway
+                ports:
+                  - {port: 3000, protocol: TCP}
+          ---
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: gateway-denied-probe
+            namespace: kagent
+            labels:
+              app.kubernetes.io/instance: kagent
+              app.kubernetes.io/component: unrelated
+              agentops.test/probe: "true"
+          spec:
+            restartPolicy: Never
+            automountServiceAccountToken: false
+            securityContext:
+              runAsNonRoot: true
+              seccompProfile:
+                type: RuntimeDefault
+            containers:
+              - name: curl
+                image: curlimages/curl:8.21.0@sha256:7c12af72ceb38b7432ab85e1a265cff6ae58e06f95539d539b654f2cfa64bb13
+                command: [sleep, "300"]
+                securityContext:
+                  allowPrivilegeEscalation: false
+                  capabilities:
+                    drop: [ALL]
+          ---
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: gateway-allowed-probe
+            namespace: kagent
+            labels:
+              app.kubernetes.io/instance: kagent
+              app.kubernetes.io/component: controller
+              agentops.test/probe: "true"
+          spec:
+            restartPolicy: Never
+            automountServiceAccountToken: false
+            securityContext:
+              runAsNonRoot: true
+              seccompProfile:
+                type: RuntimeDefault
+            containers:
+              - name: curl
+                image: curlimages/curl:8.21.0@sha256:7c12af72ceb38b7432ab85e1a265cff6ae58e06f95539d539b654f2cfa64bb13
+                command: [sleep, "300"]
+                securityContext:
+                  allowPrivilegeEscalation: false
+                  capabilities:
+                    drop: [ALL]
+          ---
+          apiVersion: networking.k8s.io/v1
+          kind: NetworkPolicy
+          metadata:
+            name: gateway-probe-egress
+            namespace: kagent
+          spec:
+            podSelector:
+              matchLabels:
+                agentops.test/probe: "true"
+            policyTypes: [Egress]
+            egress:
+              - to:
+                  - namespaceSelector:
+                      matchLabels:
+                        kubernetes.io/metadata.name: agentops
+                    podSelector:
+                      matchLabels:
+                        app.kubernetes.io/name: agentgateway
+                ports:
+                  - {port: 3000, protocol: TCP}
+                  - {port: 4000, protocol: TCP}
+          EOF
+          kubectl wait --for=condition=Ready pod/gateway-denied-probe \
+            --namespace agentops --timeout=120s
+          kubectl wait --for=condition=Ready \
+            pod/gateway-denied-probe pod/gateway-allowed-probe \
+            --namespace kagent --timeout=120s
+          if kubectl exec --namespace agentops gateway-denied-probe -- \
+            curl --silent --show-error --connect-timeout 2 --max-time 4 \
+            http://agentgateway:3000/ >/dev/null 2>&1; then
+            echo "unrelated agentops pod reached agentgateway:3000" >&2
+            exit 1
+          fi
+          if kubectl exec --namespace kagent gateway-denied-probe -- \
+            curl --silent --show-error --connect-timeout 2 --max-time 4 \
+            http://agentgateway.agentops.svc.cluster.local:3000/ >/dev/null 2>&1; then
+            echo "unrelated kagent pod reached agentgateway:3000" >&2
+            exit 1
+          fi
+          kubectl exec --namespace kagent gateway-allowed-probe -- \
+            curl --silent --show-error --connect-timeout 2 --max-time 4 \
+            http://agentgateway.agentops.svc.cluster.local:3000/ >/dev/null
+          agent_pod="$(
+            kubectl get pod --namespace agentops \
+              --selector app.kubernetes.io/name=agentops-agent \
+              --output jsonpath='{.items[0].metadata.name}'
+          )"
+          kubectl exec --namespace agentops "${agent_pod}" -- python -c \
+            'import socket; [socket.create_connection(("agentgateway", port), timeout=3).close() for port in (3000, 4000)]'
 
       - name: Forward only the tested private services
         run: |
-          kubectl -n agentops port-forward service/agentgateway \
-            3000:3000 3001:3001 4000:4000 15020:15020 \
-            >"${RUNNER_TEMP}/gateway-forward.log" 2>&1 &
-          echo "$!" >"${RUNNER_TEMP}/gateway-forward.pid"
-          kubectl -n agentops port-forward service/agentops-mcp 8000:8000 \
-            >"${RUNNER_TEMP}/mcp-forward.log" 2>&1 &
-          echo "$!" >"${RUNNER_TEMP}/mcp-forward.pid"
-          kubectl -n agentops port-forward service/agentops-agent 8080:8080 \
-            >"${RUNNER_TEMP}/a2a-forward.log" 2>&1 &
-          echo "$!" >"${RUNNER_TEMP}/a2a-forward.pid"
-          timeout 60 bash -c \
+          forward() {
+            local name="$1"
+            shift
+            kubectl -n agentops port-forward "$@" \
+              >"${RUNNER_TEMP}/${name}-forward.log" 2>&1 &
+            echo "$!" >"${RUNNER_TEMP}/${name}-forward.pid"
+          }
+          forward gateway service/agentgateway \
+            3000:3000 3001:3001 4000:4000 15020:15020
+          forward mcp service/agentops-mcp 8000:8000
+          forward a2a service/agentops-agent 8080:8080
+          forward mlflow service/mlflow 5000:5000
+          forward prometheus service/prometheus 9090:9090
+          forward loki service/loki 3100:3100
+          timeout 90 bash -c \
             'until curl -fsS http://127.0.0.1:3001/healthz >/dev/null &&
               curl -fsS http://127.0.0.1:8000/healthz >/dev/null &&
-              curl -fsS http://127.0.0.1:8080/healthz >/dev/null; do sleep 1; done'
+              curl -fsS http://127.0.0.1:8080/healthz >/dev/null &&
+              curl -fsS http://127.0.0.1:5000/health >/dev/null &&
+              curl -fsS http://127.0.0.1:9090/-/ready >/dev/null &&
+              curl -fsS http://127.0.0.1:3100/ready >/dev/null; do sleep 1; done'
 
-      - name: Run the committed platform latency budgets
+      - name: Run deterministic traffic against the committed budgets
         env:
           DURATION: 10s
           RATE: "2"
+          PROMPT: ${{ env.TELEMETRY_SENTINEL }}
         run: |
           mise run load:health
           DURATION=15s RATE=12 mise run load:mcp
           ITERATIONS=1 mise run load:a2a
 
+      - name: Emit one safe application log and verify capture defaults
+        run: |
+          agent_pod="$(
+            kubectl -n agentops get pods \
+              -l app.kubernetes.io/name=agentops-agent \
+              -o jsonpath='{.items[0].metadata.name}'
+          )"
+          kubectl -n agentops exec "${agent_pod}" -- sh -eu -c \
+            "test \"\${ADK_CAPTURE_MESSAGE_CONTENT_IN_SPANS}\" = false
+             test \"\${OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT}\" = false"
+          kubectl -n agentops exec "${agent_pod}" -- \
+            python -c \
+            'import logging, sys; from agent.telemetry import setup_telemetry; from opentelemetry import _logs; setup_telemetry(); logging.getLogger("agent.platform").warning(sys.argv[1]); provider = _logs.get_logger_provider(); assert provider.force_flush(timeout_millis=10_000), "OpenTelemetry log flush timed out"' \
+            "${TELEMETRY_LOG_MARKER}"
+
+      - name: Prove traces, metrics, and logs contain the expected evidence
+        run: |
+          mlflow_request="$(
+            jq -cn '{
+              locations: [{
+                type: "MLFLOW_EXPERIMENT",
+                mlflow_experiment: {experiment_id: "0"}
+              }],
+              max_results: 100
+            }'
+          )"
+          for _ in {1..60}; do
+            curl -fsS \
+              --header 'Content-Type: application/json' \
+              --data "${mlflow_request}" \
+              http://127.0.0.1:5000/api/3.0/mlflow/traces/search \
+              >"${RUNNER_TEMP}/mlflow-traces.json"
+            jq -e '.traces | length > 0' \
+              "${RUNNER_TEMP}/mlflow-traces.json" >/dev/null && break
+            sleep 2
+          done
+          jq -e '.traces | length > 0 and any(.state == "OK")' \
+            "${RUNNER_TEMP}/mlflow-traces.json" >/dev/null
+          jq -e --arg sentinel "${TELEMETRY_SENTINEL}" \
+            'tostring | contains($sentinel) | not' \
+            "${RUNNER_TEMP}/mlflow-traces.json" >/dev/null
+          trace_id="$(
+            jq -er '.traces | map(select(.state == "OK")) | first | .trace_id' \
+              "${RUNNER_TEMP}/mlflow-traces.json"
+          )"
+          curl -fsS -G http://127.0.0.1:5000/api/3.0/mlflow/traces/get \
+            --data-urlencode "trace_id=${trace_id}" \
+            >"${RUNNER_TEMP}/mlflow-trace.json"
+          jq -e '.trace.spans | length > 0' \
+            "${RUNNER_TEMP}/mlflow-trace.json" >/dev/null
+          jq -e --arg sentinel "${TELEMETRY_SENTINEL}" \
+            'tostring | contains($sentinel) | not' \
+            "${RUNNER_TEMP}/mlflow-trace.json" >/dev/null
+
+          prometheus_dir="${RUNNER_TEMP}/prometheus"
+          mkdir -p "$prometheus_dir"
+          for metric in \
+            agentops_calls_total \
+            agentops_duration_seconds_count \
+            agentops_tokens_token_total; do
+            response="${prometheus_dir}/${metric}.json"
+            for _ in {1..60}; do
+              curl -fsS -G http://127.0.0.1:9090/api/v1/query \
+                --data-urlencode "query=${metric}" \
+                >"$response"
+              jq -e '.status == "success" and (.data.result | length > 0)' \
+                "$response" >/dev/null && break
+              sleep 2
+            done
+            jq -e '.status == "success" and (.data.result | length > 0)' \
+              "$response" >/dev/null
+          done
+          jq -s '{queries: .}' "$prometheus_dir"/*.json \
+            >"${RUNNER_TEMP}/prometheus.json"
+
+          loki_query="{service_name=\"agentops-agent\"}"
+          for _ in {1..60}; do
+            curl -fsS -G http://127.0.0.1:3100/loki/api/v1/query_range \
+              --data-urlencode "query=${loki_query}" \
+              --data-urlencode 'since=15m' \
+              --data-urlencode 'limit=500' \
+              >"${RUNNER_TEMP}/loki.json"
+            jq -e --arg marker "${TELEMETRY_LOG_MARKER}" \
+              '.status == "success" and (tostring | contains($marker))' \
+              "${RUNNER_TEMP}/loki.json" >/dev/null && break
+            sleep 2
+          done
+          jq -e --arg marker "${TELEMETRY_LOG_MARKER}" \
+            '.status == "success" and (tostring | contains($marker))' \
+            "${RUNNER_TEMP}/loki.json" >/dev/null
+          jq -e --arg sentinel "${TELEMETRY_SENTINEL}" \
+            'tostring | contains($sentinel) | not' \
+            "${RUNNER_TEMP}/loki.json" >/dev/null
+
+      - name: Prove the in-cluster backup restores every persistent evidence type
+        run: |
+          agent_pod="$(
+            kubectl -n agentops get pods \
+              -l app.kubernetes.io/name=agentops-agent \
+              -o jsonpath='{.items[0].metadata.name}'
+          )"
+          kubectl -n agentops exec -i "$agent_pod" -- \
+            python - "$BACKUP_EVIDENCE_MARKER" \
+            >"${RUNNER_TEMP}/platform-backup-evidence.json" <<'PY'
+          import json
+          import sqlite3
+          import sys
+          from types import SimpleNamespace
+
+          from agent import actions, longterm
+          from agent.config import settings
+
+          marker = sys.argv[1]
+          with sqlite3.connect(settings.state_dir / "runtime.db") as connection:
+              row = connection.execute(
+                  """
+                  SELECT sessions.id, tasks.id
+                  FROM sessions
+                  JOIN tasks ON tasks.context_id = sessions.id
+                  ORDER BY sessions.update_time DESC
+                  LIMIT 1
+                  """
+              ).fetchone()
+          if row is None:
+              raise RuntimeError("deterministic A2A traffic did not persist a session and task")
+          session_id, task_id = row
+
+          note = f"{marker}-long-term-note"
+          note_result = longterm.save_incident_note(
+              "INC-002",
+              note,
+              SimpleNamespace(user_id="platform-ci"),
+          )
+          if "saved" not in note_result:
+              raise RuntimeError(f"could not seed long-term evidence: {note_result}")
+
+          action_result = actions.restart_service(
+              "inventory",
+              SimpleNamespace(
+                  user_id="platform-ci",
+                  session=SimpleNamespace(id=session_id),
+                  invocation_id=marker,
+                  tool_confirmation=SimpleNamespace(
+                      confirmed=True,
+                      payload={
+                          "rationale": (
+                              "Automated backup fixture for the disposable local platform; "
+                              "the target is a mock service."
+                          )
+                      },
+                  ),
+              ),
+          )
+          if "audit" not in action_result:
+              raise RuntimeError(f"could not seed audit evidence: {action_result}")
+
+          print(
+              json.dumps(
+                  {
+                      "audit_action": action_result["audit"]["action"],
+                      "audit_invocation_id": marker,
+                      "audit_target": action_result["audit"]["target"],
+                      "memory_incident_id": "INC-002",
+                      "memory_note": note,
+                      "memory_user_id": "platform-ci",
+                      "session_id": session_id,
+                      "task_id": task_id,
+                  },
+                  sort_keys=True,
+              )
+          )
+          PY
+          jq -e '
+            .session_id and
+            .task_id and
+            .memory_note and
+            .audit_invocation_id
+          ' "${RUNNER_TEMP}/platform-backup-evidence.json" >/dev/null
+          kubectl -n agentops create configmap platform-backup-evidence \
+            --from-file="evidence.json=${RUNNER_TEMP}/platform-backup-evidence.json"
+
+          backup_stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+          kubectl -n agentops create job \
+            --from=cronjob/agentops-state-backup \
+            platform-state-backup \
+            --dry-run=client -o json |
+            jq --arg stamp "${backup_stamp}" \
+              '.spec.template.spec.containers[0].env =
+                ((.spec.template.spec.containers[0].env // []) +
+                  [{name: "STATE_BACKUP_TIMESTAMP", value: $stamp}])' |
+            kubectl create --filename -
+          kubectl -n agentops wait \
+            --for=condition=complete job/platform-state-backup --timeout=300s
+          kubectl -n agentops logs job/platform-state-backup
+
+          agent_image="$(
+            kubectl -n agentops get pods \
+              -l app.kubernetes.io/name=agentops-agent \
+              -o jsonpath='{.items[0].spec.containers[0].image}'
+          )"
+          kubectl -n agentops patch agent agentops-agent --type=merge \
+            --patch '{"spec":{"byo":{"deployment":{"replicas":0}}}}'
+          kubectl -n agentops scale deployment \
+            agentops-agent agentops-mcp --replicas=0
+          writer_stop_deadline=$((SECONDS + 120))
+          until
+            test -z "$(kubectl -n agentops get pods \
+              -l app.kubernetes.io/name=agentops-agent -o name)" &&
+            test -z "$(kubectl -n agentops get pods \
+              -l app.kubernetes.io/name=agentops-mcp -o name)"; do
+            ((SECONDS < writer_stop_deadline)) || {
+              echo "::error::Timed out while stopping state readers and writers."
+              exit 1
+            }
+            sleep 2
+          done
+
+          cat <<EOF | kubectl create --filename -
+          apiVersion: batch/v1
+          kind: Job
+          metadata:
+            name: platform-state-restore
+            namespace: agentops
+          spec:
+            backoffLimit: 0
+            activeDeadlineSeconds: 300
+            template:
+              spec:
+                serviceAccountName: agentops-state-backup
+                automountServiceAccountToken: false
+                restartPolicy: Never
+                securityContext:
+                  runAsNonRoot: true
+                  runAsUser: 10001
+                  runAsGroup: 10001
+                  fsGroup: 10001
+                  seccompProfile:
+                    type: RuntimeDefault
+                containers:
+                  - name: restore
+                    image: ${agent_image}
+                    imagePullPolicy: IfNotPresent
+                    command: ["/bin/sh", "-eu", "-c"]
+                    args:
+                      - |
+                        snapshot="/backups/\${BACKUP_STAMP}"
+                        test -f "\${snapshot}/manifest.json"
+                        test -f "\${snapshot}/.complete"
+                        python - /app/state /evidence/evidence.json <<'PY'
+                        import json
+                        import sqlite3
+                        import sys
+                        from pathlib import Path
+
+                        state = Path(sys.argv[1])
+                        evidence = json.loads(Path(sys.argv[2]).read_text())
+                        mutations = {
+                            "runtime.db": (
+                                ("DELETE FROM sessions WHERE id = ?", (evidence["session_id"],)),
+                                ("DELETE FROM tasks WHERE id = ?", (evidence["task_id"],)),
+                            ),
+                            "memory.db": (
+                                (
+                                    """
+                                    DELETE FROM incident_notes
+                                    WHERE user_id = ? AND incident_id = ? AND note = ?
+                                    """,
+                                    (
+                                        evidence["memory_user_id"],
+                                        evidence["memory_incident_id"],
+                                        evidence["memory_note"],
+                                    ),
+                                ),
+                            ),
+                            "incidents.db": (
+                                ("DROP TRIGGER audit_log_no_delete", ()),
+                                (
+                                    """
+                                    DELETE FROM audit_log
+                                    WHERE invocation_id = ? AND action = ? AND target = ?
+                                    """,
+                                    (
+                                        evidence["audit_invocation_id"],
+                                        evidence["audit_action"],
+                                        evidence["audit_target"],
+                                    ),
+                                ),
+                            ),
+                        }
+                        for name, statements in mutations.items():
+                            with sqlite3.connect(state / name) as connection:
+                                for statement, parameters in statements:
+                                    connection.execute(statement, parameters)
+                                connection.execute("CREATE TABLE ci_restore_sentinel (value TEXT)")
+                                connection.execute("INSERT INTO ci_restore_sentinel VALUES ('destroy me')")
+                                connection.commit()
+                        with sqlite3.connect(state / "obsolete.db") as connection:
+                            connection.execute("CREATE TABLE ci_restore_sentinel (value TEXT)")
+                            connection.execute("INSERT INTO ci_restore_sentinel VALUES ('destroy me')")
+
+                        checks = (
+                            (
+                                "runtime.db",
+                                "SELECT COUNT(*) FROM sessions WHERE id = ?",
+                                (evidence["session_id"],),
+                            ),
+                            (
+                                "runtime.db",
+                                "SELECT COUNT(*) FROM tasks WHERE id = ?",
+                                (evidence["task_id"],),
+                            ),
+                            (
+                                "memory.db",
+                                """
+                                SELECT COUNT(*) FROM incident_notes
+                                WHERE user_id = ? AND incident_id = ? AND note = ?
+                                """,
+                                (
+                                    evidence["memory_user_id"],
+                                    evidence["memory_incident_id"],
+                                    evidence["memory_note"],
+                                ),
+                            ),
+                            (
+                                "incidents.db",
+                                """
+                                SELECT COUNT(*) FROM audit_log
+                                WHERE invocation_id = ? AND action = ? AND target = ?
+                                """,
+                                (
+                                    evidence["audit_invocation_id"],
+                                    evidence["audit_action"],
+                                    evidence["audit_target"],
+                                ),
+                            ),
+                        )
+                        for name, statement, parameters in checks:
+                            with sqlite3.connect(state / name) as connection:
+                                assert connection.execute(statement, parameters).fetchone() == (0,)
+                        PY
+                        python -m agent.state restore "\${snapshot}" \
+                          --state-dir /app/state
+                        test ! -e /app/state/obsolete.db
+                        python - "\${snapshot}" "\${EXPECTED_COMMIT}" /evidence/evidence.json <<'PY'
+                        import hashlib
+                        import json
+                        import sqlite3
+                        import sys
+                        from pathlib import Path
+
+                        snapshot = Path(sys.argv[1])
+                        expected_commit = sys.argv[2]
+                        evidence = json.loads(Path(sys.argv[3]).read_text())
+                        state = Path("/app/state")
+                        manifest = json.loads((snapshot / "manifest.json").read_text())
+                        assert manifest["source"]["commit"] == expected_commit
+                        expected = {item["filename"]: item for item in manifest["databases"]}
+                        assert {"incidents.db", "memory.db", "runtime.db"} <= set(expected)
+                        assert {path.name for path in state.glob("*.db")} == set(expected)
+                        for name, item in expected.items():
+                            database = state / name
+                            assert hashlib.sha256(database.read_bytes()).hexdigest() == item["sha256"]
+                            with sqlite3.connect(database) as connection:
+                                assert connection.execute("PRAGMA integrity_check").fetchone() == ("ok",)
+                                tables = {
+                                    row[0]
+                                    for row in connection.execute(
+                                        "SELECT name FROM sqlite_schema WHERE type = 'table'"
+                                    )
+                                }
+                            assert "ci_restore_sentinel" not in tables
+
+                        checks = (
+                            (
+                                "runtime.db",
+                                "SELECT COUNT(*) FROM sessions WHERE id = ?",
+                                (evidence["session_id"],),
+                            ),
+                            (
+                                "runtime.db",
+                                "SELECT COUNT(*) FROM tasks WHERE id = ?",
+                                (evidence["task_id"],),
+                            ),
+                            (
+                                "memory.db",
+                                """
+                                SELECT COUNT(*) FROM incident_notes
+                                WHERE user_id = ? AND incident_id = ? AND note = ?
+                                """,
+                                (
+                                    evidence["memory_user_id"],
+                                    evidence["memory_incident_id"],
+                                    evidence["memory_note"],
+                                ),
+                            ),
+                            (
+                                "incidents.db",
+                                """
+                                SELECT COUNT(*) FROM audit_log
+                                WHERE invocation_id = ? AND action = ? AND target = ?
+                                """,
+                                (
+                                    evidence["audit_invocation_id"],
+                                    evidence["audit_action"],
+                                    evidence["audit_target"],
+                                ),
+                            ),
+                        )
+                        for name, statement, parameters in checks:
+                            uri = (state / name).resolve().as_uri() + "?mode=ro"
+                            with sqlite3.connect(uri, uri=True) as connection:
+                                assert connection.execute(statement, parameters).fetchone() == (1,)
+                        PY
+                    env:
+                      - name: BACKUP_STAMP
+                        value: "${backup_stamp}"
+                      - name: EXPECTED_COMMIT
+                        value: "${GITHUB_SHA}"
+                    resources:
+                      requests:
+                        cpu: 50m
+                        memory: 128Mi
+                      limits:
+                        cpu: 200m
+                        memory: 256Mi
+                    securityContext:
+                      allowPrivilegeEscalation: false
+                      readOnlyRootFilesystem: true
+                      capabilities:
+                        drop: [ALL]
+                    volumeMounts:
+                      - name: backups
+                        mountPath: /backups
+                        readOnly: true
+                      - name: evidence
+                        mountPath: /evidence
+                        readOnly: true
+                      - name: state
+                        mountPath: /app/state
+                volumes:
+                  - name: backups
+                    persistentVolumeClaim:
+                      claimName: agentops-state-backups
+                  - name: evidence
+                    configMap:
+                      name: platform-backup-evidence
+                  - name: state
+                    persistentVolumeClaim:
+                      claimName: agentops-agent-state
+          EOF
+          kubectl -n agentops wait \
+            --for=condition=complete job/platform-state-restore --timeout=300s
+          kubectl -n agentops logs job/platform-state-restore
+          kubectl -n agentops patch agent agentops-agent --type=merge \
+            --patch '{"spec":{"byo":{"deployment":{"replicas":1}}}}'
+          kubectl -n agentops scale deployment agentops-mcp --replicas=1
+          kubectl -n agentops rollout status \
+            deployment/agentops-agent --timeout=300s
+          kubectl -n agentops rollout status \
+            deployment/agentops-mcp --timeout=300s
+          kubectl -n agentops delete job \
+            platform-state-backup platform-state-restore --wait=true
+          kubectl -n agentops delete configmap platform-backup-evidence
+
+      - name: Collect sanitized failure diagnostics
+        if: failure()
+        run: |
+          diagnostics="${RUNNER_TEMP}/platform-diagnostics"
+          mkdir -p "${diagnostics}"
+          sanitize() {
+            sed -E \
+              -e 's/(Bearer )[A-Za-z0-9._~+\/=-]+/\1[REDACTED]/Ig' \
+              -e 's/((api[_-]?key|token|password|authorization)[^:= ]*[:=][ ]*)[^,} ]+/\1[REDACTED]/Ig'
+          }
+          {
+            kubectl config current-context
+            k3d cluster list
+            k3d registry list
+            kubectl get nodes -o wide
+            kubectl get pods --all-namespaces -o wide
+            kubectl get events --all-namespaces --sort-by=.lastTimestamp
+          } 2>&1 | sanitize >"${diagnostics}/cluster.txt" || true
+          kubectl get \
+            deployment,statefulset,daemonset,service,pvc,networkpolicy,cronjob,job,agent,modelconfig,remotemcpserver \
+            --all-namespaces -o yaml 2>&1 |
+            sanitize >"${diagnostics}/manifests.yaml" || true
+          {
+            helm list --all-namespaces
+            helmfile --file infra/helmfile.yaml list
+            helm status kagent --namespace kagent
+            helm status kagent-crds --namespace kagent
+          } 2>&1 | sanitize >"${diagnostics}/helm.txt" || true
+          kubectl get pods --all-namespaces -o json |
+            jq '[
+              .items[] | {
+                namespace: .metadata.namespace,
+                pod: .metadata.name,
+                containers: [
+                  .status.containerStatuses[]? |
+                  {name, image, imageID, ready, restartCount}
+                ]
+              }
+            ]' >"${diagnostics}/images.json" || true
+          while read -r namespace pod container; do
+            kubectl logs --namespace "${namespace}" "${pod}" \
+              --container "${container}" --tail=500 2>&1 |
+              sanitize >"${diagnostics}/log-${namespace}-${pod}-${container}.txt" || true
+          done < <(
+            kubectl get pods --all-namespaces -o json |
+              jq -r '.items[] |
+                .metadata.namespace as $namespace |
+                .metadata.name as $pod |
+                .spec.containers[] |
+                [$namespace, $pod, .name] | @tsv'
+          )
+          cp "${RUNNER_TEMP}"/*-forward.log "${diagnostics}/" 2>/dev/null || true
+          cp "${RUNNER_TEMP}"/fake-model.log "${diagnostics}/" 2>/dev/null || true
+          cp "${RUNNER_TEMP}"/mlflow-*.json "${diagnostics}/" 2>/dev/null || true
+          cp "${RUNNER_TEMP}"/prometheus.json "${diagnostics}/" 2>/dev/null || true
+          cp "${RUNNER_TEMP}"/loki.json "${diagnostics}/" 2>/dev/null || true
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: platform-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/platform-diagnostics
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Tear down every temporary resource
+        id: teardown
         if: always()
+        continue-on-error: true
         run: |
           status=0
           for process_file in \
             "${RUNNER_TEMP}/gateway-forward.pid" \
             "${RUNNER_TEMP}/mcp-forward.pid" \
             "${RUNNER_TEMP}/a2a-forward.pid" \
+            "${RUNNER_TEMP}/mlflow-forward.pid" \
+            "${RUNNER_TEMP}/prometheus-forward.pid" \
+            "${RUNNER_TEMP}/loki-forward.pid" \
             "${RUNNER_TEMP}/fake-model.pid"; do
             if [[ -f "${process_file}" ]]; then
               kill "$(cat "${process_file}")" 2>/dev/null || true
@@ -127,7 +831,8 @@ jobs:
             ) || status=1
             helmfile --file infra/helmfile.yaml destroy || status=1
           fi
-          if k3d cluster list -o json | jq -e 'any(.[]; .name == "local")' >/dev/null; then
+          if k3d cluster list -o json |
+            jq -e 'any(.[]; .name == "local")' >/dev/null; then
             k3d cluster delete local || status=1
           fi
           if k3d registry list -o json |
@@ -136,3 +841,30 @@ jobs:
             status=1
           fi
           exit "${status}"
+
+      - name: Record incomplete teardown
+        if: steps.teardown.outcome == 'failure'
+        run: |
+          diagnostics="${RUNNER_TEMP}/platform-teardown-diagnostics"
+          mkdir -p "${diagnostics}"
+          {
+            kubectl config current-context 2>/dev/null || true
+            k3d cluster list || true
+            k3d registry list || true
+            docker ps --all --filter label=app.kubernetes.io/part-of=agentops-open-course || true
+          } >"${diagnostics}/remaining-resources.txt" 2>&1
+
+      - name: Upload teardown diagnostics
+        if: steps.teardown.outcome == 'failure'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: platform-teardown-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/platform-teardown-diagnostics
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Fail when teardown is incomplete
+        if: steps.teardown.outcome == 'failure'
+        run: |
+          echo "::error::The platform acceptance left temporary resources behind."
+          exit 1

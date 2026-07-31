@@ -1,28 +1,225 @@
-# Publish signed, SBOM-attested container images to GHCR on version tags.
-# Supply chain: build -> scan (Trivy, reviewed OSS license policy) -> push -> SBOM (syft)
-# -> keyless cosign signature + SBOM attestation (GitHub OIDC, no long-lived key)
-# -> independent verification -> assets attached to a draft GitHub release.
-# Third-party actions are pinned by commit SHA because this workflow holds
-# packages:write and produces signed artifacts.
+# Release authority starts from protected main, never from an arbitrary tag.
+# The workflow qualifies one explicit commit, preflights both images before any
+# registry write, publishes immutable digest evidence, then creates the tag and
+# release only after independent verification.
 name: Release
 
+# --8<-- [start:release-dispatch-authority]
 on:
-  push:
-    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "v-prefixed SemVer already recorded in release metadata"
+        required: true
+        type: string
+      sha:
+        description: "Full protected-main commit SHA to qualify and release"
+        required: true
+        type: string
+      freshness_evidence:
+        description: "Closed recent audit as issue:<number>, or waiver:<reviewed reason>"
+        required: true
+        type: string
 
-permissions: {} # least privilege: each job declares exactly what it needs
+permissions: {}
+# --8<-- [end:release-dispatch-authority]
 
 concurrency:
-  group: release-${{ github.ref }}
-  cancel-in-progress: false # never cancel a half-published release
+  group: release
+  cancel-in-progress: false
 
 jobs:
-  publish:
-    runs-on: ubuntu-latest
+  qualify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     permissions:
-      contents: read # checkout
-      packages: write # push images to GHCR
-      id-token: write # cosign keyless signing via GitHub OIDC
+      actions: read
+      contents: read
+      issues: read
+    steps:
+      - name: Checkout the requested source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.sha }}
+          fetch-depth: 0
+
+      - name: Qualify protected main and exact-SHA evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FRESHNESS_EVIDENCE: ${{ inputs.freshness_evidence }}
+          SHA: ${{ inputs.sha }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          test "$GITHUB_REF" = refs/heads/main
+          test "$GITHUB_SHA" = "$SHA"
+          test "$(git rev-parse HEAD)" = "$SHA"
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq .sha)" = "$SHA"
+          python3 scripts/check_conventions.py release-metadata "$VERSION"
+
+          freshness_arguments=()
+          if [[ "$FRESHNESS_EVIDENCE" =~ ^issue:([1-9][0-9]*)$ ]]; then
+            issue_number="${BASH_REMATCH[1]}"
+            gh api "repos/${GITHUB_REPOSITORY}/issues/${issue_number}" > freshness-issue.json
+            freshness_arguments+=(--issue-json freshness-issue.json)
+          fi
+          python3 scripts/release_freshness.py \
+            --evidence "$FRESHNESS_EVIDENCE" \
+            --actor "$GITHUB_ACTOR" \
+            --repository "$GITHUB_REPOSITORY" \
+            "${freshness_arguments[@]}" \
+            > freshness-evidence.json
+
+          tag_state=missing
+          if git ls-remote --exit-code --tags origin "refs/tags/${VERSION}" >/dev/null 2>&1; then
+            test "$(git cat-file -t "refs/tags/${VERSION}")" = tag
+            test "$(git rev-list -n 1 "refs/tags/${VERSION}")" = "$SHA"
+            tag_state=existing
+          fi
+          release_state=missing
+          if release="$(
+            gh release view "$VERSION" \
+              --repo "$GITHUB_REPOSITORY" \
+              --json isDraft,tagName,url 2>/dev/null
+          )"; then
+            test "$(jq -r .tagName <<<"$release")" = "$VERSION"
+            if [[ "$(jq -r .isDraft <<<"$release")" != true ]]; then
+              echo "::error::${VERSION} is already published and immutable."
+              jq -r .url <<<"$release"
+              exit 1
+            fi
+            release_state=draft
+          fi
+
+          evidence='[]'
+          for specification in \
+            'CI|ci.yml|["push"]' \
+            'Docs|docs.yml|["push"]' \
+            'Scan|scan.yml|["push"]' \
+            'Eval|eval.yml|["workflow_dispatch","schedule"]' \
+            'Platform|platform.yml|["workflow_dispatch","schedule"]'; do
+            IFS='|' read -r workflow workflow_file allowed_events <<<"$specification"
+            response="$(
+              gh api \
+                "repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow_file}/runs?branch=main&head_sha=${SHA}&status=completed&per_page=100"
+            )"
+            run="$(
+              jq -cer \
+                --arg path ".github/workflows/${workflow_file}" \
+                --arg sha "$SHA" \
+                --argjson allowed_events "$allowed_events" '
+                  [
+                    .workflow_runs[]
+                    | select(.path == $path)
+                    | select(.head_branch == "main" and .head_sha == $sha)
+                    | select(.event as $event | $allowed_events | index($event))
+                  ]
+                  # run_attempt is scoped to one run id, so it cannot order
+                  # independent dispatches. updated_at is global and advances
+                  # when an older run is re-run.
+                  | sort_by(.updated_at, .id)
+                  | last
+                ' <<<"$response"
+            )" || {
+              echo "::error::No completed ${workflow} run exists for ${SHA}."
+              exit 1
+            }
+            conclusion="$(jq -r .conclusion <<<"$run")"
+            if [[ "$conclusion" != success ]]; then
+              echo "::error::Latest ${workflow} run for ${SHA} concluded ${conclusion}."
+              jq -r .html_url <<<"$run"
+              exit 1
+            fi
+            evidence="$(
+              jq -c \
+                --argjson run "$run" \
+                --arg workflow "$workflow" '
+                  . + [{
+                    workflow: $workflow,
+                    run_id: $run.id,
+                    run_attempt: $run.run_attempt,
+                    event: $run.event,
+                    conclusion: $run.conclusion,
+                    created_at: $run.created_at,
+                    updated_at: $run.updated_at,
+                    head_branch: $run.head_branch,
+                    head_sha: $run.head_sha,
+                    path: $run.path,
+                    url: $run.html_url
+                  }]
+                ' <<<"$evidence"
+            )"
+          done
+
+          jq -n \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg sha "$SHA" \
+            --arg release_state "$release_state" \
+            --arg tag_state "$tag_state" \
+            --arg version "$VERSION" \
+            --arg qualified_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --argjson freshness "$(<freshness-evidence.json)" \
+            --argjson workflows "$evidence" \
+            '{
+              schema_version: 2,
+              repository: $repository,
+              sha: $sha,
+              version: $version,
+              existing: {
+                annotated_tag: $tag_state,
+                github_release: $release_state
+              },
+              qualified_at: $qualified_at,
+              freshness: $freshness,
+              workflows: $workflows
+            }' > qualification.json
+
+      - name: Preserve sanitized model and scorer lineage
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ inputs.sha }}
+        run: |
+          eval_run="$(
+            jq -er '.workflows[] | select(.workflow == "Eval") | .run_id' qualification.json
+          )"
+          mkdir -p eval-artifact
+          gh run download "$eval_run" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "eval-release-evidence-*" \
+            --dir eval-artifact
+          mapfile -t model_files < <(find eval-artifact -type f -name model.json -print | sort)
+          mapfile -t verdict_files < <(find eval-artifact -type f -name verdict.json -print | sort)
+          test "${#model_files[@]}" -eq 1
+          test "${#verdict_files[@]}" -eq 1
+          model_file="${model_files[0]}"
+          verdict_file="${verdict_files[0]}"
+          python3 scripts/release_evidence.py \
+            --model "$model_file" \
+            --verdict "$verdict_file" \
+            --lock agents/python/uv.lock \
+            --repository "$GITHUB_REPOSITORY" \
+            --sha "$SHA" \
+            --run-id "$eval_run" \
+            > evaluation-evidence.json
+
+      - name: Upload qualification evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-qualification
+          path: |
+            qualification.json
+            evaluation-evidence.json
+          if-no-files-found: error
+          retention-days: 90
+
+  preflight:
+    needs: qualify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -30,22 +227,253 @@ jobs:
           - name: agent
             context: agents
             dockerfile: agents/python/Dockerfile
+            smoke: "import asyncio; from agent.composition import root_agent; from agent.server import create_app; app = create_app(); assert root_agent.name == 'agentops_agent'; asyncio.run(app.state.runtime.close())"
           - name: mlflow
             context: infra/mlflow
             dockerfile: infra/mlflow/Dockerfile
+            smoke: "import mlflow; assert mlflow.__version__ == '3.15.0'"
     steps:
-      - name: Checkout repository
+      - name: Checkout the qualified source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.sha }}
 
-      - name: Verify the tag matches every release metadata surface
-        # Deliberately a bare python3: this job has only a checkout, and the release gate must not
-        # depend on the project's virtualenv.
-        run: python3 scripts/check_conventions.py release-metadata "${GITHUB_REF_NAME}"
+      - name: Resolve immutable build metadata
+        id: metadata
+        env:
+          NAME: ${{ matrix.name }}
+        run: |
+          echo "created=$(git show -s --format=%cI HEAD)" >> "$GITHUB_OUTPUT"
+          echo "image=ghcr.io/${GITHUB_REPOSITORY,,}/${NAME}" >> "$GITHUB_OUTPUT"
 
-      - name: Resolve the lowercase image reference
-        id: image
-        # GHCR requires lowercase repository paths; github.repository is mixed-case.
-        run: echo "ref=ghcr.io/${GITHUB_REPOSITORY,,}/${{ matrix.name }}" >> "$GITHUB_OUTPUT"
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
+      - name: Build the exact preflight image
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          tags: ${{ steps.metadata.outputs.image }}:candidate-${{ inputs.sha }}
+          build-args: |
+            AGENT_SOURCE_COMMIT=${{ inputs.sha }}
+            OCI_CREATED=${{ steps.metadata.outputs.created }}
+            OCI_VERSION=${{ inputs.version }}
+          outputs: type=docker,dest=${{ runner.temp }}/${{ matrix.name }}.tar
+          provenance: false
+          sbom: false
+
+      - name: Load, inspect, and runtime-smoke the built image
+        env:
+          IMAGE: ${{ steps.metadata.outputs.image }}:candidate-${{ inputs.sha }}
+          NAME: ${{ matrix.name }}
+          SMOKE: ${{ matrix.smoke }}
+        run: |
+          docker load --input "${RUNNER_TEMP}/${NAME}.tar"
+          user="$(docker image inspect --format '{{.Config.User}}' "$IMAGE")"
+          [[ -n "$user" && "${user%%:*}" != 0 ]]
+          if [[ "$NAME" == agent ]]; then
+            docker run --rm --read-only \
+              --tmpfs /tmp:rw,noexec,nosuid,size=128m \
+              --tmpfs /app/state:rw,noexec,nosuid,size=128m,uid=10001,gid=10001 \
+              --entrypoint python "$IMAGE" -c "$SMOKE"
+          else
+            docker run --rm --read-only \
+              --tmpfs /tmp:rw,noexec,nosuid,size=128m \
+              --entrypoint python "$IMAGE" -c "$SMOKE"
+          fi
+
+          container="release-preflight-${NAME}"
+          cleanup() {
+            docker rm --force "$container" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          if [[ "$NAME" == agent ]]; then
+            container_port=8080
+            health_path=/healthz
+            docker run --detach --name "$container" --read-only \
+              --tmpfs /tmp:rw,noexec,nosuid,size=128m \
+              --tmpfs /app/state:rw,noexec,nosuid,size=128m,uid=10001,gid=10001 \
+              --publish "127.0.0.1::${container_port}" \
+              "$IMAGE" >/dev/null
+          else
+            container_port=5000
+            health_path=/health
+            docker run --detach --name "$container" --read-only \
+              --tmpfs /tmp:rw,noexec,nosuid,size=128m \
+              --tmpfs /var/lib/mlflow:rw,noexec,nosuid,size=512m,uid=10002,gid=10002 \
+              --publish "127.0.0.1::${container_port}" \
+              "$IMAGE" >/dev/null
+          fi
+          host_port="$(
+            docker port "$container" "${container_port}/tcp" |
+              awk -F: 'NR == 1 { print $NF }'
+          )"
+          test -n "$host_port"
+          ready=false
+          for _ in {1..90}; do
+            if curl -fsS "http://127.0.0.1:${host_port}${health_path}" >/dev/null; then
+              ready=true
+              break
+            fi
+            if [[ "$(docker inspect --format '{{.State.Running}}' "$container")" != true ]]; then
+              break
+            fi
+            sleep 1
+          done
+          if [[ "$ready" != true ]]; then
+            docker logs "$container"
+            exit 1
+          fi
+          cleanup
+          trap - EXIT
+
+      - name: Scan image vulnerabilities and secrets
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ steps.metadata.outputs.image }}:candidate-${{ inputs.sha }}
+          trivy-config: trivy.yaml
+          version: v0.72.0
+          scanners: vuln,secret
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+
+      - name: Verify image licenses
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ steps.metadata.outputs.image }}:candidate-${{ inputs.sha }}
+          trivy-config: trivy.yaml
+          version: v0.72.0
+          scanners: license
+          severity: UNKNOWN,HIGH,CRITICAL
+          exit-code: "1"
+
+      - name: Generate the SPDX SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          image: ${{ steps.metadata.outputs.image }}:candidate-${{ inputs.sha }}
+          format: spdx-json
+          output-file: ${{ runner.temp }}/${{ matrix.name }}.sbom.spdx.json
+          upload-artifact: false
+
+      - name: Upload the exact preflight artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ matrix.name }}-preflight
+          path: |
+            ${{ runner.temp }}/${{ matrix.name }}.tar
+            ${{ runner.temp }}/${{ matrix.name }}.sbom.spdx.json
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+
+  publish:
+    needs: preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: release
+    permissions:
+      artifact-metadata: write
+      attestations: write
+      contents: read
+      id-token: write
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        name: [agent, mlflow]
+    steps:
+      - name: Download the preflight artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ matrix.name }}-preflight
+          path: artifact
+
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Push the exact preflight bytes by source SHA
+        id: push
+        env:
+          NAME: ${{ matrix.name }}
+          SHA: ${{ inputs.sha }}
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}/${NAME}"
+          docker load --input "artifact/${NAME}.tar"
+          source_ref="$(docker image ls --format '{{.Repository}}:{{.Tag}}' | grep -Fx "${image}:candidate-${SHA}")"
+          docker tag "$source_ref" "${image}:sha-${SHA}"
+          docker push "${image}:sha-${SHA}"
+          digest="$(
+            docker buildx imagetools inspect "${image}:sha-${SHA}" \
+              --format '{{json .Manifest}}' |
+              jq -er .digest
+          )"
+          [[ ${digest} =~ ^sha256:[0-9a-f]{64}$ ]]
+          echo "image=${image}" >> "$GITHUB_OUTPUT"
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+          echo "${image}@${digest}" > "${NAME}.source.digest.txt"
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Sign the digest and attach its SBOM
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+          IMAGE: ${{ steps.push.outputs.image }}
+          NAME: ${{ matrix.name }}
+        run: |
+          cosign sign --yes "${IMAGE}@${DIGEST}"
+          cosign attest --yes \
+            --type spdxjson \
+            --predicate "artifact/${NAME}.sbom.spdx.json" \
+            "${IMAGE}@${DIGEST}"
+
+      - name: Create signed SLSA build provenance
+        id: provenance
+        uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4
+        with:
+          subject-name: ${{ steps.push.outputs.image }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
+      - name: Collect the durable supply-chain evidence
+        env:
+          BUNDLE: ${{ steps.provenance.outputs.bundle-path }}
+          NAME: ${{ matrix.name }}
+        run: |
+          cp "artifact/${NAME}.sbom.spdx.json" "${NAME}.sbom.spdx.json"
+          cp "$BUNDLE" "${NAME}.source.provenance.sigstore.json"
+
+      - name: Upload source digest, SBOM, and provenance
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ matrix.name }}-source-supply-chain
+          path: |
+            ${{ matrix.name }}.source.digest.txt
+            ${{ matrix.name }}.sbom.spdx.json
+            ${{ matrix.name }}.source.provenance.sigstore.json
+          if-no-files-found: error
+          retention-days: 90
+
+  promote:
+    needs: publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: release
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Download both qualified digests
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: "*-source-supply-chain"
+          merge-multiple: true
+          path: assets
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
@@ -57,99 +485,221 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ github.token }}
 
-      - name: Build ${{ matrix.name }} image
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
-        with:
-          context: ${{ matrix.context }}
-          file: ${{ matrix.dockerfile }}
-          load: true # keep the image local so it can be scanned before any push
-          tags: ${{ steps.image.outputs.ref }}:${{ github.ref_name }}
-          # Single image manifest with one predictable digest; SBOM and provenance
-          # are attached explicitly below as cosign attestations instead.
-          provenance: false
-          sbom: false
-
-      - name: Scan ${{ matrix.name }} image vulnerabilities and secrets
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          image-ref: ${{ steps.image.outputs.ref }}:${{ github.ref_name }}
-          trivy-config: trivy.yaml
-          version: v0.72.0
-          scanners: vuln,secret
-          severity: HIGH,CRITICAL
-          exit-code: "1"
-
-      - name: Verify ${{ matrix.name }} image licenses
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          image-ref: ${{ steps.image.outputs.ref }}:${{ github.ref_name }}
-          trivy-config: trivy.yaml
-          version: v0.72.0
-          scanners: license
-          severity: UNKNOWN,HIGH,CRITICAL
-          exit-code: "1"
-
-      - name: Push the scanned ${{ matrix.name }} image
-        id: push
+      - name: Promote both digests or reconcile the partial version
         env:
-          IMAGE: ${{ steps.image.outputs.ref }}
-          TAG: ${{ github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ inputs.sha }}
+          VERSION: ${{ inputs.version }}
         run: |
-          docker push "${IMAGE}:${TAG}"
-          repo_digest="$(
-            docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "${IMAGE}:${TAG}" |
-              awk -v prefix="${IMAGE}@" 'index($0, prefix) == 1 { print; exit }'
-          )"
-          digest="${repo_digest#*@}"
-          if [[ "${digest}" != sha256:* ]]; then
-            echo "::error::Could not resolve the pushed digest for ${IMAGE}:${TAG}"
+          set -euo pipefail
+          if [[ "$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq .sha)" != "$SHA" ]]; then
+            echo "::error::main advanced after qualification; no version tag was written."
             exit 1
           fi
-          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
 
-      - name: Generate the SPDX SBOM with syft
-        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
-        with:
-          image: ${{ steps.image.outputs.ref }}@${{ steps.push.outputs.digest }}
-          format: spdx-json
-          output-file: ${{ matrix.name }}.sbom.spdx.json
-          upload-artifact: false # uploaded together with the digest below
+          promoted=()
+          version_digest_for_tag() {
+            local name=$1
+            local owner="${GITHUB_REPOSITORY%%/*}"
+            local repository="${GITHUB_REPOSITORY#*/}"
+            local package encoded versions
+            package="${repository}/${name}"
+            encoded="$(jq -rn --arg package "$package" '$package | @uri')"
+            versions="$(
+              gh api --paginate --slurp \
+                "/orgs/${owner}/packages/container/${encoded}/versions?per_page=100"
+            )" || return 1
+            jq -er \
+              --arg tag "$VERSION" '
+                [
+                  flatten
+                  | .[]
+                  | select(.metadata.container.tags | index($tag))
+                ]
+                | if length == 0 then ""
+                  elif length == 1 and .[0].metadata.container.tags == [$tag] then .[0].name
+                  elif length == 1 then error("release package version carries another tag")
+                  else error("more than one package version carries the release tag")
+                  end
+              ' <<<"$versions"
+          }
+          cleanup_version() {
+            local name=$1
+            local digest=$2
+            local owner="${GITHUB_REPOSITORY%%/*}"
+            local repository="${GITHUB_REPOSITORY#*/}"
+            local package encoded versions version_id
+            [[ ${digest} =~ ^sha256:[0-9a-f]{64}$ ]] || return 1
+            package="${repository}/${name}"
+            encoded="$(jq -rn --arg package "$package" '$package | @uri')"
+            versions="$(
+              gh api --paginate --slurp \
+                "/orgs/${owner}/packages/container/${encoded}/versions?per_page=100"
+            )" || return 1
+            version_id="$(
+              jq -er \
+                --arg digest "$digest" \
+                --arg tag "$VERSION" '
+                  [
+                    flatten
+                    | .[]
+                    | select(.name == $digest)
+                    | select(.metadata.container.tags == [$tag])
+                  ]
+                  | if length == 1 then .[0].id
+                    else error("release tag does not resolve to exactly one owned package version")
+                    end
+                ' <<<"$versions"
+            )" || return 1
+            gh api \
+              --method DELETE \
+              "/orgs/${owner}/packages/container/${encoded}/versions/${version_id}"
+          }
+          reconcile() {
+            local entry name digest status=0
+            for entry in "${promoted[@]}"; do
+              name="${entry%%=*}"
+              digest="${entry#*=}"
+              if [[ ! ${digest} =~ ^sha256:[0-9a-f]{64}$ ]]; then
+                echo "::error::Cannot safely reconcile ${name}:${VERSION} without its exact digest."
+                status=1
+                continue
+              fi
+              cleanup_version "$name" "$digest" ||
+                {
+                  echo "::error::Manual reconciliation required for ${name}:${VERSION}@${digest}."
+                  status=1
+                }
+            done
+            return "$status"
+          }
 
-      - name: Install cosign
-        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+          promote_one() {
+            local name=$1
+            local created_digest exact_ref existing_digest image last_index raw
+            local resolved_digest
+            local source_digest version_digest
+            exact_ref="$(<"assets/${name}.source.digest.txt")"
+            image="${exact_ref%@*}"
+            source_digest="${exact_ref#*@}"
+            docker buildx imagetools inspect "$exact_ref" >/dev/null || return 1
 
-      - name: Sign the image and attach the SBOM attestation
-        env:
-          IMAGE: ${{ steps.image.outputs.ref }}
-          DIGEST: ${{ steps.push.outputs.digest }}
-          SBOM: ${{ matrix.name }}.sbom.spdx.json
-        run: |
-          cosign sign --yes "${IMAGE}@${DIGEST}"
-          cosign attest --yes --type spdxjson --predicate "${SBOM}" "${IMAGE}@${DIGEST}"
-          echo "${IMAGE}@${DIGEST}" > "${{ matrix.name }}.digest.txt"
+            existing_digest="$(version_digest_for_tag "$name")" || return 1
+            if [[ -n "$existing_digest" ]]; then
+              version_digest="$existing_digest"
+              raw="$(
+                docker buildx imagetools inspect "${image}:${VERSION}" --raw
+              )" || return 1
+              resolved_digest="$(
+                docker buildx imagetools inspect "${image}:${VERSION}" \
+                  --format '{{json .Manifest}}' |
+                  jq -er .digest
+              )" || return 1
+              [[ "$resolved_digest" == "$version_digest" ]] || return 1
+            else
+              if ! docker buildx imagetools create \
+                --prefer-index=true \
+                --annotation "index:org.opencontainers.image.revision=${SHA}" \
+                --annotation "index:org.opencontainers.image.version=${VERSION}" \
+                --tag "${image}:${VERSION}" \
+                "$exact_ref"; then
+                # A lost registry acknowledgement can report failure after the
+                # tag was committed. It was proven absent above, so discover
+                # and reconcile it instead of leaving a partial publication.
+                created_digest="$(version_digest_for_tag "$name")" || return 1
+                if [[ -n "$created_digest" ]]; then
+                  promoted+=("${name}=${created_digest}")
+                fi
+                return 1
+              fi
+              # The package API proved this tag absent immediately before the
+              # write, so this run owns it even if a subsequent registry read
+              # fails. Record that ownership before any fallible verification.
+              promoted+=("${name}=")
+              last_index=$((${#promoted[@]} - 1))
+              version_digest=
+              for _ in {1..10}; do
+                version_digest="$(
+                  docker buildx imagetools inspect "${image}:${VERSION}" \
+                    --format '{{json .Manifest}}' 2>/dev/null |
+                    jq -er .digest
+                )" && break
+                sleep 2
+              done
+              [[ ${version_digest} =~ ^sha256:[0-9a-f]{64}$ ]] || return 1
+              promoted[last_index]="${name}=${version_digest}"
+              raw="$(
+                docker buildx imagetools inspect "${image}:${VERSION}" --raw
+              )" || return 1
+            fi
 
-      - name: Upload the SBOM and digest
+            [[ ${source_digest} =~ ^sha256:[0-9a-f]{64}$ ]] || return 1
+            [[ ${version_digest} =~ ^sha256:[0-9a-f]{64}$ && "$version_digest" != "$source_digest" ]] ||
+              return 1
+            jq -e \
+              --arg source_digest "$source_digest" \
+              --arg revision "$SHA" \
+              --arg version "$VERSION" '
+                (
+                  .mediaType == "application/vnd.oci.image.index.v1+json" or
+                  .mediaType == "application/vnd.docker.distribution.manifest.list.v2+json"
+                ) and
+                (.manifests | length == 1) and
+                .manifests[0].digest == $source_digest and
+                .annotations."org.opencontainers.image.revision" == $revision and
+                .annotations."org.opencontainers.image.version" == $version
+              ' <<<"$raw" >/dev/null || return 1
+            echo "${image}@${version_digest}" >"${name}.digest.txt" || return 1
+            if [[ -n "$existing_digest" ]]; then
+              promoted+=("${name}=${version_digest}")
+            fi
+          }
+
+          for name in agent mlflow; do
+            if ! promote_one "$name"; then
+              reconcile || true
+              exit 1
+            fi
+          done
+
+      - name: Upload the reversible version-index evidence
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: ${{ matrix.name }}-supply-chain
+          name: release-promotion
           path: |
-            ${{ matrix.name }}.sbom.spdx.json
-            ${{ matrix.name }}.digest.txt
+            agent.digest.txt
+            mlflow.digest.txt
           if-no-files-found: error
+          retention-days: 90
 
-  verify:
-    # Prove the supply-chain claim from a separate job: resolve the pushed tag and
-    # check both the keyless signature and the SBOM attestation against the exact
-    # workflow identity that produced them.
-    needs: publish
-    runs-on: ubuntu-latest
+  seal:
+    needs: promote
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: release
     permissions:
-      packages: read # pull the published images and their signatures
+      artifact-metadata: write
+      attestations: write
+      contents: read
+      id-token: write
+      packages: write
     strategy:
       fail-fast: false
       matrix:
         name: [agent, mlflow]
     steps:
+      - name: Download the source digest and SBOM
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ matrix.name }}-source-supply-chain
+          path: assets/source
+
+      - name: Download the reversible version-index evidence
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-promotion
+          path: assets/promotion
+
       - name: Log in to GHCR
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
@@ -160,49 +710,507 @@ jobs:
       - name: Install cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
-      - name: Verify the signature and SBOM attestation
+      - name: Resolve the public subject
+        id: subject
         env:
-          # Fulcio binds the certificate to this workflow file at this tag.
+          NAME: ${{ matrix.name }}
+        run: |
+          exact_ref="$(<"assets/promotion/${NAME}.digest.txt")"
+          image="${exact_ref%@*}"
+          digest="${exact_ref#*@}"
+          [[ ${digest} =~ ^sha256:[0-9a-f]{64}$ ]]
+          echo "digest=${digest}" >>"$GITHUB_OUTPUT"
+          echo "image=${image}" >>"$GITHUB_OUTPUT"
+
+      - name: Sign the public digest and attach its exact SBOM
+        env:
+          EXACT_REF: ${{ steps.subject.outputs.image }}@${{ steps.subject.outputs.digest }}
+          NAME: ${{ matrix.name }}
+        run: |
+          cosign sign --yes "$EXACT_REF"
+          cosign attest --yes \
+            --type spdxjson \
+            --predicate "assets/source/${NAME}.sbom.spdx.json" \
+            "$EXACT_REF"
+
+      - name: Create signed SLSA provenance for the public digest
+        id: provenance
+        uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4
+        with:
+          subject-name: ${{ steps.subject.outputs.image }}
+          subject-digest: ${{ steps.subject.outputs.digest }}
+          subject-version: ${{ inputs.version }}
+          push-to-registry: true
+
+      - name: Collect the public supply-chain evidence
+        env:
+          BUNDLE: ${{ steps.provenance.outputs.bundle-path }}
+          NAME: ${{ matrix.name }}
+        run: |
+          cp "assets/promotion/${NAME}.digest.txt" "${NAME}.digest.txt"
+          cp "assets/source/${NAME}.source.digest.txt" "${NAME}.source.digest.txt"
+          cp "assets/source/${NAME}.sbom.spdx.json" "${NAME}.sbom.spdx.json"
+          cp "$BUNDLE" "${NAME}.provenance.sigstore.json"
+
+      - name: Upload the public digest, SBOM, and provenance
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ matrix.name }}-supply-chain
+          path: |
+            ${{ matrix.name }}.digest.txt
+            ${{ matrix.name }}.source.digest.txt
+            ${{ matrix.name }}.sbom.spdx.json
+            ${{ matrix.name }}.provenance.sigstore.json
+          if-no-files-found: error
+          retention-days: 90
+
+  verify:
+    needs: seal
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      attestations: read
+      contents: read
+      packages: read
+    strategy:
+      fail-fast: false
+      matrix:
+        name: [agent, mlflow]
+    steps:
+      - name: Download the recorded digest and attestations
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ matrix.name }}-supply-chain
+          path: assets
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Verify the exact digest, tag, labels, signature, SBOM, and provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
           IDENTITY: https://github.com/${{ github.workflow_ref }}
           ISSUER: https://token.actions.githubusercontent.com
           NAME: ${{ matrix.name }}
-          TAG: ${{ github.ref_name }}
+          SHA: ${{ inputs.sha }}
+          VERSION: ${{ inputs.version }}
         run: |
-          image="ghcr.io/${GITHUB_REPOSITORY,,}/${NAME}:${TAG}"
+          exact_ref="$(<"assets/${NAME}.digest.txt")"
+          image="${exact_ref%@*}"
+          digest="${exact_ref#*@}"
+          source_ref="$(<"assets/${NAME}.source.digest.txt")"
+          source_image="${source_ref%@*}"
+          source_digest="${source_ref#*@}"
+          test "$source_image" = "$image"
+          resolved="$(
+            docker buildx imagetools inspect "${image}:${VERSION}" \
+              --format '{{json .Manifest}}' |
+              jq -er .digest
+          )"
+          test "$resolved" = "$digest"
+          docker buildx imagetools inspect "$source_ref" >/dev/null
+          docker buildx imagetools inspect "${image}:${VERSION}" --raw |
+            jq -e \
+              --arg source_digest "$source_digest" \
+              --arg revision "$SHA" \
+              --arg version "$VERSION" '
+                (
+                  .mediaType == "application/vnd.oci.image.index.v1+json" or
+                  .mediaType == "application/vnd.docker.distribution.manifest.list.v2+json"
+                ) and
+                (.manifests | length == 1) and
+                .manifests[0].digest == $source_digest and
+                .annotations."org.opencontainers.image.revision" == $revision and
+                .annotations."org.opencontainers.image.version" == $version
+              ' >/dev/null
+
           cosign verify \
-            --certificate-oidc-issuer "${ISSUER}" \
-            --certificate-identity "${IDENTITY}" \
-            "${image}"
-          cosign verify-attestation --type spdxjson \
-            --certificate-oidc-issuer "${ISSUER}" \
-            --certificate-identity "${IDENTITY}" \
-            "${image}" > /dev/null
-          echo "verified ${image} against ${IDENTITY}"
+            --certificate-oidc-issuer "$ISSUER" \
+            --certificate-identity "$IDENTITY" \
+            --certificate-github-workflow-ref refs/heads/main \
+            --certificate-github-workflow-sha "$SHA" \
+            "$exact_ref"
+          cosign verify-attestation \
+            --type spdxjson \
+            --certificate-oidc-issuer "$ISSUER" \
+            --certificate-identity "$IDENTITY" \
+            --certificate-github-workflow-ref refs/heads/main \
+            --certificate-github-workflow-sha "$SHA" \
+            --output json \
+            "$exact_ref" >verified-sbom-attestation.json
+          released_sbom="$(jq -Sc . "assets/${NAME}.sbom.spdx.json")"
+          attestation_count=0
+          matching_attestation_count=0
+          while IFS= read -r payload; do
+            attested_sbom="$(
+              printf '%s' "$payload" |
+                base64 --decode |
+                jq -Sc .predicate
+            )"
+            attestation_count=$((attestation_count + 1))
+            if [[ "$attested_sbom" == "$released_sbom" ]]; then
+              matching_attestation_count=$((matching_attestation_count + 1))
+            fi
+          done < <(
+            jq -r '
+              if type == "array" then .[] else . end
+              | .payload
+            ' verified-sbom-attestation.json
+          )
+          ((attestation_count > 0))
+          if ((matching_attestation_count == 0)); then
+            echo "::error::No policy-valid SPDX attestation matches the release SBOM asset."
+            exit 1
+          fi
+
+          provenance_policy=(
+            --repo "$GITHUB_REPOSITORY"
+            --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/release.yml"
+            --source-digest "$SHA"
+            --source-ref refs/heads/main
+            --deny-self-hosted-runners
+          )
+          gh attestation verify "oci://${exact_ref}" \
+            --bundle "assets/${NAME}.provenance.sigstore.json" \
+            "${provenance_policy[@]}" >/dev/null
+          gh attestation verify "oci://${exact_ref}" \
+            --bundle-from-oci \
+            "${provenance_policy[@]}" >/dev/null
+
+          docker pull "$exact_ref"
+          labels="$(docker image inspect --format '{{json .Config.Labels}}' "$exact_ref")"
+          jq -e \
+            --arg revision "$SHA" \
+            --arg version "$VERSION" '
+              ."org.opencontainers.image.created" != "1970-01-01T00:00:00Z" and
+              ."org.opencontainers.image.documentation" == "https://agentops-open-course.fmind.dev/" and
+              ."org.opencontainers.image.licenses" == "MIT" and
+              ."org.opencontainers.image.revision" == $revision and
+              ."org.opencontainers.image.source" == "https://github.com/MLOps-Courses/agentops-open-course" and
+              ."org.opencontainers.image.version" == $version
+            ' <<<"$labels" >/dev/null
+
+          jq -n \
+            --arg digest "$digest" \
+            --arg image "$image" \
+            --arg source_digest "$source_digest" \
+            --arg tag "$VERSION" \
+            --arg verified_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            '{
+              image: $image,
+              tag: $tag,
+              digest: $digest,
+              source_digest: $source_digest,
+              version_index: "single signed source digest",
+              signature: "verified",
+              sbom_attestation: "verified and matches release asset",
+              slsa_provenance: "verified from release bundle and OCI registry",
+              oci_labels: "verified",
+              verified_at: $verified_at
+            }' > "${NAME}.verification.json"
+
+      - name: Upload independent verification evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ matrix.name }}-verification
+          path: ${{ matrix.name }}.verification.json
+          if-no-files-found: error
+          retention-days: 90
+
+  reconcile:
+    needs: [promote, seal, verify, release]
+    if: >-
+      always() &&
+      needs.promote.result == 'success' &&
+      (
+        needs.seal.result != 'success' ||
+        needs.verify.result != 'success' ||
+        needs.release.result != 'success'
+      )
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: release
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Download the public and source digests
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: "*-source-supply-chain"
+          merge-multiple: true
+          path: assets
+
+      - name: Download the reversible version-index evidence
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-promotion
+          path: assets
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Remove only the reversible version indexes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          release=
+          release_state=unknown
+          not_found_count=0
+          lookup_error="${RUNNER_TEMP}/release-lookup.error"
+          for attempt in {1..5}; do
+            if release="$(
+              gh api \
+                "repos/${GITHUB_REPOSITORY}/releases/tags/${VERSION}" \
+                2>"$lookup_error"
+            )"; then
+              jq -e \
+                --arg tag "$VERSION" '
+                  .tag_name == $tag and
+                  (.draft | type == "boolean")
+                ' <<<"$release" >/dev/null
+              if [[ "$(jq -r .draft <<<"$release")" == true ]]; then
+                release_state=draft
+              else
+                release_state=published
+              fi
+              break
+            fi
+            if grep -Fq '(HTTP 404)' "$lookup_error"; then
+              not_found_count=$((not_found_count + 1))
+            else
+              echo "::warning::Release lookup attempt ${attempt} failed."
+              cat "$lookup_error" >&2
+            fi
+            ((attempt == 5)) || sleep 2
+          done
+          if [[ "$release_state" == unknown && "$not_found_count" == 5 ]]; then
+            release_state=missing
+          fi
+          case "$release_state" in
+          published)
+            echo "::notice::${VERSION} is already published; preserving its verified image indexes."
+            jq -r .html_url <<<"$release"
+            exit 0
+            ;;
+          draft | missing) ;;
+          *)
+            echo "::error::Could not prove ${VERSION} is absent or still a draft; preserving every image index."
+            exit 1
+            ;;
+          esac
+
+          owner="${GITHUB_REPOSITORY%%/*}"
+          repository="${GITHUB_REPOSITORY#*/}"
+          for name in agent mlflow; do
+            exact_ref="$(<"assets/${name}.digest.txt")"
+            image="${exact_ref%@*}"
+            digest="${exact_ref#*@}"
+            source_ref="$(<"assets/${name}.source.digest.txt")"
+            source_digest="${source_ref#*@}"
+            [[ ${digest} =~ ^sha256:[0-9a-f]{64}$ ]]
+            [[ ${source_digest} =~ ^sha256:[0-9a-f]{64}$ ]]
+            test "${source_ref%@*}" = "$image"
+            test "$digest" != "$source_digest"
+            docker buildx imagetools inspect "${image}:${VERSION}" --raw |
+              jq -e \
+                --arg source_digest "$source_digest" '
+                  (
+                    .mediaType == "application/vnd.oci.image.index.v1+json" or
+                    .mediaType == "application/vnd.docker.distribution.manifest.list.v2+json"
+                  ) and
+                  (.manifests | length == 1) and
+                  .manifests[0].digest == $source_digest
+                ' >/dev/null
+
+            package="${repository}/${name}"
+            encoded="$(jq -rn --arg package "$package" '$package | @uri')"
+            versions="$(
+              gh api --paginate --slurp \
+                "/orgs/${owner}/packages/container/${encoded}/versions?per_page=100"
+            )"
+            version_id="$(
+              jq -er \
+                --arg digest "$digest" \
+                --arg tag "$VERSION" '
+                  [
+                    flatten
+                    | .[]
+                    | select(.name == $digest)
+                    | select(.metadata.container.tags == [$tag])
+                  ]
+                  | if length == 1 then .[0].id
+                    else error("release tag does not resolve to exactly one owned package version")
+                    end
+                ' <<<"$versions"
+            )"
+            gh api \
+              --method DELETE \
+              "/orgs/${owner}/packages/container/${encoded}/versions/${version_id}"
+          done
 
   release:
-    # Attach the SBOMs and image digests to the GitHub release for the tag.
-    # A draft is created when none exists: publishing stays a deliberate
-    # maintainer action (docs/8. Community/8.2. Releases.md).
     needs: verify
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: release
     permissions:
-      contents: write # create the draft release and upload assets
+      contents: write
     steps:
-      - name: Download the SBOMs and digests
+      - name: Checkout the qualified source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.sha }}
+          fetch-depth: 0
+
+      - name: Download qualification evidence
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-qualification
+          path: assets
+
+      - name: Download supply-chain evidence
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: "*-supply-chain"
           merge-multiple: true
           path: assets
 
-      - name: Attach the SBOMs and digests to the release
+      - name: Download independent verification evidence
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: "*-verification"
+          merge-multiple: true
+          path: assets
+
+      - name: Create the annotated tag and publish the complete release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
+          SHA: ${{ inputs.sha }}
+          VERSION: ${{ inputs.version }}
         run: |
-          if ! gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" > /dev/null 2>&1; then
-            gh release create "${TAG}" --repo "${GITHUB_REPOSITORY}" --draft --verify-tag \
-              --title "${TAG}" \
-              --notes "Draft created by the release workflow. Curate notes from CHANGELOG.md before publishing."
+          set -euo pipefail
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq .sha)" = "$SHA"
+          test "$(git rev-parse HEAD)" = "$SHA"
+
+          if git ls-remote --exit-code --tags origin "refs/tags/${VERSION}" >/dev/null 2>&1; then
+            test "$(git cat-file -t "refs/tags/${VERSION}")" = tag
+            test "$(git rev-list -n 1 "refs/tags/${VERSION}")" = "$SHA"
+          else
+            git config user.name github-actions
+            git config user.email github-actions@github.com
+            git tag --annotate "$VERSION" "$SHA" --message "Release ${VERSION}"
+            git push origin "refs/tags/${VERSION}"
           fi
-          gh release upload "${TAG}" --repo "${GITHUB_REPOSITORY}" --clobber assets/*
+
+          bare_version="${VERSION#v}"
+          awk \
+            -v heading="## [${bare_version}]" '
+              index($0, heading) == 1 { capture = 1; next }
+              capture && /^## \[/ { exit }
+              capture { print }
+            ' CHANGELOG.md > release-notes.md
+          test -s release-notes.md
+
+          if existing_release="$(
+            gh release view "$VERSION" \
+              --repo "$GITHUB_REPOSITORY" \
+              --json isDraft,tagName,url 2>/dev/null
+          )"; then
+            test "$(jq -r .tagName <<<"$existing_release")" = "$VERSION"
+            test "$(jq -r .isDraft <<<"$existing_release")" = true
+            gh release edit "$VERSION" \
+              --repo "$GITHUB_REPOSITORY" \
+              --draft \
+              --verify-tag \
+              --title "$VERSION" \
+              --notes-file release-notes.md
+          else
+            gh release create "$VERSION" \
+              --repo "$GITHUB_REPOSITORY" \
+              --draft \
+              --verify-tag \
+              --title "$VERSION" \
+              --notes-file release-notes.md
+          fi
+
+          # A resumed draft may contain a partial or manually-added asset set.
+          # Rebuild that set from this run, then prove GitHub stored exactly the
+          # bytes verified above before crossing the publication boundary.
+          gh release view "$VERSION" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json assets \
+            --jq '.assets[].name' |
+            while IFS= read -r asset_name; do
+              gh release delete-asset "$VERSION" "$asset_name" \
+                --repo "$GITHUB_REPOSITORY" \
+                --yes
+            done
+          gh release upload "$VERSION" \
+            --repo "$GITHUB_REPOSITORY" \
+            assets/*
+          expected_assets='[]'
+          for asset in assets/*; do
+            test -f "$asset"
+            expected_assets="$(
+              jq -c \
+                --arg digest "sha256:$(sha256sum "$asset" | cut -d' ' -f1)" \
+                --arg name "${asset##*/}" \
+                '. + [{name: $name, digest: $digest}]' \
+                <<<"$expected_assets"
+            )"
+          done
+          assets_match=false
+          for _ in {1..10}; do
+            remote_assets="$(
+              gh release view "$VERSION" \
+                --repo "$GITHUB_REPOSITORY" \
+                --json assets
+            )"
+            if jq -e \
+              --argjson expected "$expected_assets" '
+                [.assets[] | {name, digest}] | sort_by(.name)
+                == ($expected | sort_by(.name))
+              ' <<<"$remote_assets" >/dev/null; then
+              assets_match=true
+              break
+            fi
+            sleep 2
+          done
+          [[ "$assets_match" == true ]]
+
+          {
+            echo "## Published ${VERSION}"
+            echo
+            echo "- Qualified commit: \`${SHA}\`"
+            echo "- Release: https://github.com/${GITHUB_REPOSITORY}/releases/tag/${VERSION}"
+            echo "- Both images: exact digest, signature, SBOM, SLSA provenance, and OCI labels verified"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # Publication is deliberately the final fallible command. A failure
+          # before this point leaves a resumable draft and lets reconciliation
+          # remove only the version indexes; success is the immutable boundary.
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq .sha)" = "$SHA"
+          gh release edit "$VERSION" \
+            --repo "$GITHUB_REPOSITORY" \
+            --draft=false \
+            --latest

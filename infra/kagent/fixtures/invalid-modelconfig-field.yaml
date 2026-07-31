@@ -1,0 +1,13 @@
+# Negative schema fixture: `provder` is intentionally misspelled.
+apiVersion: kagent.dev/v1alpha2
+kind: ModelConfig
+metadata:
+  name: invalid-field
+  namespace: agentops
+spec:
+  provder: OpenAI
+  model: qwen3:4b-instruct
+  apiKeySecret: agentgateway-client
+  apiKeySecretKey: OPENAI_API_KEY
+  openAI:
+    baseUrl: http://agentgateway.agentops.svc.cluster.local:4000/v1

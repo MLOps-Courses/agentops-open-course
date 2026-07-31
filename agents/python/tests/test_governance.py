@@ -7,15 +7,18 @@ a request that reaches the model, and a tool result that reaches the agent.
 """
 
 import asyncio
+from typing import cast
 
 import pytest
 from google.adk.agents import Agent
+from google.adk.agents.callback_context import CallbackContext
 from google.adk.apps import App
 from google.adk.models import BaseLlm, LlmRequest, LlmResponse
 from google.adk.runners import InMemoryRunner
 from google.genai import types
 from pydantic import Field
 
+from agent import governance
 from agent.governance import APP_NAME, AgentOpsPolicyPlugin
 from agent.guardrails import SPOTLIGHT_PREFIX, SPOTLIGHT_SUFFIX
 
@@ -136,3 +139,80 @@ def test_plugin_governs_an_agent_that_never_declared_a_callback() -> None:
     assert plugin_free_agent.after_tool_callback is None
     # ...and yet a run through the governed app redacts, as the two tests above prove.
     assert AgentOpsPolicyPlugin().name == "agentops_policy"
+
+
+@pytest.mark.parametrize(
+    ("stop_at", "expected"),
+    [
+        ("budget", ["budget"]),
+        ("compaction", ["budget", "compaction"]),
+        ("redaction", ["budget", "compaction", "redaction"]),
+        (None, ["budget", "compaction", "redaction"]),
+    ],
+)
+def test_before_model_policy_order_and_first_replacement_short_circuit(
+    monkeypatch,
+    stop_at,
+    expected,
+) -> None:
+    calls: list[str] = []
+    replacement = LlmResponse(content=types.Content(role="model", parts=[types.Part(text="stop")]))
+
+    def guard(name: str):
+        def callback(_context, _request):
+            calls.append(name)
+            return replacement if stop_at == name else None
+
+        return callback
+
+    monkeypatch.setattr(governance, "enforce_token_budget", guard("budget"))
+    monkeypatch.setattr(governance, "compact_history", guard("compaction"))
+    monkeypatch.setattr(governance, "redact_request_pii", guard("redaction"))
+
+    async def exercise() -> LlmResponse | None:
+        return await AgentOpsPolicyPlugin().before_model_callback(
+            callback_context=cast("CallbackContext", None),
+            llm_request=LlmRequest(),
+        )
+
+    result = asyncio.run(exercise())
+    assert calls == expected
+    assert result is (replacement if stop_at is not None else None)
+
+
+@pytest.mark.parametrize(
+    ("stop_at", "expected"),
+    [
+        ("usage", ["usage"]),
+        ("redaction", ["usage", "redaction"]),
+        (None, ["usage", "redaction"]),
+    ],
+)
+def test_after_model_policy_order_and_first_replacement_short_circuit(
+    monkeypatch,
+    stop_at,
+    expected,
+) -> None:
+    calls: list[str] = []
+    response = LlmResponse(content=types.Content(role="model", parts=[types.Part(text="original")]))
+    replacement = LlmResponse(content=types.Content(role="model", parts=[types.Part(text="redacted")]))
+
+    def guard(name: str):
+        def callback(_context, _response):
+            calls.append(name)
+            return replacement if stop_at == name else None
+
+        return callback
+
+    monkeypatch.setattr(governance, "record_token_usage", guard("usage"))
+    monkeypatch.setattr(governance, "redact_response_pii", guard("redaction"))
+
+    async def exercise() -> LlmResponse | None:
+        return await AgentOpsPolicyPlugin().after_model_callback(
+            callback_context=cast("CallbackContext", None),
+            llm_response=response,
+        )
+
+    result = asyncio.run(exercise())
+    assert calls == expected
+    assert result is (replacement if stop_at is not None else None)

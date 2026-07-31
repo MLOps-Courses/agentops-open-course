@@ -52,8 +52,8 @@ def test_mcp_import_does_not_initialize_adk_or_emit_warnings() -> None:
             "assert [p.name for p in loaded.plugins] == ['agentops_policy']"
         ),
         (
-            "from google.adk.cli.cli_eval import get_root_agent; "
-            "loaded = get_root_agent('src/agent'); assert loaded.name == 'agentops_agent'"
+            "import asyncio; from google.adk.cli.cli_eval import get_root_agent; "
+            "loaded = asyncio.run(get_root_agent('src/agent')); assert loaded.name == 'agentops_agent'"
         ),
         (
             "import os; from agent.structured_report.agent import root_agent; "
@@ -62,17 +62,17 @@ def test_mcp_import_does_not_initialize_adk_or_emit_warnings() -> None:
             "assert os.environ['OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT'] == 'false'"
         ),
         (
-            "import os; os.environ['AGENT_ENTRYPOINT'] = 'workflow'; "
+            "import asyncio; import os; os.environ['AGENT_ENTRYPOINT'] = 'workflow'; "
             "from google.adk.cli.cli_eval import get_root_agent; "
-            "loaded = get_root_agent('src/agent'); "
+            "loaded = asyncio.run(get_root_agent('src/agent')); "
             "assert loaded.name == 'triage_workflow'; "
             "assert os.environ['ADK_CAPTURE_MESSAGE_CONTENT_IN_SPANS'] == 'false'; "
             "assert os.environ['OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT'] == 'false'"
         ),
         (
-            "import os; os.environ['AGENT_ENTRYPOINT'] = 'coordinator'; "
+            "import asyncio; import os; os.environ['AGENT_ENTRYPOINT'] = 'coordinator'; "
             "from google.adk.cli.cli_eval import get_root_agent; "
-            "loaded = get_root_agent('src/agent'); "
+            "loaded = asyncio.run(get_root_agent('src/agent')); "
             "assert loaded.name == 'coordinator_agent'; "
             "assert os.environ['ADK_CAPTURE_MESSAGE_CONTENT_IN_SPANS'] == 'false'; "
             "assert os.environ['OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT'] == 'false'"
