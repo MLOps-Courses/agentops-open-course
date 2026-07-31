@@ -1364,6 +1364,37 @@ def check_capacity_course_contracts(
     return problems
 
 
+def check_project_neutral_provider_contracts(
+    pages: dict[pathlib.Path, str],
+    *,
+    root: pathlib.Path = ROOT,
+) -> list[Problem]:
+    """Learner provider examples never target the maintainer-owned GCP project."""
+    env_relative = ".env.example"
+    provider_page = "docs/1. Setup/1.4. Providers.md"
+    env = (root / env_relative).read_text(encoding="utf-8")
+    page = contract_page(pages, root, provider_page)
+    problems = require_contract_tokens(
+        env_relative,
+        env,
+        ("GOOGLE_CLOUD_PROJECT=your-gcp-project-id",),
+    )
+    problems += require_contract_tokens(
+        provider_page,
+        page,
+        (
+            "GOOGLE_CLOUD_PROJECT=your-gcp-project-id",
+            "GCP_PROJECT_ID=your-gcp-project-id mise run doctor:gcp",
+            "does not load `GOOGLE_CLOUD_PROJECT` from `.env`",
+        ),
+    )
+    assignment = re.compile(r"(?m)^\s*#?\s*(?:GOOGLE_CLOUD_PROJECT|GCP_PROJECT_ID)\s*=\s*agentops-open-course\s*$")
+    for relative, text in ((env_relative, env), (provider_page, page)):
+        if assignment.search(text):
+            problems.append((relative, "learner GCP example targets the maintainer-owned project"))
+    return problems
+
+
 def check_release_freshness_course_contracts(
     pages: dict[pathlib.Path, str],
     *,
@@ -1391,6 +1422,7 @@ def check_release_freshness_course_contracts(
             "issue:<number>",
             "waiver:<reviewed reason>",
             "120 days",
+            "every checklist box checked",
             "reject tag updates and deletion",
             "do not restrict tag creation",
             "break-glass bypass",
@@ -1449,6 +1481,7 @@ def check_course_source_contracts(
         check_domain_course_contracts,
         check_outcome_evidence_contracts,
         check_capacity_course_contracts,
+        check_project_neutral_provider_contracts,
         check_release_freshness_course_contracts,
         check_actions_artifact_retention_contracts,
     ):

@@ -15,9 +15,13 @@ Two directories, split by what the code does:
 | `check-licenses.sh`    | `check:licenses`                                       | base     | Repository and Python dependency licences against the reviewed allowlist.           |
 | `check-infra.sh`       | `check:infra`                                          | platform | Renders and validates both Kubernetes overlays and the OpenTofu module.             |
 | `doctor.sh`            | `doctor`, `doctor:base\|model\|gateway\|platform\|gcp` | each     | Asserts one prerequisite tier is present, naming the install task per missing tool. |
+| `freshness_report.py`  | Freshness workflow                                     | release  | Builds the read-only upstream-version and mutable-claim audit report.               |
 | `install-helm-diff.sh` | part of `install`                                      | platform | Installs the pinned Helm `diff` plugin after verifying its checksum.                |
 | `cluster-start.sh`     | `cluster:start`                                        | platform | Creates the local k3d cluster and its registry, or reconciles an existing one.      |
 | `promote.sh`           | `promote`                                              | platform | Eval-gated promotion: gate, render the overlay, print promote/rollback commands.    |
+| `release_evidence.py`  | Release workflow                                       | release  | Minimizes and binds qualifying Eval evidence to its exact run attempt.              |
+| `release_freshness.py` | Release workflow                                       | release  | Validates a recent completed freshness checklist or reviewed waiver.                |
+| `release_reconcile.py` | Release workflow                                       | release  | Proves ownership before deleting a reversible failed-promotion index.               |
 | `smoke-host.sh`        | `smoke:host`                                           | gateway  | Proves the host composition against a fake model, then tears it down.               |
 | `lib.sh`               | sourced by the others                                  | —        | Strict mode plus shared command and cgroup prerequisite helpers.                    |
 | `test-lib.sh`          | `check:shell`                                          | base     | Deterministically checks both cgroup-v1 rejection and cgroup-v2 acceptance.         |

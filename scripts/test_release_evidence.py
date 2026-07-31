@@ -75,6 +75,7 @@ class ReleaseEvidenceTests(unittest.TestCase):
         lock: str | None = None,
         sha: str = _SHA,
         run_id: int = _RUN_ID,
+        run_attempt: int = 1,
     ) -> dict:
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
@@ -91,6 +92,7 @@ class ReleaseEvidenceTests(unittest.TestCase):
                 repository=_REPOSITORY,
                 sha=sha,
                 run_id=run_id,
+                run_attempt=run_attempt,
             )
 
     def test_success_returns_only_the_sanitized_release_shape(self) -> None:
@@ -114,6 +116,12 @@ class ReleaseEvidenceTests(unittest.TestCase):
             self._validate(sha="short")
         with self.assertRaisesRegex(ValueError, "exact run and source"):
             self._validate(run_id=_RUN_ID + 1)
+        with self.assertRaisesRegex(ValueError, "exact run and source"):
+            self._validate(run_attempt=2)
+        boolean_attempt = _verdict()
+        boolean_attempt["run"]["attempt"] = True
+        with self.assertRaisesRegex(ValueError, "exact run and source"):
+            self._validate(verdict=boolean_attempt)
         verdict = _verdict()
         verdict["sha"] = "c" * 40
         with self.assertRaisesRegex(ValueError, "exact run and source"):

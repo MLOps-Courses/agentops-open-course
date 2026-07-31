@@ -264,6 +264,21 @@ class SourceContractTests(unittest.TestCase):
             problems = check_conventions.check_capacity_course_contracts({}, root=root)
         assert any("99 GiB total RAM" in message for _, message in problems)
 
+    def test_provider_examples_cannot_target_the_maintainer_gcp_project(self) -> None:
+        docs = ("docs/1. Setup/1.4. Providers.md",)
+        owners = (".env.example",)
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            copy_contract_files(root, (*docs, *owners))
+            env = root / owners[0]
+            text = env.read_text(encoding="utf-8")
+            env.write_text(text.replace("your-gcp-project-id", "agentops-open-course", 1), encoding="utf-8")
+            problems = check_conventions.check_project_neutral_provider_contracts(
+                contract_pages(root, docs),
+                root=root,
+            )
+        assert any("maintainer-owned project" in message for _, message in problems)
+
     def test_release_workflow_cannot_drop_the_freshness_validator(self) -> None:
         docs = ("docs/8. Community/8.2. Releases.md",)
         owners = (".github/workflows/release.yml",)
@@ -281,6 +296,21 @@ class SourceContractTests(unittest.TestCase):
                 root=root,
             )
         assert any("release_freshness.py" in message for _, message in problems)
+
+    def test_release_page_cannot_hide_the_completed_checklist_requirement(self) -> None:
+        docs = ("docs/8. Community/8.2. Releases.md",)
+        owners = (".github/workflows/release.yml",)
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            copy_contract_files(root, (*docs, *owners))
+            page = root / docs[0]
+            text = page.read_text(encoding="utf-8")
+            page.write_text(text.replace("every checklist box checked", "a checklist", 1), encoding="utf-8")
+            problems = check_conventions.check_release_freshness_course_contracts(
+                contract_pages(root, docs),
+                root=root,
+            )
+        assert any("every checklist box checked" in message for _, message in problems)
 
     def test_actions_artifacts_cannot_exceed_the_repository_retention_policy(self) -> None:
         docs = ("docs/8. Community/8.2. Releases.md",)
@@ -302,6 +332,39 @@ class SourceContractTests(unittest.TestCase):
                 root=root,
             )
         assert any("exceeds the 7-day policy" in message for _, message in problems)
+
+    def test_release_preflight_handoff_survives_protected_environment_review(self) -> None:
+        workflow = check_conventions.ROOT.joinpath(".github/workflows/release.yml").read_text(encoding="utf-8")
+        upload = workflow.split("      - name: Upload the exact preflight artifact\n", 1)[1].split("\n  publish:\n", 1)[
+            0
+        ]
+        assert "retention-days: 7" in upload
+
+    def test_release_reconcile_recovers_without_the_promotion_artifact(self) -> None:
+        workflow = check_conventions.ROOT.joinpath(".github/workflows/release.yml").read_text(encoding="utf-8")
+        promote = workflow.split("\n  promote:\n", 1)[1].split("\n  seal:\n", 1)[0]
+        reconcile = workflow.split("\n  reconcile:\n", 1)[1].split("\n  release:\n", 1)[0]
+        assert "--method DELETE" not in promote
+        assert "needs: [publish, promote, seal, verify, release]" in reconcile
+        assert "needs.publish.result == 'success'" in reconcile
+        assert "needs.promote.result != 'success'" in reconcile
+        assert 'pattern: "*-source-supply-chain"' in reconcile
+        assert "scripts/release_reconcile.py" in reconcile
+        assert "--registry-absent" in reconcile
+        assert "name: release-promotion" not in reconcile
+
+    def test_release_reconcile_requires_the_exact_buildx_absence_error(self) -> None:
+        workflow = check_conventions.ROOT.joinpath(".github/workflows/release.yml").read_text(encoding="utf-8")
+        reconcile = workflow.split("\n  reconcile:\n", 1)[1].split("\n  release:\n", 1)[0]
+        assert 'expected_registry_absence="ERROR: ${image}:${VERSION}: not found"' in reconcile
+        assert 'grep -Fqx -- "$expected_registry_absence" "$inspect_error"' in reconcile
+        assert "grep -Eiq" not in reconcile
+
+    def test_release_summary_and_eval_attempt_follow_the_authoritative_events(self) -> None:
+        workflow = check_conventions.ROOT.joinpath(".github/workflows/release.yml").read_text(encoding="utf-8")
+        assert '--run-attempt "$eval_run_attempt"' in workflow
+        release = workflow.split("\n  release:\n", 1)[1]
+        assert release.index("--draft=false") < release.index('echo "## Published ${VERSION}"')
 
     def test_platform_network_probes_pin_the_curl_image_numeric_identity(self) -> None:
         workflow = check_conventions.ROOT.joinpath(".github/workflows/platform.yml").read_text(encoding="utf-8")
