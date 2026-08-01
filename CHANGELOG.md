@@ -44,6 +44,7 @@ All notable changes to the AgentOps Open Course are documented here. The format 
 - Made optional GKE cleanup capture exact CSI handles across both course namespaces, accept a valid empty partial-deploy inventory, and restore only APIs enabled by that lab.
 - Made a failed host-observability readiness check tear down its project-scoped containers while preserving named volumes.
 - Made the online publication gate resolve root-relative site links, check static anchors, bound request concurrency, isolate LinkedIn's documented bot-blocked profile, and use responsive upstream authorities.
+- Corrected the container lesson to match the release workflow's exact-archive handoff, pre-push SBOM generation, and narrower residual-artifact failure boundary.
 
 ### Security
 
