@@ -4,7 +4,7 @@ All notable changes to the AgentOps Open Course are documented here. The format 
 
 ## [Unreleased]
 
-## [0.5.0] - 2026-07-31
+## [0.5.0] - 2026-08-01
 
 ### Added
 
@@ -43,7 +43,7 @@ All notable changes to the AgentOps Open Course are documented here. The format 
 - Made GKE delivery authenticate Docker explicitly, select the exact cluster context, publish only a clean source SHA, and document complete application and infrastructure cleanup.
 - Made optional GKE cleanup capture exact CSI handles across both course namespaces, accept a valid empty partial-deploy inventory, and restore only APIs enabled by that lab.
 - Made a failed host-observability readiness check tear down its project-scoped containers while preserving named volumes.
-- Made the online publication gate resolve root-relative site links, bound request concurrency, isolate LinkedIn's documented bot-blocked profile, and use the responsive SPDX GPL authority.
+- Made the online publication gate resolve root-relative site links, check static anchors, bound request concurrency, isolate LinkedIn's documented bot-blocked profile, and use responsive upstream authorities.
 
 ### Security
 
