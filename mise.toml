@@ -197,6 +197,10 @@ run = "./scripts/promote.sh"
 description = "Deploy the project-resolved workload bundle to the exact GKE context"
 run = "./infra/scripts/deploy-gke.sh"
 
+[tasks."gke:smoke"]
+description = "Prove the exact GKE model tool loop and a read-only A2A retrieval"
+run = "./infra/scripts/smoke-gke-model.sh"
+
 [tasks.format]
 alias = "f"
 description = "Format all course sources, including optional OpenTofu infrastructure"
@@ -329,6 +333,7 @@ run = [
   "shellcheck scripts/*.sh infra/scripts/*.sh",
   "scripts/test-lib.sh",
   "infra/scripts/test-gcp-lab-audit.sh",
+  "infra/scripts/test-smoke-gke-model.sh",
 ]
 
 [tasks."check:workflows"]

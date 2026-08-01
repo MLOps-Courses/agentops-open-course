@@ -30,6 +30,7 @@ All notable changes to the AgentOps Open Course are documented here. The format 
 
 ### Fixed
 
+- Compatibility-pinned the optional GKE backend to Gemini 3.5 Flash and added a live two-step tool/A2A smoke after the pinned gateway's Vertex function-response filler exposed a Gemini 3.6 failure.
 - Rejected future audit schemas before readiness, reads, migrations, or writes and made failed migrations and restores preserve byte-identical input state.
 - Prevented stale or partially rebuilt semantic vectors from being presented as current after corpus, model, dimension, or chunker changes.
 - Rejected embedding-model alias changes around query or corpus generation before publishing or querying a mismatched vector generation.

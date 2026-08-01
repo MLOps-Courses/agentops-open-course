@@ -39,6 +39,14 @@ tofu -chdir=infra/gcp output -raw get_credentials_command
 
 Return to the repository root and run `mise run gke:deploy` only from one clean commit. The task requires that commit's full SHA, checks the exact GKE context again at each mutation, and configures Artifact Registry authentication in a temporary Docker config that it removes on exit.
 
+Force both a model function-response turn and a read-only A2A retrieval. This command calls the billed Vertex model and belongs only inside the approved lab:
+
+```bash
+mise run gke:smoke
+```
+
+The command derives the expected context from OpenTofu, compares the exact HEAD-tagged Agent, generated workload, gateway image, and every live model owner with source, opens random loopback-only forwards, and closes them afterward. It passes only when the compatibility-pinned model returns the supplied synthetic tool result, the A2A task retrieves `INC-002`'s stable identity, and an exact counter delta proves `get_incident` ran once.
+
 ## How do you prove an approved lab was destroyed?
 
 Return to the repository root, then capture the state-owned coordinates before destroying them. Every command below remains scoped to those exact outputs:

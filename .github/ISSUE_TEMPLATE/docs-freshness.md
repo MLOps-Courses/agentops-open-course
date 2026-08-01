@@ -16,7 +16,8 @@ The quarterly `.github/workflows/freshness.yml` workflow appends a read-only rep
 
 ## Model & provider names
 
-- [ ] `gemini-3.6-flash` is still the current GA optional Gemini/Vertex model id, with its short-term lifecycle stated honestly — `docs/0. Overview/0.4. Providers.md`, `docs/2. Agents/2.2. Models.md`, `docs/6. Platform/6.3. Platform Agents.md`, and the GKE gateway/agent manifests.
+- [ ] `gemini-3.6-flash` is still the current GA model for optional native Gemini calls and its short-term lifecycle remains accurate — `.env.example`, `docs/0. Overview/0.4. Providers.md`, and `docs/2. Agents/2.2. Models.md`.
+- [ ] `gemini-3.5-flash` remains the compatibility-pinned GA model proven with the current agentgateway Vertex tool-result translation, and `infra/scripts/smoke-gke-model.sh` still passes before any GKE model-id change — `docs/0. Overview/0.4. Providers.md`, `docs/6. Platform/6.3. Platform Agents.md`, and the GKE gateway/agent manifests.
 - [ ] `qwen3:4b-instruct` is still the default local Ollama model and its weights remain Apache-2.0 licensed — `agents/python/src/agent/config.py`, `docs/0. Overview/0.4. Providers.md`, `docs/6. Platform/6.6. Platform Delivery.md`, and the local manifests.
 - [ ] `nomic-embed-text` is still the embedding model — `agents/python/src/agent/config.py`, `docs/3. Capabilities/3.4. Memory.md`.
 

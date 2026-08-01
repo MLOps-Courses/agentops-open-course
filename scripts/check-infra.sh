@@ -171,8 +171,8 @@ for overlay in local gke; do
 		[[ "${agent_model}" == "qwen3:4b-instruct" ]]
 		[[ "${model_config}" == "qwen3:4b-instruct" ]]
 	else
-		[[ "${agent_model}" == "gemini-3.6-flash" ]]
-		[[ "${model_config}" == "gemini-3.6-flash" ]]
+		[[ "${agent_model}" == "gemini-3.5-flash" ]]
+		[[ "${model_config}" == "gemini-3.5-flash" ]]
 
 		gateway_gsa="$(yq -r 'select(.kind == "ServiceAccount" and .metadata.name == "agentgateway") | .metadata.annotations."iam.gke.io/gcp-service-account"' "${rendered}")"
 		mlflow_gsa="$(yq -r 'select(.kind == "ServiceAccount" and .metadata.name == "mlflow") | .metadata.annotations."iam.gke.io/gcp-service-account"' "${rendered}")"
@@ -193,7 +193,7 @@ for overlay in local gke; do
 		[[ "${agent_cpu}" == "100m" ]]
 
 		vertex_backend_model="$(yq -r '.binds[] | select(.port == 4000) | .listeners[].routes[].backends[].ai.provider.vertex.model' infra/agentgateway/gke/config.yaml)"
-		[[ "${vertex_backend_model}" == "google/gemini-3.6-flash" ]]
+		[[ "${vertex_backend_model}" == "google/gemini-3.5-flash" ]]
 
 		dns_service_cidr="$(yq -r 'select(.kind == "NetworkPolicy" and .metadata.name == "dns-egress") | .spec.egress[].to[]? | select(.ipBlock) | .ipBlock.cidr' "${rendered}")"
 		[[ "${dns_service_cidr}" == "10.30.0.10/32" ]]

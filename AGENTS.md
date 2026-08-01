@@ -40,6 +40,8 @@ The required software path is OSS: ADK, agentgateway, kagent, MLflow, OpenTeleme
 
 Local Qwen3/Ollama is the default model path from the first Chapter 2 interaction. `AGENT_MODEL_PROVIDER=openai-compatible`, `AGENT_MODEL=qwen3:4b-instruct`, `OPENAI_BASE_URL=http://127.0.0.1:11434/v1`, and the non-secret `local-ollama` marker are the stable defaults. Chapter 5 changes only `OPENAI_BASE_URL` to the agentgateway listener. Native Gemini and the GKE/Vertex path are optional comparisons; the GKE overlay uses Workload Identity Federation and mounts no cloud key.
 
+The optional GKE path compatibility-pins `gemini-3.5-flash`. Do not move that pin because a newer model exists: the pinned agentgateway release's Vertex conversion adds a blank text part beside a function response, which Gemini 3.6 rejects. A replacement model and stable gateway pair is supported only after `mise run gke:smoke` completes both its synthetic tool-result turn and its stable-seed, read-only A2A retrieval.
+
 ## Pinned contracts
 
 `SUPPORT.md` defines which surfaces are stable, plus compatibility, deprecation, supported platforms, upgrade, rollback, and explicit non-goals. Course prose is deliberately not frozen; the software contracts are.
@@ -92,6 +94,7 @@ mise run cluster:start
 mise run platform:install
 mise run platform:dev
 mise run promote
+mise run gke:smoke
 ```
 
 `mise run install` bootstraps the learner-facing core tools and environments. The platform and maintainer tiers are explicit so a first checkout does not install Kubernetes, cloud, and security tooling it does not yet need.

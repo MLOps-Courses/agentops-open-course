@@ -106,7 +106,7 @@ binds:
                   name: vertex
                   provider:
                     vertex:
-                      model: google/gemini-3.6-flash
+                      model: google/gemini-3.5-flash
                       projectId: __GCP_PROJECT_ID__
                       region: global
                   policies:

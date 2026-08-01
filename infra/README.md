@@ -105,6 +105,14 @@ mise run gke:deploy
 
 The task verifies the exact GKE context before it installs kagent, builds and pushes images, resolves the project-neutral manifest from OpenTofu outputs, validates it, and applies it. GKE agentgateway obtains a Vertex access token from ambient Workload Identity; MLflow uses its own identity for GCS. Neither workload has a static cloud key.
 
+Prove the compatibility-pinned Vertex function-call loop and one read-only A2A retrieval. This invokes the billed model and belongs only inside an explicitly approved lab:
+
+```bash
+mise run gke:smoke
+```
+
+The task rejects the wrong context, source image, or live model configuration. It owns random loopback-only forwards for the check and closes them afterward.
+
 ## Teardown
 
 `(cd infra && skaffold delete --filename skaffold.yaml --profile local)` or the same command with `--profile gke` also deletes the course PVCs and their data. `mise run observability:down` preserves named volumes; adding Compose `-v` deletes them. Stop a detached host gateway with `mise run gateway:host:stop`. The `local` cluster and kagent control plane can be shared by other projects, so `helmfile destroy` and `k3d cluster delete local` are dedicated-lab operations, not routine course cleanup. GCP destruction is likewise separate and must be confirmed from a reviewed plan.
