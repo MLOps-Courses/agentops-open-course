@@ -55,5 +55,5 @@ The quarterly `.github/workflows/freshness.yml` workflow appends a read-only rep
 ## Wrap-up
 
 - [ ] Every finding above was corrected or documented accurately before its box was checked.
-- [ ] The release handoff records the reviewer and review date, or links an explicit waiver with an owner and expiry.
+- [ ] The release handoff records the reviewer and review date, or the protected release reviewer approves an explicit one-release waiver reason.
 - [ ] This template updated for any claim that moved, was added, or was retired.
