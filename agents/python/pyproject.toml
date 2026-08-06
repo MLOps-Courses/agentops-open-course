@@ -18,7 +18,7 @@ dependencies = [
   # Capped at <2 because the locked ADK declares `mcp<2`. Lift this bound only with an ADK
   # release that supports MCP 2.x; keeping the direct dependency aligned makes the inherited
   # compatibility constraint explicit.
-  "mcp>=1.28.1,<2",
+  "mcp>=2.0.0,<3",
   "openai>=2.51.0", # OSS SDK used by ADK OpenAILlm for direct Ollama or agentgateway
   "opentelemetry-exporter-otlp-proto-http>=1.42.0,<=1.42.1", # match ADK's OTel cap; export to Collector/MLflow
   "pydantic-settings>=2.14.2",
