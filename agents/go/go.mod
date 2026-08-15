@@ -30,13 +30,13 @@ require (
 	github.com/openai/openai-go/v3 v3.49.0 // compatibility hold: owner=google.golang.org/adk/v2@v2.2.0 constraint=v3.49.0 validator=agents/go mise run check and test
 	// ADK Go v2.2.0 still uses the OTel log.Value and log.KeyValue APIs that the
 	// 1.45/0.21 release set removed, so 1.44 with log 0.20 is the highest compiling family.
-	go.opentelemetry.io/otel v1.44.0 // compatibility hold: owner=google.golang.org/adk/v2@v2.2.0 constraint=v1.44.0 validator=agents/go mise run check and test
+	go.opentelemetry.io/otel v1.45.0 // compatibility hold: owner=google.golang.org/adk/v2@v2.2.0 constraint=v1.44.0 validator=agents/go mise run check and test
 	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp v1.44.0
 	go.opentelemetry.io/otel/log v0.20.0 // compatibility hold: owner=google.golang.org/adk/v2@v2.2.0 constraint=v0.20.0 validator=agents/go mise run check and test
-	go.opentelemetry.io/otel/metric v1.44.0
-	go.opentelemetry.io/otel/sdk v1.44.0
-	go.opentelemetry.io/otel/sdk/metric v1.44.0
-	go.opentelemetry.io/otel/trace v1.44.0
+	go.opentelemetry.io/otel/metric v1.45.0
+	go.opentelemetry.io/otel/sdk v1.45.0
+	go.opentelemetry.io/otel/sdk/metric v1.45.0
+	go.opentelemetry.io/otel/trace v1.45.0
 	golang.org/x/text v0.40.0
 	google.golang.org/adk/v2 v2.2.0
 	google.golang.org/genai v1.66.0 // compatibility hold: owner=google.golang.org/adk/v2@v2.2.0 constraint=v1.66.0 validator=agents/go mise run check and test
