@@ -53,7 +53,7 @@ jobs:
           persist-credentials: false
 
       - name: Install the pinned security tools
-        uses: jdx/mise-action@9e7f7633ff6f6d6048a9418a68d48f288f50eb14 # v4.2.3
+        uses: jdx/mise-action@7e36c90d9ab29c415a2384db3006f3ec8a8cc654 # v4.2.4
         with:
           install: false
 
@@ -78,7 +78,7 @@ jobs:
           persist-credentials: false
 
       - name: Select the pinned Go toolchain
-        uses: jdx/mise-action@9e7f7633ff6f6d6048a9418a68d48f288f50eb14 # v4.2.3
+        uses: jdx/mise-action@7e36c90d9ab29c415a2384db3006f3ec8a8cc654 # v4.2.4
         with:
           install: false
 
@@ -161,7 +161,7 @@ jobs:
           mkdir -p "${RUNNER_TEMP}/freshness-report"
 
       - name: Install the pinned mise resolver
-        uses: jdx/mise-action@9e7f7633ff6f6d6048a9418a68d48f288f50eb14 # v4.2.3
+        uses: jdx/mise-action@7e36c90d9ab29c415a2384db3006f3ec8a8cc654 # v4.2.4
         with:
           # The pinned action verifies this release against mise's signed SHASUMS.
           version: 2026.8.3
