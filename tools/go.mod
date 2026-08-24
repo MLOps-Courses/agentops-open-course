@@ -12,7 +12,7 @@ require (
 	github.com/chromedp/cdproto v0.0.0-20260714215040-dc233986426f // compatibility hold: owner=chromedp@v0.16.0 constraint=dc233986426f validator=real Chrome accessibility acceptance
 	github.com/chromedp/chromedp v0.16.0
 	github.com/pelletier/go-toml v1.9.5
-	golang.org/x/net v0.57.0
+	golang.org/x/net v0.58.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
