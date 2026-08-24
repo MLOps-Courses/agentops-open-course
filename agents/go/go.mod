@@ -37,7 +37,7 @@ require (
 	go.opentelemetry.io/otel/sdk v1.44.0
 	go.opentelemetry.io/otel/sdk/metric v1.44.0
 	go.opentelemetry.io/otel/trace v1.44.0
-	golang.org/x/text v0.40.0
+	golang.org/x/text v0.41.0
 	google.golang.org/adk/v2 v2.2.0
 	google.golang.org/genai v1.66.0 // compatibility hold: owner=google.golang.org/adk/v2@v2.2.0 constraint=v1.66.0 validator=agents/go mise run check and test
 	gorm.io/driver/postgres v1.6.2
