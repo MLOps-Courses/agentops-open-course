@@ -4,7 +4,7 @@ go 1.26.6
 
 // --8<-- [start:runtime-dependencies]
 require (
-	github.com/a2aproject/a2a-go/v2 v2.4.0
+	github.com/a2aproject/a2a-go/v2 v2.5.0
 	github.com/caarlos0/env/v11 v11.4.1
 	// Three module names, one SQLite engine. github.com/glebarez/go-sqlite is the
 	// database/sql driver (registered as "sqlite") that a2aserver, data, memory, and
@@ -37,7 +37,7 @@ require (
 	go.opentelemetry.io/otel/sdk v1.44.0
 	go.opentelemetry.io/otel/sdk/metric v1.44.0
 	go.opentelemetry.io/otel/trace v1.44.0
-	golang.org/x/text v0.40.0
+	golang.org/x/text v0.41.0
 	google.golang.org/adk/v2 v2.2.0
 	google.golang.org/genai v1.66.0 // compatibility hold: owner=google.golang.org/adk/v2@v2.2.0 constraint=v1.66.0 validator=agents/go mise run check and test
 	gorm.io/driver/postgres v1.6.2
