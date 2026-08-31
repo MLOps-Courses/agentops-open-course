@@ -21,7 +21,7 @@
 
 # --- Stage 1: compile one static, cgo-free binary ----------------------------
 # --8<-- [start:base-images]
-FROM golang:1.26.6-alpine@sha256:af8d6740070b8906d12eae1c3e3ea0957fb63f492051ea05e354c38ef9fe88df AS build
+FROM golang:1.26.7-alpine@sha256:28d89ee9cc0ff9fec75c82ca201e6bf7fdf9a679d4b7b24dfa04f2bb766bb468 AS build
 # --8<-- [end:base-images]
 
 WORKDIR /src
