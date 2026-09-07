@@ -79,7 +79,7 @@ RUN install -d -o 10001 -g 10001 /out/state
 
 # --- Stage 2: distroless, non-root runtime -----------------------------------
 # --8<-- [start:runtime-base]
-FROM cgr.dev/chainguard/static@sha256:24dd7ff8788fdfadda39eeeaefefb6d1cec6002a545935a5f7e017484053734f AS runtime
+FROM cgr.dev/chainguard/static@sha256:f51c2493951313c3ad4069080b2814ffb6ed6fe3909dabeb84a9482f42d5600b AS runtime
 # --8<-- [end:runtime-base]
 
 ARG AGENT_BUILD_MODE
