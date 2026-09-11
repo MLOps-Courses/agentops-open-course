@@ -1,0 +1,44 @@
+name: Capstone showcase
+description: Share the agent you built from the capstone, and the tier and manifest behind it.
+title: "showcase: "
+labels: [capstone]
+body:
+  - type: textarea
+    id: outcome
+    attributes:
+      label: What does your agent do, and for whom?
+      description: One bounded outcome and the one person who acts on its answer.
+    validations:
+      required: true
+  - type: dropdown
+    id: tier
+    attributes:
+      label: Tier claimed
+      description: Bronze is milestones 1-4, Silver adds 5-6, Gold adds 7-10.
+      options:
+        - Bronze
+        - Silver
+        - Gold
+    validations:
+      required: true
+  - type: input
+    id: link
+    attributes:
+      label: Repository or write-up
+      description: Optional. Leave empty if what you built is not public.
+      placeholder: https://github.com/you/your-agent
+  - type: input
+    id: revision
+    attributes:
+      label: Manifest revision
+      description: The `revision` field from `.agents/tmp/course-completion.json`.
+      placeholder: 0000000000000000000000000000000000000000
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: This report contains no credentials, private data, prompts, or answers.
+          required: true
+        - label: Every tier milestone I claim is backed by a command, test, trace, or digest I ran.
+          required: true

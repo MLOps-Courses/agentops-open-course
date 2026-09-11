@@ -1,0 +1,90 @@
+# Collect exact-SHA evidence for best-effort platforms before changing SUPPORT.md.
+name: Portability qualification
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: qualification-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  macos-arm64-core:
+    name: macOS arm64 core
+    # This workflow covers macOS arm64 only. Linux arm64 and WSL2 remain
+    # best-effort gaps until equivalent exact-SHA jobs are added.
+    runs-on: macos-15 # Standard public runner is M1 arm64.
+    timeout-minutes: 60
+    steps:
+      - name: Checkout the candidate revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Record sanitized runner evidence
+        shell: bash
+        run: |
+          {
+            echo "### macOS arm64 core qualification"
+            echo
+            echo "- Source SHA: \`$(git rev-parse HEAD)\`"
+            echo "- Runner image: \`${ImageOS:-unknown} ${ImageVersion:-unknown}\`"
+            echo "- OS: \`$(sw_vers -productName) $(sw_vers -productVersion) ($(sw_vers -buildVersion))\`"
+            echo "- Architecture: \`$(uname -m)\`"
+            echo "- CPU: \`$(sysctl -n machdep.cpu.brand_string)\`"
+            echo "- Total RAM bytes: \`$(sysctl -n hw.memsize)\`"
+            echo "- Checkout disk:"
+            echo '```text'
+            df -h .
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Select the pinned tool manager
+        uses: jdx/mise-action@9e7f7633ff6f6d6048a9418a68d48f288f50eb14 # v4.2.3
+        with:
+          install: false
+
+      - name: Install the learner core
+        id: install
+        run: mise run install
+
+      - name: Verify the learner base doctor
+        id: doctor
+        run: mise run doctor
+
+      - name: Run the model-free core checks
+        id: check
+        run: mise run check:core
+
+      - name: Run the offline agent tests
+        id: test
+        run: mise run test
+
+      - name: Verify generated files are committed
+        shell: bash
+        run: |
+          changed="$(git status --porcelain)"
+          if [ -n "$changed" ]; then
+            echo "::error::The qualification changed the working tree."
+            echo "$changed"
+            git diff --stat
+            git diff
+            exit 1
+          fi
+
+      - name: Record command outcomes
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          {
+            echo
+            echo "#### Command outcomes"
+            echo
+            echo "- \`mise run install\`: \`${{ steps.install.outcome }}\`"
+            echo "- \`mise run doctor\`: \`${{ steps.doctor.outcome }}\`"
+            echo "- \`mise run check:core\`: \`${{ steps.check.outcome }}\`"
+            echo "- \`mise run test\`: \`${{ steps.test.outcome }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

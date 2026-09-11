@@ -1,0 +1,13 @@
+{
+  "format": 1,
+  "note": "A one-page ledger in the shape of data/released-urls.json: one MkDocs-era address, the page that still answers for it, and the permalink that serves it today.",
+  "releases": {
+    "0.1.0": [
+      "2. Agents/2.1. First Agent.html"
+    ]
+  },
+  "redirects": {},
+  "successors": {
+    "2. Agents/2.1. First Agent.html": "/2-agents/2-1-first-agent/"
+  }
+}

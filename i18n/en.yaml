@@ -1,0 +1,13 @@
+# Translation overrides for the default language.
+#
+# Only the keys this course has to own. Everything else falls through to the
+# theme's own i18n/en.yaml, which is where the accessibility labels and UI
+# strings live and where they should stay.
+#
+# `copyright` is here because Hextra's footer partial renders `(T "copyright")`,
+# not `.Site.Copyright`: with no i18n file of our own the theme's bundled default
+# won, and every published page credited the Hextra Project instead of the course.
+# The course is CC BY 4.0 on the prose and MIT on the code, and CC BY only works
+# if the attribution is actually on the page. The string is passed through
+# `markdownify`, so the two links render.
+copyright: "Copyright © MLOps Courses. Course prose is [CC BY 4.0](/LICENSE.txt); software and repository automation are [MIT](https://github.com/MLOps-Courses/agentops-open-course/blob/main/LICENSE)."

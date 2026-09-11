@@ -1,0 +1,204 @@
+# https://mise.jdx.dev
+# AgentOps reference agent — Go tasks.
+# The task vocabulary matches the repository root, so learners, git hooks, and CI
+# use the same words from either directory.
+# Only configuration/model-backed tasks load the root .env; offline gates load no dotenv.
+#
+# No [tools] table here on purpose: mise merges parent configs, so `go`, `golangci-lint`, and
+# `gotestsum` resolve from the repository root's [tools] — one authority, one mise.lock, and
+# the native freshness reporter already reads that table.
+
+[env]
+APP_NAME = "agent"
+
+[settings.task]
+run_auto_install = false
+
+[tasks.install]
+alias = "i"
+description = "Materialize the reviewed development dependencies"
+depends = ["install:go"]
+
+[tasks."install:go"]
+description = "Download the reviewed Go dependency graph without changing manifests"
+run = "GOFLAGS=-mod=readonly go mod download"
+
+[tasks.format]
+alias = "f"
+description = "Format Go sources and imports"
+depends = ["format:go"]
+
+[tasks."format:go"]
+description = "Sort imports and format with goimports and gofumpt"
+# Flags mirror .golangci.yml: local-prefixes and the extra gofumpt rules are format policy,
+# so without them `format` writes a style that `check` then rejects.
+run = [
+  "go tool goimports -local github.com/MLOps-Courses/agentops-open-course/agents/go -w .",
+  "go tool gofumpt -extra -w .",
+]
+
+[tasks.check]
+alias = "c"
+description = "Run the offline code checks in parallel"
+# check:vuln is deliberately absent: govulncheck queries the vulnerability
+# database over the network, and this chain runs on every commit. An offline
+# commit must not fail. CI reaches it through the root check → check:vuln:go chain.
+depends = ["check:env-example", "check:format", "check:lint", "check:tidy"]
+
+[tasks."check:tidy"]
+description = "Verify the Go module manifests are already tidy"
+run = "go mod tidy -diff"
+
+[tasks."check:env-example"]
+description = "Verify the root environment example matches Config tags and defaults"
+run = "go run ./cmd/agent config:example --check ../../.env.example"
+
+[tasks."check:format"]
+alias = "cf"
+description = "Check Go formatting without writing"
+run = "golangci-lint fmt --diff"
+
+[tasks."check:lint"]
+alias = "cl"
+description = "Lint Go sources (golangci-lint)"
+run = "golangci-lint run ./..."
+
+[tasks."check:vuln"]
+alias = "ca"
+description = "Audit dependencies for known vulnerabilities (needs network; CI-only gate)"
+run = "go tool govulncheck ./..."
+
+[tasks."config:check"]
+description = "Validate the resolved agent configuration and print it with secrets masked"
+env = { _.file = { path = "../../.env", redact = true } }
+run = "go run ./cmd/agent config:check"
+
+[tasks."config:generate"]
+description = "Regenerate the root environment example from Config tags and defaults"
+run = "go run ./cmd/agent config:example --write ../../.env.example"
+
+[tasks.test]
+alias = "t"
+description = "Run the offline test suite and enforce the per-package coverage floor"
+# The floor is checked here rather than in `check` because it needs the profile this
+# task produces. 80% per package, `cmd/` excluded by kind — see scripts/check-coverage.sh
+# for why a repository total would hide exactly the package worth worrying about.
+run = [
+  "gotestsum --format pkgname -- -race -coverprofile=coverage.out ./...",
+  "../../scripts/check-coverage.sh coverage.out 80 agents/go",
+]
+
+[tasks.coverage]
+alias = "v"
+description = "View test coverage in the terminal"
+depends = ["test"]
+run = "go tool cover -func=coverage.out"
+
+[tasks.build]
+alias = "b"
+description = "Compile the exact-source agent binary"
+depends = ["build:go"]
+
+[tasks."build:go"]
+description = "Compile and validate a static, cgo-free exact-source binary"
+# The embedded digest covers repository policy, evaluation, documentation, and
+# infrastructure too, so a module-only mise freshness cache could reuse stale
+# provenance after any of those inputs changes. Resolve the tuple every build.
+# CGO_ENABLED=0 is a course invariant, not an optimization:
+# it is what lets the binary ship distroless and keeps one SQLite implementation.
+env = { CGO_ENABLED = "0" }
+run = '''
+build_mode="${AGENT_BUILD_MODE:-development}"
+case "$build_mode" in
+  development) build_version=development ;;
+  release) build_version="${AGENT_BUILD_VERSION:-$(tr -d '\n' < ../../VERSION)}" ;;
+  *) printf 'unknown AGENT_BUILD_MODE: %s\n' "$build_mode" >&2; exit 1 ;;
+esac
+source_json="$(go -C ../../tools run ./cmd/source-identity --root .. --mode "$build_mode")"
+source_identity="$(printf '%s\n' "$source_json" | jq -er '.display')"
+source_revision="$(printf '%s\n' "$source_json" | jq -er '.revision // ""')"
+source_tree_digest="$(printf '%s\n' "$source_json" | jq -er '.tree_digest')"
+# Task bodies cannot source scripts/lib.sh, so this inlines its json_flag helper:
+# `jq -e` calls a false boolean a failure, which would abort every clean checkout.
+source_dirty="$(printf '%s\n' "$source_json" | jq -er '.dirty | select(type == "boolean") | tostring')"
+if [ -n "${AGENT_SOURCE_COMMIT:-}" ] && [ "$AGENT_SOURCE_COMMIT" != "$source_identity" ]; then
+  printf 'AGENT_SOURCE_COMMIT %s does not match resolved source %s\n' "$AGENT_SOURCE_COMMIT" "$source_identity" >&2
+  exit 1
+fi
+created="$(git -C ../.. show -s --format=%cI HEAD)"
+buildinfo=github.com/MLOps-Courses/agentops-open-course/agents/go/buildinfo
+ldflags="-s -w \
+  -X ${buildinfo}.buildMode=${build_mode} \
+  -X ${buildinfo}.version=${build_version} \
+  -X ${buildinfo}.sourceIdentity=${source_identity} \
+  -X ${buildinfo}.revision=${source_revision} \
+  -X ${buildinfo}.treeDigest=${source_tree_digest} \
+  -X ${buildinfo}.buildTimestamp=${created} \
+  -X ${buildinfo}.dirty=${source_dirty}"
+go build -trimpath -ldflags "$ldflags" -o "bin/$APP_NAME" ./cmd/agent
+"bin/$APP_NAME" version >/dev/null
+'''
+
+[tasks.watch]
+alias = "w"
+description = "Run the test suite in watch mode"
+run = "gotestsum --watch --format pkgname -- ./..."
+
+[tasks.run]
+alias = "r"
+description = "Run the agent in the terminal with the configured model"
+# AGENT_ENTRYPOINT selects the composition the one binary serves, exactly as it
+# does for every composition: the three terminal tasks below differ only by it.
+env = { AGENT_ENTRYPOINT = "agent", _.file = { path = "../../.env", redact = true } }
+run = "go run ./cmd/agent console"
+
+[tasks.workflow]
+description = "Run the bounded read-only planning workflow in the terminal"
+env = { AGENT_ENTRYPOINT = "workflow", _.file = { path = "../../.env", redact = true } }
+run = "go run ./cmd/agent console"
+
+[tasks.coordinator]
+description = "Run the least-privilege multi-agent coordinator in the terminal"
+env = { AGENT_ENTRYPOINT = "coordinator", _.file = { path = "../../.env", redact = true } }
+run = "go run ./cmd/agent console"
+
+[tasks.web]
+description = "Run the ADK developer web UI with the configured model on :8002"
+# Not ADK's default :8080: the A2A server owns that port in the stable network
+# contract and the raw MCP server owns :8000, so both would collide whenever
+# Chapter 3.3 or 3.6 is running. The two address flags are not decoration —
+# the UI calls the REST API by the address it is given and the API allows CORS
+# for the address it is given, and both default to :8080.
+# `-sse-write-timeout` is not decoration either. ADK defaults it to 2m, and a
+# grounded turn on a CPU-only host takes longer than that — the stream then dies
+# mid-turn and the UI shows `TypeError: network error`, which reads as a broken
+# setup rather than as a deadline. Measured here: the answer arrived after the
+# 2m default had already cut the connection. It bounds the stream, not the model;
+# AGENT_MODEL_TIMEOUT_S still bounds each call.
+env = { AGENT_ENTRYPOINT = "agent", _.file = { path = "../../.env", redact = true } }
+run = "go run ./cmd/agent web -port 8002 webui -api_server_address http://localhost:8002/api api -webui_address localhost:8002 -sse-write-timeout 60m"
+
+[tasks.a2a]
+description = "Run the persistent A2A server on :8080"
+env = { AGENT_ENTRYPOINT = "agent", _.file = { path = "../../.env", redact = true } }
+run = "go run ./cmd/agent a2a"
+
+[tasks.mcp]
+description = "Run the AgentOps Agent MCP server over stdio (Ch. 3.3)"
+# No dotenv, on either MCP task: this process builds no model and holds no
+# credential — it reads the dataset and answers the six read tools.
+run = "go run ./cmd/agent mcp"
+
+[tasks."mcp:http"]
+description = "Run the AgentOps Agent MCP server over streamable HTTP on :8000"
+env = { MCP_HOST = "127.0.0.1", MCP_PORT = "8000", MCP_TRANSPORT = "streamable-http" }
+run = "go run ./cmd/agent mcp"
+
+[tasks.clean]
+alias = "n"
+description = "Remove caches and build artifacts"
+run = "rm -rf bin/ coverage.out"
+
+[tasks."data:reset"]
+description = "Reset the disposable runtime database from the committed seed"
+run = "rm -rf .state"

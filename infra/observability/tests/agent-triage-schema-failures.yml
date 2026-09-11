@@ -1,0 +1,58 @@
+# Deterministic proof for AgentTriageSchemaFailures. The rule fires on any
+# schema failure at all, which makes its interesting behaviour the delay rather
+# than the threshold: `increase()` needs two samples of a series inside its
+# window, so a counter that is born with the first failure reports nothing until
+# a second one arrives. 7.2b documents that as a surprise learners hit; this
+# file is the executable form of that paragraph, so the claim cannot rot.
+rule_files:
+  - ../prometheus-rules.yml
+
+evaluation_interval: 1m
+
+tests:
+  # The counter does not exist until the first report fails validation at
+  # minute 20 — an OTLP counter has no series before its first Add. A second
+  # failure lands at minute 30, and nothing fails afterwards.
+  - interval: 1m
+    input_series:
+      # `_xN` inserts N gaps, while `vxN` emits N+1 samples of v — the two
+      # repeat counts are off by one from each other, so `_x20 1x9` is what
+      # leaves minutes 0-19 empty and puts the first sample at minute 20.
+      - series: agentops_triage_report_schema_failures_total
+        values: "_x20 1x9 2x60"
+    promql_expr_test:
+      # One sample in the window is not a rate: `increase()` returns nothing at
+      # all, so `sum()` produces no series rather than a zero.
+      - expr: sum(increase(agentops_triage_report_schema_failures_total[15m]))
+        eval_time: 20m
+        exp_samples: []
+      # Five minutes later there are six samples and they are all equal, so the
+      # increase is a genuine zero. The failure happened; the rule cannot see it
+      # yet. This is the gap the collapsible note in 7.2b warns about.
+      - expr: sum(increase(agentops_triage_report_schema_failures_total[15m]))
+        eval_time: 25m
+        exp_samples:
+          - labels: "{}"
+            value: 0
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: AgentTriageSchemaFailures
+        exp_alerts: []
+      # The second failure at minute 30 makes the increase positive, so minute
+      # 31 is inside the 2m `for:` window and the alert is pending.
+      - eval_time: 31m
+        alertname: AgentTriageSchemaFailures
+        exp_alerts: []
+      - eval_time: 35m
+        alertname: AgentTriageSchemaFailures
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+            exp_annotations:
+              summary: Triage reports are failing schema validation
+              description: At least one triage report failed schema validation after retry in the last 15 minutes. Re-run the offline evaluation and check the pinned model and prompt.
+              runbook: https://github.com/MLOps-Courses/agentops-open-course/blob/main/content/7.%20Observability/7.2b.%20Alerting.md#the-four-responses-worth-memorising
+      # A full [15m] window with no further failure clears the ticket.
+      - eval_time: 50m
+        alertname: AgentTriageSchemaFailures
+        exp_alerts: []

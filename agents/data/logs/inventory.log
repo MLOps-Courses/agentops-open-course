@@ -1,0 +1,6 @@
+2026-07-05T09:01:40Z ERROR inventory panic: runtime error: invalid memory address or nil pointer dereference
+2026-07-05T09:01:41Z INFO  inventory container restarting (restartCount=1)
+2026-07-05T09:01:58Z ERROR inventory readiness probe failed: connection refused
+2026-07-05T09:02:00Z INFO  inventory incident INC-002 opened severity=SEV1
+2026-07-05T09:02:22Z INFO  inventory container restarting (restartCount=2)
+2026-07-05T09:02:47Z ERROR inventory stock lookup failed status=503 pod=inventory-7c9d

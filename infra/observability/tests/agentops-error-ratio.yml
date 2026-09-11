@@ -1,0 +1,74 @@
+# Deterministic proof for the two error-ratio recording rules — the series the
+# dashboard plots and AgentErrorBudgetBurn compares against its threshold. The
+# arithmetic is a single division, which is exactly what invites a "safety"
+# floor on the denominator: `clamp_min(..., 1)` reads as harmless until you
+# notice that 1 means one call per *second*, while this lab runs at roughly one
+# call per hundred seconds. The first case pins the consequence, so a future
+# edit that reintroduces the floor fails here instead of on a dashboard nobody
+# distrusts.
+rule_files:
+  - ../prometheus-rules.yml
+
+evaluation_interval: 1m
+
+tests:
+  # A totally broken agent at lab traffic: one turn every 100 seconds, all of
+  # them failing, nothing succeeding. That is 0.01 requests per second, the
+  # order of magnitude a single learner on a laptop actually produces.
+  - interval: 100s
+    input_series:
+      - series: 'agentops_calls_total{service_name="agentops-agent",span_name="invocation",span_kind="SPAN_KIND_INTERNAL",status_code="STATUS_CODE_OK"}'
+        values: "0x40"
+      - series: 'agentops_calls_total{service_name="agentops-agent",span_name="invocation",span_kind="SPAN_KIND_INTERNAL",status_code="STATUS_CODE_ERROR"}'
+        values: "0+1x40"
+    promql_expr_test:
+      # The denominator really is two orders of magnitude below one call per
+      # second, so a floor of 1 would be doing the dividing instead of the data.
+      - expr: sum(rate(agentops_calls_total[5m])) < bool 0.02
+        eval_time: 30m
+        exp_samples:
+          - labels: "{}"
+            value: 1
+      # Every turn failed, so both windows read exactly 1. Under the floor they
+      # would read about 0.01 — a panel showing 1% while nothing works at all,
+      # and a burn alert that never crosses 14.4%.
+      - expr: agentops:calls:error_ratio_rate5m
+        eval_time: 30m
+        exp_samples:
+          - labels: '{__name__="agentops:calls:error_ratio_rate5m"}'
+            value: 1
+      - expr: agentops:calls:error_ratio_rate1h
+        eval_time: 30m
+        exp_samples:
+          - labels: '{__name__="agentops:calls:error_ratio_rate1h"}'
+            value: 1
+
+  # The traffic rate where a denominator floor hides: 60 healthy turns a minute
+  # and an error counter that never moves. Here the ratio is a true zero either
+  # way, which is why the floor survives review until someone runs the lab.
+  - interval: 1m
+    input_series:
+      - series: 'agentops_calls_total{service_name="agentops-agent",span_name="invocation",span_kind="SPAN_KIND_INTERNAL",status_code="STATUS_CODE_OK"}'
+        values: "0+60x60"
+      - series: 'agentops_calls_total{service_name="agentops-agent",span_name="invocation",span_kind="SPAN_KIND_INTERNAL",status_code="STATUS_CODE_ERROR"}'
+        values: "0x60"
+    promql_expr_test:
+      - expr: sum(rate(agentops_calls_total[5m])) > bool 0.9
+        eval_time: 30m
+        exp_samples:
+          - labels: "{}"
+            value: 1
+      - expr: agentops:calls:error_ratio_rate5m
+        eval_time: 30m
+        exp_samples:
+          - labels: '{__name__="agentops:calls:error_ratio_rate5m"}'
+            value: 0
+      - expr: agentops:calls:error_ratio_rate1h
+        eval_time: 30m
+        exp_samples:
+          - labels: '{__name__="agentops:calls:error_ratio_rate1h"}'
+            value: 0
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: AgentErrorBudgetBurn
+        exp_alerts: []

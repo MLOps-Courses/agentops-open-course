@@ -1,0 +1,37 @@
+{{- /*
+  The course sidebar, rendered from data/nav.yaml instead of from the content tree.
+
+  This overrides Hextra's sidebar on purpose. Hextra builds its navigation by walking
+  content/ and sorting by weight, which cannot express either of the two shapes the course
+  relies on: a chapter-1 page listed as a prerequisite inside chapters 5 and 6, and the
+  nested "Optional OSS maintenance" group in chapter 8. Rendering the explicit list also
+  keeps the DOM small and predictable, which is what `check:accessibility` walks.
+
+  The theme toggle and the small-screen search box are kept from Hextra's original.
+*/ -}}
+
+{{- $context := .context -}}
+
+<aside class="hextra-sidebar-container course-nav hx:flex hx:flex-col hx:print:hidden hx:md:top-16 hx:md:shrink-0 hx:md:w-64 hx:md:self-start hx:md:sticky hx:max-md:[transform:translate3d(0,-100%,0)]">
+  {{- if (site.Params.search.enable | default true) -}}
+    <div class="hx:px-4 hx:pt-4 hx:md:hidden">
+      {{ partial "search.html" (dict "location" "sidebar") }}
+    </div>
+  {{- end -}}
+
+  <nav
+    class="hextra-scrollbar hx:overflow-y-auto hx:overflow-x-hidden hx:p-4 hx:grow hx:md:h-[calc(100vh-var(--navbar-height)-var(--menu-height))]"
+    aria-label="Course"
+  >
+    {{ partial "nav/items.html" (dict "entries" hugo.Data.nav "current" $context) }}
+  </nav>
+
+  {{- if (site.Params.theme.displayToggle | default true) -}}
+    <div
+      class="hx:sticky hx:bottom-0 hx:max-h-(--menu-height) hx:bg-white hx:dark:bg-dark hx:mx-4 hx:py-4 hx:flex hx:items-center hx:gap-2 hx:border-gray-200 hx:dark:border-neutral-800 hx:border-t"
+      data-toggle-animation="show"
+    >
+      <div class="hx:flex hx:grow hx:flex-col">{{ partial "theme-toggle" }}</div>
+    </div>
+  {{- end -}}
+</aside>

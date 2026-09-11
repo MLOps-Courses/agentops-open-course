@@ -1,0 +1,17 @@
+{{- /*
+  The course contact links — the port of the `extra.social` block in mkdocs.yml.
+
+  Material rendered these as bare icons with an accessible name attached. They are plain
+  text links here: an icon-only control depends on the icon font loading and on the label
+  being carried by an attribute, and the text label works without either.
+*/ -}}
+
+{{- with site.Params.courseSocial }}
+  <nav class="course-contacts" aria-label="Course contacts">
+    <ul>
+      {{- range . }}
+        <li><a href="{{ .url }}">{{ .name }}</a></li>
+      {{- end }}
+    </ul>
+  </nav>
+{{- end -}}

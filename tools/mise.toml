@@ -1,0 +1,76 @@
+# https://mise.jdx.dev
+# Repository-maintenance tools. This module keeps authoring, release, platform,
+# and browser gates in Go without adding application dependencies to the root
+# Hugo module.
+
+[settings.task]
+run_auto_install = false
+
+[tasks.install]
+alias = "i"
+description = "Resolve and download repository-tool dependencies"
+depends = ["install:go", "build"]
+env = { GOFLAGS = "-mod=readonly" }
+
+[tasks."install:go"]
+description = "Download the reviewed repository-tool dependencies without changing manifests"
+run = "GOFLAGS=-mod=readonly go mod download"
+
+[tasks.format]
+alias = "f"
+description = "Format repository-tool Go sources"
+depends = ["format:go"]
+
+[tasks."format:go"]
+description = "Sort imports and format Go sources"
+run = [
+  "go tool goimports -local github.com/MLOps-Courses/agentops-open-course/tools -w .",
+  "go tool gofumpt -extra -w .",
+]
+
+[tasks.check]
+alias = "c"
+description = "Run offline repository-tool checks"
+depends = ["check:format", "check:lint", "check:tidy"]
+
+[tasks."check:tidy"]
+description = "Verify the Go module manifests are already tidy"
+run = "go mod tidy -diff"
+
+[tasks."check:format"]
+description = "Check Go formatting without writing"
+run = "golangci-lint fmt --diff"
+
+[tasks."check:lint"]
+description = "Lint repository-tool sources"
+run = "golangci-lint run ./..."
+
+[tasks."check:vuln"]
+description = "Audit repository-tool dependencies (network required)"
+run = "go tool govulncheck ./..."
+
+[tasks.test]
+alias = "t"
+description = "Run repository-tool tests"
+# Deliberately outside the 80% per-package coverage floor that agents/go and evals carry.
+# That floor is the course's claim about the code it teaches and the evidence it publishes;
+# this module is maintainer scaffolding. `internal/accessibility` reads 11.5% rather than 0%
+# because its pure helpers carry eight unit tests; only the browser driver needs a real Chrome,
+# so `check:accessibility` is what exercises that half.
+# `internal/conventions` is the other large package, and it carries unit tests of its own on
+# top of gating every `mise run check`; it sits outside the floor because it is scaffolding,
+# not because nothing tests it. The profile is still written so `scripts/check-coverage.sh
+# coverage.out 80 tools` reports the real numbers on demand; today five packages sit below,
+# and that gap is visible, not hidden.
+# The exemption expires per package, not all at once: a `tools/` package that stops gating a
+# maintainer command and starts producing evidence a learner reads or a release publishes has
+# left scaffolding behind, so it joins the 80% floor like the code it checks and this comment
+# narrows to whatever still only serves maintainers.
+run = "gotestsum --format pkgname -- -race -coverprofile=coverage.out ./..."
+
+[tasks.build]
+alias = "b"
+description = "Compile every repository-tool command into tools/bin"
+sources = ["go.mod", "go.sum", "**/*.go"]
+outputs = ["bin"]
+run = "mkdir -p bin && GOFLAGS=-mod=readonly GOBIN=\"$PWD/bin\" go install ./cmd/..."

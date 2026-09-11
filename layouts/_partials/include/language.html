@@ -1,0 +1,29 @@
+{{- /*
+  Chroma lexer for an included source file, derived from its path.
+
+  Material inferred the language from the enclosing fence info string; the `include`
+  shortcode replaces that fence, so the mapping moves here. An unmapped extension falls back
+  to "text" rather than guessing, because a wrong lexer silently mangles the quoted source.
+*/ -}}
+{{- $path := . -}}
+{{- $base := path.Base $path -}}
+{{- $extension := strings.TrimPrefix "." (path.Ext $path) -}}
+{{- $language := "text" -}}
+{{- if hasPrefix $base "Dockerfile" -}}
+  {{- $language = "dockerfile" -}}
+{{- else -}}
+  {{- $languages := dict
+    "sql" "sql"
+    "toml" "toml"
+    "yaml" "yaml"
+    "yml" "yaml"
+    "sh" "bash"
+    "bash" "bash"
+    "json" "json"
+    "go" "go"
+  -}}
+  {{- with index $languages $extension -}}
+    {{- $language = . -}}
+  {{- end -}}
+{{- end -}}
+{{- $language -}}

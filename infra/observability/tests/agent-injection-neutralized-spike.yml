@@ -1,0 +1,55 @@
+# Deterministic proof for AgentInjectionNeutralizedSpike. The threshold is
+# `> 3`, not `> 0`, because the repository's own offline red-team suite
+# deliberately trips the guardrail: a rule that paged on the first neutralized
+# marker would fire during `mise run test`. So the case that matters most here
+# is the quiet one — a handful of markers must not raise a ticket — and the
+# firing case only proves the other half.
+#
+# Driving this live is possible but destructive to the point: it means feeding
+# real injection payloads through the tools, which is what the offline suite
+# already does under assertion.
+rule_files:
+  - ../prometheus-rules.yml
+
+evaluation_interval: 1m
+
+tests:
+  # Two markers over the first twenty minutes (the red-team suite), then a
+  # sustained probe from minute 41 at two markers a minute, then silence.
+  - interval: 1m
+    input_series:
+      - series: agentops_guardrails_injections_neutralized_total
+        values: "0x9 1x9 2x20 4+2x20 44x30"
+    # The counter moved twice inside the window and the rule still reads false.
+    # Asserted with `> bool` rather than as a float because `increase()`
+    # extrapolates a 14-minute sample span across the 15-minute window, and the
+    # rule's behaviour — not the extrapolated fraction — is what must hold.
+    promql_expr_test:
+      - expr: sum(increase(agentops_guardrails_injections_neutralized_total[15m])) > bool 3
+        eval_time: 20m
+        exp_samples:
+          - labels: "{}"
+            value: 0
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: AgentInjectionNeutralizedSpike
+        exp_alerts: []
+      # Minute 42 is the first evaluation whose [15m] window holds more than
+      # three markers, so minute 43 is inside the 2m `for:` and still pending.
+      - eval_time: 43m
+        alertname: AgentInjectionNeutralizedSpike
+        exp_alerts: []
+      - eval_time: 50m
+        alertname: AgentInjectionNeutralizedSpike
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+            exp_annotations:
+              summary: Guardrails neutralized an unusual number of injections
+              description: More than 3 injection markers were neutralized in tool output within 15 minutes. Inspect the offending traces and the incident seed data feeding the tools.
+              runbook: https://github.com/MLOps-Courses/agentops-open-course/blob/main/content/7.%20Observability/7.2b.%20Alerting.md#the-four-responses-worth-memorising
+      # The probe stopped at minute 61 and the whole [15m] window is quiet
+      # again, so the ticket clears without anyone touching the counter.
+      - eval_time: 80m
+        alertname: AgentInjectionNeutralizedSpike
+        exp_alerts: []

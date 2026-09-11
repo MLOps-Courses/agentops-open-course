@@ -1,0 +1,187 @@
+/* Custom styles for the AgentOps Open Course. */
+
+iframe.youtube {
+    display: block;
+    margin: 0 auto;
+}
+
+/* Mobile rendering pass (issue #42): the theme already scrolls wide tables, but
+   long URLs and file paths in cells keep them wider than needed. On phone-width
+   viewports, let cell content wrap and trim the table font so the wide 4-column
+   tables (Course paths, Providers, Gateway listeners) stay readable without a
+   long horizontal scroll. */
+@media screen and (max-width: 44.9375em) {
+    .content table {
+        font-size: 0.75rem;
+    }
+
+    .content table th,
+    .content table td {
+        overflow-wrap: anywhere;
+        word-break: break-word;
+    }
+}
+
+/* Course navigation.
+
+   layouts/_partials/nav/items.html renders data/nav.yaml and borrows Hextra's own
+   sidebar utility classes for colour, spacing, and focus, so the palette here is
+   deliberately absent — only the structure Tailwind cannot express lives below. */
+.course-nav__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.course-nav__list[data-depth="0"] > li + li {
+    margin-top: 0.125rem;
+}
+
+/* Nested chapters get a guide line, so a page's place in the learning path is
+   readable from indentation rather than from the active colour alone. */
+.course-nav__list:not([data-depth="0"]) {
+    margin-left: 0.5rem;
+    padding-left: 0.5rem;
+    border-left: 1px solid var(--course-rule);
+}
+
+.course-nav__summary {
+    /* Both properties are needed: `list-style` covers Firefox and Chrome, the
+       WebKit pseudo-element covers Safari. Without them the browser's default
+       triangle sits next to the themed chevron. */
+    list-style: none;
+    user-select: none;
+}
+
+.course-nav__summary::-webkit-details-marker {
+    display: none;
+}
+
+.course-nav__chevron {
+    flex-shrink: 0;
+    transition: transform 0.15s ease;
+}
+
+details[open] > .course-nav__summary .course-nav__chevron {
+    transform: rotate(90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .course-nav__chevron {
+        transition: none;
+    }
+}
+
+/* Admonitions and collapsibles.
+
+   Material shipped these; Hugo does not, so the seven-type semantic vocabulary is
+   rebuilt here. Each type gets a hue plus a distinct text label, because colour is
+   never the only carrier of meaning (WCAG 1.4.1). Both themes are defined: the
+   accent tokens flip under .dark, which Hextra's theme toggle sets on <html>. */
+:root {
+    --course-abstract: #4051b5;
+    --course-danger: #b3261e;
+    --course-info: #00639b;
+    --course-note: #4a5568;
+    --course-success: #1b6b3a;
+    --course-tip: #006c60;
+    --course-warning: #8a5a00;
+    --course-surface: rgb(0 0 0 / 3.5%);
+    --course-rule: rgb(0 0 0 / 12%);
+}
+
+.dark {
+    --course-abstract: #aab4ff;
+    --course-danger: #ffb4ab;
+    --course-info: #8ccdff;
+    --course-note: #c4cbd8;
+    --course-success: #86d99e;
+    --course-tip: #5cdbca;
+    --course-warning: #f2c14b;
+    --course-surface: rgb(255 255 255 / 5%);
+    --course-rule: rgb(255 255 255 / 16%);
+}
+
+.course-admonition,
+.course-collapsible {
+    margin: 1.25rem 0;
+    border: 1px solid var(--course-rule);
+    border-left: 0.25rem solid var(--course-accent, var(--course-note));
+    border-radius: 0.375rem;
+    background: var(--course-surface);
+    padding: 0.75rem 1rem;
+}
+
+.course-admonition--abstract,
+.course-collapsible--abstract {
+    --course-accent: var(--course-abstract);
+}
+.course-admonition--danger,
+.course-collapsible--danger {
+    --course-accent: var(--course-danger);
+}
+.course-admonition--info,
+.course-collapsible--info {
+    --course-accent: var(--course-info);
+}
+.course-admonition--note,
+.course-collapsible--note {
+    --course-accent: var(--course-note);
+}
+.course-admonition--success,
+.course-collapsible--success {
+    --course-accent: var(--course-success);
+}
+.course-admonition--tip,
+.course-collapsible--tip {
+    --course-accent: var(--course-tip);
+}
+.course-admonition--warning,
+.course-collapsible--warning {
+    --course-accent: var(--course-warning);
+}
+
+.course-admonition__title,
+.course-collapsible__summary {
+    margin: 0;
+    font-weight: 600;
+    color: var(--course-accent, var(--course-note));
+}
+
+.course-collapsible__summary {
+    cursor: pointer;
+}
+
+/* The disclosure triangle is the only affordance, so its focus ring must be
+   visible rather than inherited from a reset. */
+.course-collapsible__summary:focus-visible {
+    outline: 2px solid var(--course-accent, var(--course-note));
+    outline-offset: 2px;
+}
+
+.course-admonition__body > :first-child,
+.course-collapsible__body > :first-child {
+    margin-top: 0.5rem;
+}
+
+.course-admonition__body > :last-child,
+.course-collapsible__body > :last-child {
+    margin-bottom: 0;
+}
+
+/* Mermaid renders inline SVG with its own palette. Give the figure a neutral
+   surface in both themes so a light-palette diagram stays legible in dark mode. */
+pre.mermaid {
+    background: var(--course-surface);
+    border-radius: 0.375rem;
+    padding: 0.5rem;
+    overflow-x: auto;
+}
+
+/* Hextra's dark palette puts the current sidebar link at primary-600 on a
+   primary-400/10 surface, which measures 4.44:1 — just under the 4.5:1 floor the
+   accessibility smoke enforces. Lift the foreground one step up the theme's own
+   ramp rather than lowering the threshold. */
+.dark a.course-nav__link[aria-current="page"] {
+    color: var(--color-primary-400);
+}

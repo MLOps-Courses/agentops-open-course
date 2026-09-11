@@ -1,0 +1,13 @@
+# In-cluster Alertmanager keeps notifications inside the namespace: the
+# default-deny egress policy blocks any outbound webhook, so the sole
+# receiver has no integrations (a blackhole) and alerts are read through the
+# UI/API after `kubectl -n agentops port-forward svc/alertmanager 9093:9093`.
+route:
+  receiver: local-ui
+  group_by: [alertname, severity]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+receivers:
+  - name: local-ui

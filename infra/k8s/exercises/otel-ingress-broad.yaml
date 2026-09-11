@@ -1,0 +1,30 @@
+# Deliberately insecure, temporary Chapter 6 exercise fixture.
+#
+# Applying this additive policy widens collector ingress to every pod in the
+# agentops and kagent namespaces. Delete it after proving the failure mode; the
+# committed base policy remains the least-privilege completed reference.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: exercise-broad-otel-ingress
+  namespace: agentops
+  labels:
+    app.kubernetes.io/part-of: agentops-open-course
+    agentops.fmind.dev/exercise: broad-otel-ingress
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: otel-collector
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: agentops
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kagent
+      ports:
+        - { port: 4317, protocol: TCP }
+        - { port: 4318, protocol: TCP }
+        - { port: 8889, protocol: TCP }

@@ -1,0 +1,198 @@
+# https://gohugo.io/configuration/
+# Hugo build of the Go-first AgentOps Open Course documentation.
+
+baseURL = "https://agentops-open-course.fmind.dev/"
+title = "AgentOps Open Course"
+locale = "en"
+# This drives one surface: the `<copyright>` element of the ten RSS feeds. It does NOT
+# drive the footer — Hextra's footer partial renders the `copyright` translation string, so
+# the visible attribution on all 84 content pages lives in i18n/en.yaml.
+# Both are kept, because both are read, and they must agree.
+copyright = "Copyright © MLOps Courses"
+
+# Hugo has no single `strict: true`. It is assembled from three parts: this setting,
+# `--panicOnWarning` in the build tasks, and the nav-completeness gate in
+# the native conventions gate that replaces what a generated menu would infer.
+refLinksErrorLevel = "ERROR"
+
+enableGitInfo = false
+enableRobotsTXT = false # static/robots.txt is served verbatim
+
+# The course has no tags or categories. Left enabled, Hugo would publish two empty
+# taxonomy trees that the link and accessibility gates then have to walk.
+disableKinds = ["taxonomy", "term"]
+
+# Content paths remain readable authoring names while reviewed front-matter slugs own
+# the public Go v1 routes. Section slugs feed `:sectionslugs`; regular-page slugs feed
+# `:slug`. A full front-matter `url` would shadow this contract and is rejected.
+[[permalinks]]
+pattern = "/:sectionslugs/:slug/"
+[permalinks.target]
+kind = "page"
+
+[[permalinks]]
+pattern = "/:sectionslugs/"
+[permalinks.target]
+kind = "section"
+
+[module]
+[[module.imports]]
+path = "github.com/imfing/hextra"
+
+# The `{{< include >}}` shortcodes quote real repository source. Mounting those
+# directories into assets/ makes Hugo read them through the resource pipeline, so the
+# dev server rebuilds a page when the code it quotes changes — os.ReadFile would not.
+[[module.mounts]]
+source = "assets"
+target = "assets"
+# Narrowed to the two directories the course quotes. A mount of `agents` would also
+# publish anything else that ever lands beside them into the built site's asset tree.
+[[module.mounts]]
+source = "agents/go"
+target = "assets/source/agents/go"
+[[module.mounts]]
+source = "agents/data"
+target = "assets/source/agents/data"
+[[module.mounts]]
+source = "evals"
+target = "assets/source/evals"
+[[module.mounts]]
+source = "tools"
+target = "assets/source/tools"
+[[module.mounts]]
+source = "infra"
+target = "assets/source/infra"
+[[module.mounts]]
+source = "scripts"
+target = "assets/source/scripts"
+[[module.mounts]]
+source = ".github"
+target = "assets/source/.github"
+
+# The top bar. The learning path itself is data/nav.yaml, rendered by the sidebar; these are
+# the site-wide controls Material carried in its header. Hextra only renders the navbar
+# search box when a menu entry declares it, which is why search lives here and not in params.
+#
+# Glossary and Troubleshooting are here rather than in the sidebar alone because the sidebar
+# renders each chapter as a `<details>` that is open only while you are inside it. A reader
+# stuck in Chapter 6 would otherwise have to expand "0. Overview" to reach the two pages they
+# need most at that moment, which is exactly when they are least willing to go looking.
+[[menu.main]]
+name = "Search"
+weight = 1
+[menu.main.params]
+type = "search"
+
+[[menu.main]]
+name = "Glossary"
+url = "/0-overview/0-8-glossary/"
+weight = 2
+[menu.main.params]
+type = "link"
+
+[[menu.main]]
+name = "Troubleshooting"
+url = "/0-overview/0-7-troubleshooting/"
+weight = 3
+[menu.main.params]
+type = "link"
+
+[[menu.main]]
+name = "GitHub"
+url = "https://github.com/MLOps-Courses/agentops-open-course"
+weight = 4
+[menu.main.params]
+type = "link"
+
+[markup]
+[markup.goldmark.renderer]
+unsafe = true # replaces Material's `md_in_html`; pages embed raw HTML (iframes, <div>)
+[markup.goldmark.parser.attribute]
+block = true # replaces Material's `attr_list` on block elements
+title = true
+[markup.highlight]
+noClasses = false # emit classes so the theme controls light/dark, as pymdownx.highlight did
+lineNos = false # matches `anchor_linenums: false`
+style = "github"
+[markup.tableOfContents]
+startLevel = 2
+endLevel = 3
+
+# Hextra ships its docs identity — breadcrumb, page context menu, `llms.txt`, per-page
+# Markdown — only for `type = "docs"`. Nothing in content/ declares a type, so without
+# this cascade every regular page falls back to the theme's non-docs single.html and
+# every chapter index to its list.html: two identities in one site.
+# `_target` was deprecated in Hugo v0.156.0 and aborts config loading on the pinned
+# toolchain, which `build:docs` runs with --panicOnWarning; `target` is the current key.
+[[cascade]]
+type = "docs"
+[cascade.target]
+path = "/**"
+
+# Hextra's own hugo.toml already defines the `llms` and `markdown` output formats
+# (baseName `llms`/`index`, isPlainText, `ugly = true`), so no mediaType wiring is
+# needed here. `section` needs `markdown` too, or the nine chapter indexes get no .md
+# twin — which matters for an audience that points its own agents at this course.
+[outputs]
+home = ["html", "rss", "llms"]
+page = ["html", "markdown"]
+section = ["html", "rss", "markdown"]
+
+[params]
+description = "Build, evaluate, secure, deploy, and operate a Go AI agent with Google ADK, agentgateway, kagent, and OpenTelemetry."
+socialCard = "assets/social-card.png"
+
+[params.navbar]
+displayTitle = true
+displayLogo = false
+
+[params.editURL]
+enable = true
+base = "https://github.com/MLOps-Courses/agentops-open-course/edit/main/content"
+
+[params.footer]
+enable = true
+displayCopyright = true
+displayPoweredBy = false
+
+[params.page]
+# The theme pager walks .PrevInSection, which cannot express data/nav.yaml: it dead-ends
+# at every chapter boundary and contradicts the navigation at 8.7. Every leaf page already
+# closes on a hand-ordered `Continue to …` line, which is the pager this course has.
+displayPagination = false
+[params.page.contextMenu]
+enable = true
+
+[params.theme]
+default = "system"
+displayToggle = true
+
+# Hextra defaults both Mermaid and FlexSearch to jsDelivr. The course self-hosts its
+# assets, so both point at pinned bundles vendored under assets/js/vendor/ instead;
+# naming `js` without `base` is what switches Hextra to local asset loading.
+# Re-pin with scripts/vendor-assets.sh, which rewrites assets/js/vendor/versions.json.
+[params.mermaid]
+js = "js/vendor/mermaid.min.js"
+
+[params.search]
+enable = true
+type = "flexsearch"
+[params.search.flexsearch]
+js = "js/vendor/flexsearch.bundle.min.js"
+index = "content"
+
+# Named `courseSocial`, not `social`: Hextra reserves `params.social` for a map of
+# OpenGraph identifiers (facebook_admin, …) and fails to render against a list.
+# layouts/_partials/custom/footer.html renders these as accessible text links.
+[[params.courseSocial]]
+name = "Email the AgentOps Open Course maintainers"
+url = "mailto:agentops-open-course@fmind.dev"
+[[params.courseSocial]]
+name = "AgentOps Open Course on GitHub"
+url = "https://github.com/MLOps-Courses/agentops-open-course"
+[[params.courseSocial]]
+name = "Fmind on X"
+url = "https://x.com/fmind_dev"
+[[params.courseSocial]]
+name = "Fmind on LinkedIn"
+url = "https://www.linkedin.com/in/fmind-dev/"

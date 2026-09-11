@@ -1,0 +1,184 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/agentgateway/agentgateway/v1.4.1/schema/config.json
+# Host data plane used before Kubernetes: all upstreams are local processes.
+config:
+  # Self-hosted Qwen has no per-token provider fee. Exact zero rates make the
+  # gateway attribute tokens and zero-dollar provider cost without pretending
+  # to measure electricity, hardware, labor, or an authoritative bill.
+  modelCatalog:
+    - inline:
+        providers:
+          openai:
+            models:
+              qwen3:4b-instruct:
+                rates:
+                  input: "0"
+                  output: "0"
+  logging:
+    format: json
+
+# --8<-- [start:host-mcp-gateway]
+gateways:
+  mcp:
+    port: 3000
+  a2a:
+    port: 3001
+  llm:
+    port: 4000
+
+routes:
+  - name: mcp
+    gateways: [mcp]
+    policies:
+      # Only the six allowlisted reads reach this bounded retry policy, so it
+      # cannot replay a confirmed write. The application does not retry remote
+      # MCP calls, preventing stacked retry amplification.
+      retry:
+        attempts: 2
+        backoff: 100ms
+        codes: [502, 503, 504]
+      timeout:
+        requestTimeout: 5s
+        backendRequestTimeout: 2s
+      localRateLimit:
+        - maxTokens: 120
+          tokensPerFill: 120
+          fillInterval: 60s
+      # --8<-- [end:host-mcp-gateway]
+      mcpAuthorization:
+        rules:
+          - 'mcp.tool.name == "list_incidents"'
+          - 'mcp.tool.name == "get_incident"'
+          - 'mcp.tool.name == "get_service_status"'
+          - 'mcp.tool.name == "search_service_logs"'
+          - 'mcp.tool.name == "get_runbook"'
+          - 'mcp.tool.name == "search_runbooks"'
+    backends:
+      - mcp:
+          failureMode: failClosed
+          targets:
+            - name: agentops-agent
+              mcp:
+                host: http://localhost:8000/mcp
+
+  - name: a2a
+    gateways: [a2a]
+    policies:
+      a2a: {}
+      # The single-file course client is served on this exact local origin.
+      # Keep the browser boundary narrow: no wildcard origin.
+      cors:
+        allowOrigins:
+          - "http://localhost:8001"
+        allowMethods:
+          - GET
+          - POST
+          - OPTIONS
+        allowHeaders:
+          - content-type
+      localRateLimit:
+        - maxTokens: 60
+          tokensPerFill: 60
+          fillInterval: 60s
+    backends:
+      - host: localhost:8080
+
+  - name: llm
+    gateways: [llm]
+    policies:
+      # --8<-- [start:model-token-budget]
+      # Two buckets on one route, both enforced on every call.
+      localRateLimit:
+        # Requests. This one prices every call alike, so it cannot tell a
+        # six-word question from a caller that pastes 200k tokens of runbook
+        # into each prompt.
+        - maxTokens: 30
+          tokensPerFill: 30
+          fillInterval: 60s
+        # Tokens. agentgateway charges this bucket after the call completes,
+        # so an oversized call is admitted and drains it; the *next* call is
+        # the one refused with 429. 100000/min restates the request cap in
+        # tokens — 30 calls at the ~2,700 tokens a course turn's first model
+        # call actually spends is ~81,000 — so it binds on context growth
+        # rather than on ordinary use.
+        - maxTokens: 100000
+          tokensPerFill: 100000
+          fillInterval: 60s
+          type: tokens
+      # --8<-- [end:model-token-budget]
+      ai:
+        # The client route type is what agentgateway parses the body with, and the
+        # default assumption is chat-completions. Without the first entry a Responses
+        # request is rejected as "missing field `messages`" and the response guard
+        # below would inspect a shape that never arrives; the agent speaks only
+        # /v1/responses (ADK Go's openaimodel has no chat-completions code path).
+        # The second entry admits the *other* OpenAI shape on the same governed route,
+        # because the evaluation judge (evals/judge.go) speaks chat-completions and
+        # `.env.example` tells the reader to point it at :4000. One route, so the judge
+        # passes through the same buckets, prompt guard, and response guard as the
+        # agent rather than being a second unpoliced door to the same model.
+        routes:
+          /v1/responses: responses
+          /v1/chat/completions: completions
+        promptGuard:
+          request:
+            # Reserved smoke canary preserves the 400/502 rejection evidence;
+            # ordinary email continues to the central mask rule below.
+            - regex:
+                action: reject
+                rules:
+                  - pattern: "(?i)reject-probe@example\\.invalid"
+              rejection:
+                status: 400
+                body: Request rejected by the course prompt guard.
+            - regex:
+                action: reject
+                rules:
+                  - pattern: "(?i)(ignore|override).{0,40}(instructions|system prompt)"
+              rejection:
+                status: 400
+                body: Request rejected by the course prompt guard.
+            - regex:
+                action: mask
+                rules:
+                  - builtin: ssn
+                  - builtin: creditCard
+                  - builtin: phoneNumber
+                  - builtin: email
+                  - builtin: caSin
+            - webhook:
+                target:
+                  host: localhost:8080
+                failureMode: failClosed
+          response:
+            - regex:
+                action: reject
+                rules:
+                  - pattern: "(?i)reject-probe@example\\.invalid"
+              rejection:
+                status: 502
+                body: Model response rejected by the course data-loss guard.
+            - regex:
+                action: mask
+                rules:
+                  - builtin: ssn
+                  - builtin: creditCard
+                  - builtin: phoneNumber
+                  - builtin: email
+                  - builtin: caSin
+            - webhook:
+                target:
+                  host: localhost:8080
+                failureMode: failClosed
+    backends:
+      - ai:
+          name: ollama
+          # No pathOverride: agentgateway derives the upstream path from the route
+          # type resolved above (/v1/responses or /v1/chat/completions), so both
+          # client shapes reach the endpoint Ollama actually serves. Pinning one
+          # path here forced every chat-completions call onto /v1/responses, which
+          # returned an empty Responses body the judge read as "no verdict content".
+          # An unmapped path is still refused at the parse stage, never proxied.
+          hostOverride: localhost:11434
+          provider:
+            openAI:
+              model: qwen3:4b-instruct

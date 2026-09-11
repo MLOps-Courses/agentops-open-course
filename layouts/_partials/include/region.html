@@ -1,0 +1,86 @@
+{{- /*
+  Cut one `--8<-- [start:name]` / `[end:name]` region out of a source file and dedent it.
+
+  This is the half of `pymdownx.snippets` that made quoted code trustworthy: exactly one
+  bounded region, or the build fails. The markers in the quoted sources are never edited —
+  those files are out of scope for the migration.
+
+  Input:  dict text / path / region / position
+  Output: the dedented region text, or "" when a guard has already failed the build.
+*/ -}}
+
+{{- $text := .text -}}
+{{- $path := .path -}}
+{{- $region := .region -}}
+{{- $where := .position -}}
+{{- $code := "" -}}
+
+{{- $start := printf "--8<-- [start:%s]" $region -}}
+{{- $end := printf "--8<-- [end:%s]" $region -}}
+
+{{- /* Counted literally, not with findRE: a regex would read the `[...]` in the marker as a
+       character class and match almost every line. */ -}}
+{{- $opens := strings.Count $start $text -}}
+{{- $closes := strings.Count $end $text -}}
+
+{{- if or (ne $opens 1) (ne $closes 1) -}}
+  {{- errorf "include %q: region %q needs exactly one start and one end marker in the source (found %d start, %d end) (%s)" $path $region $opens $closes $where -}}
+{{- else if not (strings.Contains (index (split $text $start) 1) $end) -}}
+  {{- /* Reversed markers. With one of each, an end marker that does not follow the start
+         marker means the region closes before it opens, and the split below would quote
+         everything from the start marker to end of file without complaining. Note the
+         argument order differs from strings.Count above: Contains takes (string, substring). */ -}}
+  {{- errorf "include %q: region %q ends before it starts (%s)" $path $region $where -}}
+{{- else -}}
+  {{- /* Everything between the markers, minus the tails of the two marker lines. */ -}}
+  {{- $body := index (split (index (split $text $start) 1) $end) 0 -}}
+  {{- $lines := after 1 (split $body "\n") -}}
+  {{- if gt (len $lines) 0 -}}
+    {{- $lines = first (sub (len $lines) 1) $lines -}}
+  {{- end -}}
+
+  {{- /* Drop blank lines at both ends before measuring the indent: a leading newline would
+         otherwise report an indent of zero and defeat the dedent entirely. */ -}}
+  {{- $kept := slice -}}
+  {{- $started := false -}}
+  {{- range $lines -}}
+    {{- if or $started (ne (trim . " \t") "") -}}
+      {{- $started = true -}}
+      {{- $kept = $kept | append . -}}
+    {{- end -}}
+  {{- end -}}
+  {{- range seq (len $kept) -}}
+    {{- if and (gt (len $kept) 0) (eq (trim (index $kept (sub (len $kept) 1)) " \t") "") -}}
+      {{- $kept = first (sub (len $kept) 1) $kept -}}
+    {{- end -}}
+  {{- end -}}
+
+  {{- if eq (len $kept) 0 -}}
+    {{- errorf "include %q: region %q is empty (%s)" $path $region $where -}}
+  {{- else -}}
+    {{- /* dedent_subsections: shift left by the smallest indent across the non-blank lines. */ -}}
+    {{- $indent := 4096 -}}
+    {{- range $kept -}}
+      {{- if ne (trim . " \t") "" -}}
+        {{- $width := sub (len .) (len (strings.TrimLeft " \t" .)) -}}
+        {{- if lt $width $indent -}}
+          {{- $indent = $width -}}
+        {{- end -}}
+      {{- end -}}
+    {{- end -}}
+
+    {{- /* `if`, not `cond`: `cond` evaluates both branches, and `substr` past the end of a
+           whitespace-only line raises "start position out of bounds". */ -}}
+    {{- $dedented := slice -}}
+    {{- range $kept -}}
+      {{- if ge (len .) $indent -}}
+        {{- $dedented = $dedented | append (substr . $indent) -}}
+      {{- else -}}
+        {{- $dedented = $dedented | append "" -}}
+      {{- end -}}
+    {{- end -}}
+    {{- $code = delimit $dedented "\n" -}}
+  {{- end -}}
+{{- end -}}
+
+{{- return $code -}}

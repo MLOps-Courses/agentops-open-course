@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: agentgateway
+  namespace: agentops
+  annotations:
+    iam.gke.io/gcp-service-account: agentgateway@__GCP_PROJECT_ID__.iam.gserviceaccount.com

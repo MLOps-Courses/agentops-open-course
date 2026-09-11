@@ -1,0 +1,27 @@
+{{- /*
+  collapsible — the Hugo replacement for Material's `??? type "Title"` blocks.
+
+  A native <details>/<summary>, so the disclosure works with no JavaScript and is already
+  keyboard-operable and announced by screen readers. It shares the admonition type
+  vocabulary and styling, because that is what `??? note` meant.
+
+  `check_conventions.check_collapsibles` still enforces the two authoring rules this carries:
+  every summary opens with "Deeper: ", and no page uses more than three.
+*/ -}}
+
+{{- $type := .Get 0 -}}
+{{- $title := cond (gt (len .Params) 1) (index .Params 1) "" -}}
+{{- $allowed := slice "abstract" "danger" "info" "note" "success" "tip" "warning" -}}
+
+{{- if not (in $allowed $type) -}}
+  {{- errorf "collapsible: unsupported type %q; use one of %s (%s)" $type (delimit $allowed ", ") .Position -}}
+{{- else if not $title -}}
+  {{- errorf "collapsible: a collapsible needs a summary title (%s)" .Position -}}
+{{- else -}}
+  <details class="course-collapsible course-collapsible--{{ $type }}">
+    <summary class="course-collapsible__summary">{{ $title }}</summary>
+    <div class="course-collapsible__body">
+      {{- .Inner -}}
+    </div>
+  </details>
+{{- end -}}

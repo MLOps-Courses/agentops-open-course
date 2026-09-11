@@ -1,0 +1,25 @@
+# Two upload-artifact steps and one retention-days value between them. Counting the two
+# literals per file made this workflow balance out to a pass, because the second job's
+# retention-days paid for the first job's missing one. The test copies it into a temporary
+# .github/workflows so no repository-wide workflow linter collects a deliberate defect.
+name: Fixture evidence
+on:
+  push:
+    branches:
+      - main
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/upload-artifact@v5
+        with:
+          name: collected-evidence
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/upload-artifact@v5
+        with:
+          name: report
+          retention-days: 7

@@ -1,0 +1,82 @@
+# https://lefthook.dev
+# Thin hooks: every command delegates to a `mise run` task so local hooks and CI stay identical.
+# lefthook, dprint, actionlint, and gitleaks are provided on PATH by mise (see mise.toml [tools]).
+#
+# pre-commit is globbed per language: the whole `check:core` costs ~37 s warm even for a
+# one-word README fix. pre-push still runs it unglobbed, so nothing reaches a remote unchecked,
+# and its `test` fans out to all three Go modules through the root aggregate.
+# Every command here is offline; vulnerability databases stay in the CI
+# `check` gate rather than making an offline commit depend on the network.
+pre-commit:
+  parallel: false # formatters must restage before check reads the files
+  commands:
+    format-dprint:
+      priority: 10
+      glob: "*.{json,md,toml,yaml,yml}"
+      run: mise run format:dprint {staged_files}
+      stage_fixed: true
+    format-go:
+      priority: 20
+      glob: "*.go"
+      run: mise run format:go && mise run format:evals && mise run format:tools
+      stage_fixed: true
+    check-format:
+      priority: 30
+      glob: "*.{json,md,toml,yaml,yml}"
+      run: mise run check:format
+    check-go:
+      priority: 31
+      glob: "agents/go/**"
+      run: mise run check:go
+    check-evals:
+      priority: 32
+      glob: "evals/**"
+      run: mise run check:evals
+    check-tools:
+      priority: 33
+      glob: "tools/**"
+      run: mise run check:tools
+    check-shell:
+      priority: 34
+      glob: "*.sh"
+      run: mise run check:shell
+    check-workflows:
+      priority: 35
+      glob: ".github/workflows/*.{yml,yaml}"
+      run: mise run check:workflows
+    check-docs:
+      priority: 36
+      glob: "{content/**,hugo.toml,data/nav.yaml,layouts/**,assets/**}"
+      run: mise run check:docs
+    check-links:
+      priority: 37
+      glob: "*.md"
+      run: mise run check:links
+    check-skills:
+      priority: 38
+      glob: "skills/**"
+      run: mise run check:skills
+    check-data:
+      priority: 39
+      glob: "agents/data/**"
+      run: mise run check:data
+    check-release-metadata:
+      priority: 40
+      glob: "{VERSION,CITATION.cff,CHANGELOG.md}"
+      run: mise run check:release-metadata
+    check-licenses:
+      priority: 41
+      glob: "{go.mod,go.sum,agents/go/{go.mod,go.sum},evals/{go.mod,go.sum},tools/{go.mod,go.sum}}"
+      run: mise run check:licenses:core
+    secure:
+      priority: 42
+      run: mise run secure:staged
+pre-push:
+  parallel: false
+  commands:
+    check:
+      priority: 10
+      run: mise run check:core
+    test:
+      priority: 20
+      run: mise run test

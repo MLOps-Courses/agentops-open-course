@@ -1,0 +1,50 @@
+# Autoscaling for the MCP read plane.
+#
+# The floor is two, not one: an autoscaler that can reach zero redundancy is a
+# restart policy with extra steps. The ceiling is four because the state volume
+# is ReadWriteOnce, so every replica lands on the node that already holds it —
+# scaling past what one node can serve buys pending pods, not throughput.
+#
+# CPU is the right signal for this workload and only for this workload. The MCP
+# server answers six read tools out of SQLite, so its cost really is processor
+# time. The agent is not autoscaled and must not be: its latency is dominated by
+# model inference happening somewhere else, so its CPU stays low exactly when it
+# is slowest, and an HPA reading that signal would scale down under load.
+#
+# k3s ships metrics-server, which is where the utilization figure comes from. On
+# a cluster without it the HPA reports <unknown>/70% and holds at minReplicas.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: agentops-mcp
+  namespace: agentops
+  labels:
+    app.kubernetes.io/name: agentops-mcp
+    app.kubernetes.io/part-of: agentops-open-course
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: agentops-mcp
+  minReplicas: 2
+  maxReplicas: 4
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          # Against the 100m request in the base Deployment, so one replica is
+          # "busy" at 70 millicores. Low enough that the new pod is ready before
+          # the old ones saturate, high enough that a burst of health probes
+          # does not add a replica.
+          averageUtilization: 70
+  behavior:
+    scaleUp:
+      # Load arrives faster than it leaves. One minute of agreement is enough to
+      # tell a real burst from a k6 ramp step.
+      stabilizationWindowSeconds: 60
+    scaleDown:
+      # Five minutes, because releasing a replica during a lull and reacquiring
+      # it thirty seconds later is how an autoscaler turns into a load generator.
+      stabilizationWindowSeconds: 300

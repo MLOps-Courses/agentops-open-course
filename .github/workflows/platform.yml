@@ -1,0 +1,640 @@
+# Exact-head, account-free acceptance for the supported Linux x86_64 k3d path.
+name: Platform
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Monthly, 1st at 05:00 UTC. This is the only end-to-end proof of Chapter 6,
+    # and it depends on upstream Helm charts that move independently of
+    # mise.lock — dispatch-only means a broken platform is discovered by a
+    # learner, not by CI.
+    - cron: "0 5 1 * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: platform-${{ github.ref }}
+  # Preserve every main run as release evidence; only a superseded branch
+  # dispatch is disposable.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  platform:
+    runs-on: ubuntu-24.04
+    # Guard forks and mirrors: a 60-minute cluster acceptance run only makes
+    # sense on the canonical repository. Elsewhere the job is skipped, not failed.
+    if: github.repository == 'MLOps-Courses/agentops-open-course'
+    timeout-minutes: 60
+    env:
+      BACKUP_EVIDENCE_MARKER: platform-backup-canary
+      CURL_IMAGE: curlimages/curl:8.21.0@sha256:7c12af72ceb38b7432ab85e1a265cff6ae58e06f95539d539b654f2cfa64bb13
+      GITHUB_TOKEN: ${{ github.token }}
+      # A log line the agent really emits, rather than one injected through an exec: the
+      # distroless image has no interpreter to inject with, and asserting on the agent's own
+      # startup record proves the slog-to-OTLP bridge is what carries application logs.
+      # `agents/go/a2aserver/serve.go` is its owner.
+      TELEMETRY_LOG_LINE: serving A2A
+      # Keep privacy canaries alphabetic: numeric run IDs can look like financial
+      # identifiers to a PII detector and turn capture assertions into false positives.
+      TELEMETRY_SENTINEL: platform-private-content-canary
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Select the pinned tool manager
+        uses: jdx/mise-action@9e7f7633ff6f6d6048a9418a68d48f288f50eb14 # v4.2.3
+        with:
+          # Installing every [tools] entry would pull the account-bound Google
+          # Cloud CLI into this account-free local-platform proof.
+          install: false
+
+      - name: Install only the account-free platform dependencies
+        run: |
+          mise install -y --locked go golangci-lint gotestsum dprint k3d kubectl helm helmfile skaffold jq
+          (cd tools && mise run install)
+          ./scripts/install-helm-diff.sh
+
+      - name: Resolve the clean candidate build identity
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          source_identity="$(tools/bin/source-identity --root . --mode release)"
+          revision="$(jq -er .revision <<<"$source_identity")"
+          test "$revision" = "$EXPECTED_SHA"
+          commit_timestamp="$(git show -s --format=%ct HEAD)"
+          [[ "$commit_timestamp" =~ ^[0-9]+$ ]]
+          created="$(date --utc --date="@${commit_timestamp}" +%Y-%m-%dT%H:%M:%SZ)"
+          {
+            echo "AGENT_BUILD_MODE=release"
+            echo "AGENT_SOURCE_COMMIT=$revision"
+            echo "AGENT_SOURCE_REVISION=$revision"
+            echo "AGENT_IMAGE_TAG=$revision"
+            echo "AGENT_SOURCE_TREE_DIGEST=$(jq -er .tree_digest <<<"$source_identity")"
+            echo "AGENT_SOURCE_DIRTY=false"
+            echo "OCI_CREATED=$created"
+            echo "OCI_VERSION=$(tr -d '\n' < VERSION)"
+          } >> "$GITHUB_ENV"
+
+      - name: Verify the cgroup-v2 and container prerequisites
+        run: |
+          test -r /sys/fs/cgroup/cgroup.controllers
+          docker info >/dev/null
+          helm plugin list | grep -Eq '^diff[[:space:]]+3\.15\.10'
+
+      - name: Create the pinned cluster and install kagent
+        run: |
+          mise run cluster:start
+          mise run platform:install
+
+      - name: Start the deterministic host model
+        run: |
+          bridge="$(
+            docker network inspect k3d-local \
+              --format '{{(index .IPAM.Config 0).Gateway}}'
+          )"
+          nohup tools/bin/fake-model --host "${bridge}" \
+            >"${RUNNER_TEMP}/fake-model.log" 2>&1 &
+          echo "$!" >"${RUNNER_TEMP}/fake-model.pid"
+          timeout 60 bash -c \
+            "until curl -fsS 'http://${bridge}:11434/healthz' >/dev/null; do sleep 1; done"
+
+      - name: Build and deploy the local overlay
+        run: |
+          cd infra
+          SKAFFOLD_DEFAULT_REPO=registry.localhost:5050 \
+            skaffold run --filename skaffold.yaml --profile local
+
+      - name: Verify workload readiness and private exposure
+        run: |
+          timeout 300 bash -c \
+            'until kubectl -n agentops get deployment agentops-agent >/dev/null 2>&1; do sleep 2; done'
+          kubectl -n agentops wait --for=condition=Available deployment --all --timeout=600s
+          kubectl -n agentops wait --for=condition=Ready pod --all --timeout=600s
+          kubectl get service --all-namespaces -o json |
+            jq -e '[.items[] | select(.spec.type != "ClusterIP")] | length == 0'
+          test -z "$(kubectl get ingress --all-namespaces --no-headers 2>/dev/null)"
+
+      - name: Prove gateway ingress is caller and port specific
+        run: |
+          cleanup() {
+            kubectl delete pod,networkpolicy \
+              gateway-denied-probe gateway-probe-egress \
+              --namespace agentops --ignore-not-found --wait=true >/dev/null
+            kubectl delete pod,networkpolicy \
+              gateway-allowed-probe gateway-denied-probe gateway-probe-egress \
+              --namespace kagent --ignore-not-found --wait=true >/dev/null
+          }
+          trap cleanup EXIT
+          # curlimages/curl declares curl_user by name. Kubernetes cannot prove that
+          # named user is non-root, so pin the image's reviewed numeric uid/gid.
+          kubectl apply -f - <<EOF
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: gateway-denied-probe
+            namespace: agentops
+            labels:
+              app.kubernetes.io/name: unrelated-probe
+          spec:
+            restartPolicy: Never
+            automountServiceAccountToken: false
+            securityContext:
+              runAsNonRoot: true
+              runAsUser: 100
+              runAsGroup: 101
+              seccompProfile:
+                type: RuntimeDefault
+            containers:
+              - name: curl
+                image: ${CURL_IMAGE}
+                command: [sleep, "300"]
+                securityContext:
+                  allowPrivilegeEscalation: false
+                  capabilities:
+                    drop: [ALL]
+          ---
+          apiVersion: networking.k8s.io/v1
+          kind: NetworkPolicy
+          metadata:
+            name: gateway-probe-egress
+            namespace: agentops
+          spec:
+            podSelector:
+              matchLabels:
+                app.kubernetes.io/name: unrelated-probe
+            policyTypes: [Egress]
+            egress:
+              - to:
+                  - podSelector:
+                      matchLabels:
+                        app.kubernetes.io/name: agentgateway
+                ports:
+                  - {port: 3000, protocol: TCP}
+          ---
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: gateway-denied-probe
+            namespace: kagent
+            labels:
+              app.kubernetes.io/instance: kagent
+              app.kubernetes.io/component: unrelated
+              agentops.test/probe: "true"
+          spec:
+            restartPolicy: Never
+            automountServiceAccountToken: false
+            securityContext:
+              runAsNonRoot: true
+              runAsUser: 100
+              runAsGroup: 101
+              seccompProfile:
+                type: RuntimeDefault
+            containers:
+              - name: curl
+                image: ${CURL_IMAGE}
+                command: [sleep, "300"]
+                securityContext:
+                  allowPrivilegeEscalation: false
+                  capabilities:
+                    drop: [ALL]
+          ---
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: gateway-allowed-probe
+            namespace: kagent
+            labels:
+              app.kubernetes.io/instance: kagent
+              app.kubernetes.io/component: controller
+              agentops.test/probe: "true"
+          spec:
+            restartPolicy: Never
+            automountServiceAccountToken: false
+            securityContext:
+              runAsNonRoot: true
+              runAsUser: 100
+              runAsGroup: 101
+              seccompProfile:
+                type: RuntimeDefault
+            containers:
+              - name: curl
+                image: ${CURL_IMAGE}
+                command: [sleep, "300"]
+                securityContext:
+                  allowPrivilegeEscalation: false
+                  capabilities:
+                    drop: [ALL]
+          ---
+          apiVersion: networking.k8s.io/v1
+          kind: NetworkPolicy
+          metadata:
+            name: gateway-probe-egress
+            namespace: kagent
+          spec:
+            podSelector:
+              matchLabels:
+                agentops.test/probe: "true"
+            policyTypes: [Egress]
+            egress:
+              # Keep DNS explicit: this probe policy becomes the complete
+              # egress allow-list for both kagent probe pods.
+              - to:
+                  - namespaceSelector:
+                      matchLabels:
+                        kubernetes.io/metadata.name: kube-system
+                ports:
+                  - {port: 53, protocol: UDP}
+                  - {port: 53, protocol: TCP}
+              - to:
+                  - namespaceSelector:
+                      matchLabels:
+                        kubernetes.io/metadata.name: agentops
+                    podSelector:
+                      matchLabels:
+                        app.kubernetes.io/name: agentgateway
+                ports:
+                  - {port: 3000, protocol: TCP}
+                  - {port: 4000, protocol: TCP}
+          EOF
+          kubectl wait --for=condition=Ready pod/gateway-denied-probe \
+            --namespace agentops --timeout=120s
+          kubectl wait --for=condition=Ready \
+            pod/gateway-denied-probe pod/gateway-allowed-probe \
+            --namespace kagent --timeout=120s
+          if kubectl exec --namespace agentops gateway-denied-probe -- \
+            curl --silent --show-error --connect-timeout 2 --max-time 4 \
+            http://agentgateway:3000/ >/dev/null 2>&1; then
+            echo "unrelated agentops pod reached agentgateway:3000" >&2
+            exit 1
+          fi
+          if kubectl exec --namespace kagent gateway-denied-probe -- \
+            curl --silent --show-error --connect-timeout 2 --max-time 4 \
+            http://agentgateway.agentops.svc.cluster.local:3000/ >/dev/null 2>&1; then
+            echo "unrelated kagent pod reached agentgateway:3000" >&2
+            exit 1
+          fi
+          kubectl exec --namespace kagent gateway-allowed-probe -- \
+            curl --silent --show-error --connect-timeout 2 --max-time 4 \
+            http://agentgateway.agentops.svc.cluster.local:3000/ >/dev/null
+          # The agent image is distroless: no shell, no interpreter, nothing to exec. An
+          # ephemeral debug container joins the *same pod*, so it inherits that pod's network
+          # identity and the NetworkPolicy that selects it — which is exactly what this step
+          # asserts. `--target` also shares the agent's process namespace, used further below.
+          agent_pod="$(
+            kubectl get pod --namespace agentops \
+              --selector app.kubernetes.io/name=agentops-agent \
+              --output jsonpath='{.items[0].metadata.name}'
+          )"
+          # shellcheck disable=SC2016 # the probe's own `sh` expands these, not this script
+          kubectl debug --namespace agentops "${agent_pod}" \
+            --image "${CURL_IMAGE}" --target agent \
+            --container gateway-egress-probe --attach=false --quiet -- \
+            sh -c 'for port in 3000 4000; do
+                     code="$(curl -s -o /dev/null -w "%{http_code}" \
+                       --connect-timeout 3 --max-time 5 "http://agentgateway:${port}/" || true)"
+                     echo "agentgateway:${port} -> ${code}"
+                     [ "${code}" != "000" ] || exit 1
+                   done'
+          timeout 120 bash -c "
+            until kubectl get pod --namespace agentops '${agent_pod}' -o json |
+              jq -e '.status.ephemeralContainerStatuses[]?
+                     | select(.name == \"gateway-egress-probe\")
+                     | .state.terminated' >/dev/null; do sleep 2; done"
+          kubectl logs --namespace agentops "${agent_pod}" --container gateway-egress-probe
+          kubectl get pod --namespace agentops "${agent_pod}" -o json |
+            jq -e '.status.ephemeralContainerStatuses[]
+                   | select(.name == "gateway-egress-probe")
+                   | .state.terminated.exitCode == 0'
+
+      - name: Forward only the tested private services
+        run: |
+          forward() {
+            local name="$1"
+            shift
+            kubectl -n agentops port-forward "$@" \
+              >"${RUNNER_TEMP}/${name}-forward.log" 2>&1 &
+            echo "$!" >"${RUNNER_TEMP}/${name}-forward.pid"
+          }
+          forward gateway service/agentgateway \
+            3000:3000 3001:3001 4000:4000 15020:15020
+          forward mcp service/agentops-mcp 8000:8000
+          forward a2a service/agentops-agent 8080:8080
+          forward tempo service/tempo 3200:3200
+          forward prometheus service/prometheus 9090:9090
+          forward loki service/loki 3100:3100
+          timeout 90 bash -c \
+            'until curl -fsS http://127.0.0.1:3001/healthz >/dev/null &&
+              curl -fsS http://127.0.0.1:8000/healthz >/dev/null &&
+              curl -fsS http://127.0.0.1:8080/healthz >/dev/null &&
+              curl -fsS http://127.0.0.1:3200/ready >/dev/null &&
+              curl -fsS http://127.0.0.1:9090/-/ready >/dev/null &&
+              curl -fsS http://127.0.0.1:3100/ready >/dev/null; do sleep 1; done'
+
+      - name: Run deterministic traffic against the committed budgets
+        env:
+          DURATION: 10s
+          RATE: "2"
+          PROMPT: ${{ env.TELEMETRY_SENTINEL }}
+        run: |
+          traffic_window_start="$(date +%s)"
+          printf '%s\n' "$((traffic_window_start - 1))" \
+            >"${RUNNER_TEMP}/traffic-window-start"
+          mise run load:health
+          DURATION=15s RATE=12 mise run load:mcp
+          ITERATIONS=1 mise run load:a2a
+          traffic_window_end="$(date +%s)"
+          printf '%s\n' "$((traffic_window_end + 1))" \
+            >"${RUNNER_TEMP}/traffic-window-end"
+
+      # Read the effective privacy defaults off the running process. The image supplies the
+      # capture defaults, the platform pins the risk gate and sampler, and startup applies the
+      # gate before ADK constructs its provider. An ephemeral container with `--target agent`
+      # shares the process namespace, so it can verify the final /proc/1/environ composition.
+      - name: Verify the telemetry capture defaults on the running agent
+        run: |
+          agent_pod="$(
+            kubectl -n agentops get pods \
+              -l app.kubernetes.io/name=agentops-agent \
+              -o jsonpath='{.items[0].metadata.name}'
+          )"
+          # shellcheck disable=SC2016 # the probe's own `sh` expands these, not this script
+          kubectl debug --namespace agentops "${agent_pod}" \
+            --image "${CURL_IMAGE}" --target agent \
+            --container capture-defaults-probe --attach=false --quiet -- \
+            sh -c 'environ="$(tr "\0" "\n" </proc/1/environ)"
+                   echo "${environ}" | grep -qx "ADK_CAPTURE_MESSAGE_CONTENT_IN_SPANS=false"
+                   echo "${environ}" | grep -qx "OTEL_TRACES_SAMPLER=always_off"
+                   echo "${environ}" | grep -qx "OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=false"'
+          timeout 120 bash -c "
+            until kubectl get pod --namespace agentops '${agent_pod}' -o json |
+              jq -e '.status.ephemeralContainerStatuses[]?
+                     | select(.name == \"capture-defaults-probe\")
+                     | .state.terminated' >/dev/null; do sleep 2; done"
+          kubectl get pod --namespace agentops "${agent_pod}" -o json |
+            jq -e '.status.ephemeralContainerStatuses[]
+                   | select(.name == "capture-defaults-probe")
+                   | .state.terminated.exitCode == 0'
+
+      - name: Prove default agent tracing remains off after traffic
+        run: |
+          traffic_window_start="$(<"${RUNNER_TEMP}/traffic-window-start")"
+          traffic_window_end="$(<"${RUNNER_TEMP}/traffic-window-end")"
+          [[ "$traffic_window_start" =~ ^[0-9]+$ ]]
+          [[ "$traffic_window_end" =~ ^[0-9]+$ ]]
+          ((traffic_window_start <= traffic_window_end))
+          # A zero immediately after traffic can race Tempo's block flush. Observe
+          # the closed traffic window for a full minute and fail on any agent span.
+          for _ in {1..30}; do
+            curl -fsS -G http://127.0.0.1:3200/api/search \
+              --data-urlencode 'q={ resource.service.name = "agentops-agent" }' \
+              --data-urlencode 'limit=100' \
+              --data-urlencode "start=${traffic_window_start}" \
+              --data-urlencode "end=${traffic_window_end}" \
+              >"${RUNNER_TEMP}/tempo-traces.json"
+            jq -e '
+              (.traces | type == "array") and
+              (.traces | length == 0)
+            ' "${RUNNER_TEMP}/tempo-traces.json" >/dev/null
+            sleep 2
+          done
+
+      - name: Prove metrics and logs contain the expected evidence
+        run: |
+          prometheus_dir="${RUNNER_TEMP}/prometheus"
+          mkdir -p "$prometheus_dir"
+          for metric in \
+            agentops_calls_total \
+            agentops_duration_seconds_count \
+            agentops_tokens_token_total; do
+            response="${prometheus_dir}/${metric}.json"
+            for _ in {1..60}; do
+              curl -fsS -G http://127.0.0.1:9090/api/v1/query \
+                --data-urlencode "query=${metric}" \
+                >"$response"
+              jq -e '.status == "success" and (.data.result | length > 0)' \
+                "$response" >/dev/null && break
+              sleep 2
+            done
+            jq -e '.status == "success" and (.data.result | length > 0)' \
+              "$response" >/dev/null
+          done
+          jq -s '{queries: .}' "$prometheus_dir"/*.json \
+            >"${RUNNER_TEMP}/prometheus.json"
+
+          loki_query="{service_name=\"agentops-agent\"}"
+          for _ in {1..60}; do
+            curl -fsS -G http://127.0.0.1:3100/loki/api/v1/query_range \
+              --data-urlencode "query=${loki_query}" \
+              --data-urlencode 'since=15m' \
+              --data-urlencode 'limit=500' \
+              >"${RUNNER_TEMP}/loki.json"
+            jq -e --arg line "${TELEMETRY_LOG_LINE}" \
+              '.status == "success" and (tostring | contains($line))' \
+              "${RUNNER_TEMP}/loki.json" >/dev/null && break
+            sleep 2
+          done
+          jq -e --arg line "${TELEMETRY_LOG_LINE}" \
+            '.status == "success" and (tostring | contains($line))' \
+            "${RUNNER_TEMP}/loki.json" >/dev/null
+          jq -e --arg sentinel "${TELEMETRY_SENTINEL}" \
+            'tostring | contains($sentinel) | not' \
+            "${RUNNER_TEMP}/loki.json" >/dev/null
+
+      - name: Prove the in-cluster backup restores every persistent evidence type
+        run: |
+          work_dir="${RUNNER_TEMP}/platform-backup-drill"
+          docker_config="${work_dir}/docker"
+          [[ ! -e "${work_dir}" && ! -L "${work_dir}" ]]
+          umask 077
+          mkdir -m 700 -- "${work_dir}"
+          cleanup_work_dir() {
+            primary_status=$?
+            cleanup_status=0
+            trap - EXIT
+            set +e
+            for artifact in "${work_dir}"/platform-*.json; do
+              [[ -f "${artifact}" && ! -L "${artifact}" ]] || continue
+              cp -- "${artifact}" "${RUNNER_TEMP}/$(basename -- "${artifact}")" || cleanup_status=1
+            done
+            if [[ "${work_dir}" == "${RUNNER_TEMP}/platform-backup-drill" &&
+              -d "${work_dir}" && ! -L "${work_dir}" ]]; then
+              rm -r -- "${work_dir}" || cleanup_status=1
+            else
+              echo "::error::Refusing to clean invalid platform backup work directory ${work_dir}." >&2
+              cleanup_status=1
+            fi
+            if ((primary_status != 0)); then
+              exit "${primary_status}"
+            fi
+            exit "${cleanup_status}"
+          }
+          trap cleanup_work_dir EXIT
+          mkdir -m 700 -- "${docker_config}"
+          printf '%s\n' '{"auths":{}}' >"${docker_config}/config.json"
+          chmod 600 "${docker_config}/config.json"
+          ./infra/scripts/platform-backup-drill.sh \
+            --context k3d-local \
+            --work-dir "${work_dir}" \
+            --source-revision "${AGENT_SOURCE_REVISION}" \
+            --reader-image "${CURL_IMAGE}" \
+            --agent-card-url http://127.0.0.1:8080/.well-known/agent-card.json \
+            --docker-config "${docker_config}" \
+            --evidence-marker "${BACKUP_EVIDENCE_MARKER}"
+      - name: Collect sanitized failure diagnostics
+        if: failure()
+        run: |
+          diagnostics="${RUNNER_TEMP}/platform-diagnostics"
+          mkdir -p "${diagnostics}"
+          sanitize() {
+            sed -E \
+              -e 's/(Bearer )[A-Za-z0-9._~+\/=-]+/\1[REDACTED]/Ig' \
+              -e 's/((api[_-]?key|token|password|authorization)[^:= ]*[:=][ ]*)[^,} ]+/\1[REDACTED]/Ig'
+          }
+          {
+            kubectl config current-context
+            k3d cluster list
+            k3d registry list
+            kubectl get nodes -o wide
+            kubectl get pods --all-namespaces -o wide
+            kubectl get events --all-namespaces --sort-by=.lastTimestamp
+          } 2>&1 | sanitize >"${diagnostics}/cluster.txt" || true
+          kubectl get \
+            deployment,statefulset,daemonset,service,pvc,networkpolicy,cronjob,job,agent,modelconfig,remotemcpserver \
+            --all-namespaces -o yaml 2>&1 |
+            sanitize >"${diagnostics}/manifests.yaml" || true
+          {
+            helm list --all-namespaces
+            helmfile --file infra/helmfile.yaml list
+            helm status kagent --namespace kagent
+            helm status kagent-crds --namespace kagent
+          } 2>&1 | sanitize >"${diagnostics}/helm.txt" || true
+          kubectl get pods --all-namespaces -o json |
+            jq '
+            def safe_container_state:
+              if type != "object" then {}
+              else {
+                waiting: (if .waiting then {reason: .waiting.reason} else null end),
+                running: (if .running then {startedAt: .running.startedAt} else null end),
+                terminated: (
+                  if .terminated then
+                    (.terminated | {exitCode, reason, signal, startedAt, finishedAt})
+                  else null
+                  end
+                )
+              } | with_entries(select(.value != null))
+              end;
+            [
+              .items[] | {
+                namespace: .metadata.namespace,
+                pod: .metadata.name,
+                containers: [
+                  .status.containerStatuses[]? |
+                  {
+                    name,
+                    image,
+                    imageID,
+                    ready,
+                    restartCount,
+                    state: (.state | safe_container_state),
+                    lastState: (.lastState | safe_container_state)
+                  }
+                ]
+              }
+            ]' | sanitize >"${diagnostics}/images.json" || true
+          while read -r namespace pod container; do
+            kubectl logs --namespace "${namespace}" "${pod}" \
+              --container "${container}" --tail=500 2>&1 |
+              sanitize >"${diagnostics}/log-${namespace}-${pod}-${container}.txt" || true
+            kubectl logs --namespace "${namespace}" "${pod}" \
+              --container "${container}" --previous --tail=500 2>&1 |
+              sanitize >"${diagnostics}/log-${namespace}-${pod}-${container}-previous.txt" || true
+          done < <(
+            kubectl get pods --all-namespaces -o json |
+              jq -r '.items[] |
+                .metadata.namespace as $namespace |
+                .metadata.name as $pod |
+                .spec.containers[] |
+                [$namespace, $pod, .name] | @tsv'
+          )
+          cp "${RUNNER_TEMP}"/*-forward.log "${diagnostics}/" 2>/dev/null || true
+          cp "${RUNNER_TEMP}"/fake-model.log "${diagnostics}/" 2>/dev/null || true
+          cp "${RUNNER_TEMP}"/tempo-*.json "${diagnostics}/" 2>/dev/null || true
+          cp "${RUNNER_TEMP}"/prometheus.json "${diagnostics}/" 2>/dev/null || true
+          cp "${RUNNER_TEMP}"/loki.json "${diagnostics}/" 2>/dev/null || true
+          cp "${RUNNER_TEMP}"/platform-*.json "${diagnostics}/" 2>/dev/null || true
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: platform-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/platform-diagnostics
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Tear down every temporary resource
+        id: teardown
+        if: always()
+        continue-on-error: true
+        run: |
+          status=0
+          for process_file in \
+            "${RUNNER_TEMP}/gateway-forward.pid" \
+            "${RUNNER_TEMP}/mcp-forward.pid" \
+            "${RUNNER_TEMP}/a2a-forward.pid" \
+            "${RUNNER_TEMP}/tempo-forward.pid" \
+            "${RUNNER_TEMP}/prometheus-forward.pid" \
+            "${RUNNER_TEMP}/loki-forward.pid" \
+            "${RUNNER_TEMP}/fake-model.pid"; do
+            if [[ -f "${process_file}" ]]; then
+              kill "$(cat "${process_file}")" 2>/dev/null || true
+            fi
+          done
+          if [[ "$(kubectl config current-context 2>/dev/null || true)" == k3d-local ]]; then
+            (
+              cd infra
+              SKAFFOLD_DEFAULT_REPO=registry.localhost:5050 \
+                skaffold delete --filename skaffold.yaml --profile local
+            ) || status=1
+            helmfile --file infra/helmfile.yaml destroy || status=1
+          fi
+          if k3d cluster list -o json |
+            jq -e 'any(.[]; .name == "local")' >/dev/null; then
+            k3d cluster delete local || status=1
+          fi
+          if k3d registry list -o json |
+            jq -e 'any(.[]; .name == "registry.localhost")' >/dev/null; then
+            echo "registry.localhost remains after platform teardown" >&2
+            status=1
+          fi
+          exit "${status}"
+
+      - name: Record incomplete teardown
+        if: steps.teardown.outcome == 'failure'
+        run: |
+          diagnostics="${RUNNER_TEMP}/platform-teardown-diagnostics"
+          mkdir -p "${diagnostics}"
+          {
+            kubectl config current-context 2>/dev/null || true
+            k3d cluster list || true
+            k3d registry list || true
+            docker ps --all --filter label=app.kubernetes.io/part-of=agentops-open-course || true
+          } >"${diagnostics}/remaining-resources.txt" 2>&1
+
+      - name: Upload teardown diagnostics
+        if: steps.teardown.outcome == 'failure'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: platform-teardown-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/platform-teardown-diagnostics
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Fail when teardown is incomplete
+        if: steps.teardown.outcome == 'failure'
+        run: |
+          echo "::error::The platform acceptance left temporary resources behind."
+          exit 1

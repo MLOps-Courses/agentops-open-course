@@ -1,0 +1,42 @@
+{{- /*
+  Overrides Hextra's list.rss.xml for one reason: the theme selects a feed's items with
+  `where site.RegularPages "Type" ...`, against `params.rss.sections` on the home feed
+  and against the section's own name on a chapter feed. hugo.toml cascades
+  `type = "docs"` onto every page, so the home feed looked for `blog` and each chapter
+  feed compared "docs" with "0. Overview" — all ten published feeds served channel
+  metadata and no items, permanently and with nothing failing.
+
+  Selecting on the page list itself is what fixes both shapes at once. The item carries
+  the page's curated `description` rather than the theme's inlined `.Content`: a course
+  feed exists to say a page appeared, and 74 full pages of HTML in one document is not
+  that. No `pubDate` or `lastBuildDate`: this course sets no dates, and RFC-822 year
+  0001 on every item would sort an aggregator wrongly rather than leave it to dedupe on
+  `<guid>`, which is what actually flags a new chapter.
+*/ -}}
+{{- $pages := .RegularPages -}}
+{{- if .IsHome -}}{{ $pages = site.RegularPages }}{{- end -}}
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>{{ .Site.Title }}{{ if ne .Title .Site.Title }} – {{ .Title }}{{ end }}</title>
+    <link>{{ .Permalink }}</link>
+    <description>{{ with .Description }}{{ . }}{{ else }}Recent content {{ if ne .Title .Site.Title }}in {{ .Title }} {{ end }}on {{ .Site.Title }}{{ end }}</description>
+    <generator>Hugo -- gohugo.io</generator>
+    {{- with partial "utils/hugo-compat/language-locale.html" .Site.Language }}
+    <language>{{ . }}</language>
+    {{- end }}
+    {{- with .Site.Copyright }}
+    <copyright>{{ . }}</copyright>
+    {{- end }}
+    {{- with .OutputFormats.Get "RSS" }}
+    {{ printf "<atom:link href=%q rel=\"self\" type=%q />" .Permalink .MediaType | safeHTML }}
+    {{- end }}
+    {{- range $pages }}
+    <item>
+      <title>{{ .Title }}</title>
+      <link>{{ .Permalink }}</link>
+      <guid>{{ .Permalink }}</guid>
+      <description>{{ .Description }}</description>
+    </item>
+    {{- end }}
+  </channel>
+</rss>

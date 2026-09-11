@@ -1,0 +1,146 @@
+# The learning path, ordered by hand — the port of the `nav:` block in mkdocs.yml.
+#
+# This is deliberately NOT 74 `weight:` front-matter fields. Ordering scattered across the
+# pages loses the property this file exists for: adding a page cannot silently reorder the
+# course. Two things here are also inexpressible in Hugo's content tree, which is the other
+# reason the nav stays a single hand-written file:
+#
+#   1. Cross-chapter prerequisites — "1.2. Container Engine" appears inside chapter 5 and
+#      "1.3. Kubernetes" inside chapter 6, while both live in chapter 1.
+#   2. The nested "Optional OSS maintenance" group inside chapter 8.
+#
+# `page` is the path under content/. `label` overrides the page title in the sidebar, and is
+# used only for the two prerequisite entries. The native conventions navigation check
+# fails the build when a page under content/ is missing here, or when an entry names a page
+# that does not exist.
+
+- page: _index.md
+  label: Home
+
+- label: 0. Overview
+  children:
+    - page: 0. Overview/_index.md
+      label: Overview
+    - page: 0. Overview/0.0. Course.md
+    - page: 0. Overview/0.1. Agents.md
+    - page: 0. Overview/0.2. Evidence.md
+    - page: 0. Overview/0.3. AgentOps.md
+    - page: 0. Overview/0.4. Ecosystem.md
+    - page: 0. Overview/0.5. Provider Options.md
+    - page: 0. Overview/0.6. Resources.md
+    - page: 0. Overview/0.7. Troubleshooting.md
+    - page: 0. Overview/0.8. Glossary.md
+
+- label: 1. Setup
+  children:
+    - page: 1. Setup/_index.md
+      label: Setup
+    - page: 1. Setup/1.0. System.md
+    - page: 1. Setup/1.1. Go.md
+    - page: 1. Setup/1.4. Providers.md
+    - page: 1. Setup/1.5. Workspace.md
+
+- label: 2. Agents
+  children:
+    - page: 2. Agents/_index.md
+      label: Agents
+    - page: 2. Agents/2.0. Concepts.md
+    - page: 2. Agents/2.1. First Agent.md
+    - page: 2. Agents/2.2. Models.md
+    - page: 2. Agents/2.3. Instructions.md
+    - page: 2. Agents/2.4. Sessions.md
+    - page: 2. Agents/2.5. Dev Loop.md
+
+- label: 3. Capabilities
+  children:
+    - page: 3. Capabilities/_index.md
+      label: Capabilities
+    - page: 3. Capabilities/3.0. Packaging.md
+    - page: 3. Capabilities/3.1. Tools.md
+    - page: 3. Capabilities/3.2. Skills.md
+    - page: 3. Capabilities/3.3. MCP.md
+    - page: 3. Capabilities/3.4. Memory.md
+    - page: 3. Capabilities/3.5. Workflows.md
+    - page: 3. Capabilities/3.6. A2A.md
+    - page: 3. Capabilities/3.7. Multi-Agent.md
+    - page: 3. Capabilities/3.8. Streaming.md
+    - page: 3. Capabilities/3.9. Incident Run.md
+
+- label: 4. Quality
+  children:
+    - page: 4. Quality/_index.md
+      label: Quality
+    - page: 4. Quality/4.0. Type Safety.md
+    - page: 4. Quality/4.1. Linting.md
+    - page: 4. Quality/4.2. Testing.md
+    - page: 4. Quality/4.3. Metrics.md
+    - page: 4. Quality/4.4. Evaluations.md
+    - page: 4. Quality/4.5. Guardrails.md
+    - page: 4. Quality/4.6. Security.md
+
+- label: 5. Gateway
+  children:
+    - page: 5. Gateway/_index.md
+      label: Gateway
+    - page: 5. Gateway/5.0. Gateway.md
+    - page: 1. Setup/1.2. Container Engine.md
+      label: Prerequisite — 1.2. Container Engine
+    - page: 5. Gateway/5.1. Gateway Setup.md
+    - page: 5. Gateway/5.2. MCP Gateway.md
+    - page: 5. Gateway/5.3. A2A Gateway.md
+    - page: 5. Gateway/5.4. Model Gateway.md
+    - page: 5. Gateway/5.5. Gateway Security.md
+    - page: 5. Gateway/5.6. Gateway Observability.md
+
+- label: 6. Platform
+  children:
+    - page: 6. Platform/_index.md
+      label: Platform
+    - page: 6. Platform/6.0. Platform.md
+    - page: 1. Setup/1.3. Kubernetes.md
+      label: Prerequisite — 1.3. Kubernetes
+    - page: 6. Platform/6.1. Containers.md
+    - page: 6. Platform/6.2. Platform Install.md
+    - page: 6. Platform/6.3. Platform Agents.md
+    - page: 6. Platform/6.4. Platform Tools.md
+    - page: 6. Platform/6.5. Platform Gateway.md
+    - page: 6. Platform/6.6. Platform Delivery.md
+    - page: 6. Platform/6.7. Promotion and Rollback.md
+    - page: 6. Platform/6.8. Platform Operations.md
+    - page: 6. Platform/6.9. Scale Out.md
+
+- label: 7. Observability
+  children:
+    - page: 7. Observability/_index.md
+      label: Observability
+    - page: 7. Observability/7.0. Reproducibility.md
+    - page: 7. Observability/7.1. Tracing.md
+    - page: 7. Observability/7.2. Monitoring.md
+    - page: 7. Observability/7.2b. Alerting.md
+    - page: 7. Observability/7.3. Costs.md
+    - page: 7. Observability/7.3b. Cost Governance.md
+    - page: 7. Observability/7.4. Feedback.md
+    - page: 7. Observability/7.5. Online Evaluation.md
+    - page: 7. Observability/7.6. Governance.md
+    - page: 7. Observability/7.7. Incident Response.md
+
+- label: 8. Community
+  children:
+    - page: 8. Community/_index.md
+      label: Community
+    # The capstone is the chapter's destination and the end of the required path, so it sits
+    # directly under the chapter index. Everything below it is skippable maintenance reference.
+    - page: 8. Community/8.7. Capstone.md
+    # A lookup for readers arriving from LangGraph or the Python course, not
+    # maintenance reference — so it sits beside the capstone rather than inside
+    # the appendix, where its heading told readers it was optional.
+    - page: 8. Community/8.8. From Python.md
+    - label: Appendix — Optional OSS maintenance
+      children:
+        - page: 8. Community/8.0. Repository.md
+        - page: 8. Community/8.1. License.md
+        - page: 8. Community/8.2. Releases.md
+        - page: 8. Community/8.3. Templates.md
+        - page: 8. Community/8.4. Documentation.md
+        - page: 8. Community/8.5. Contributions.md
+        - page: 8. Community/8.6. AAIF.md

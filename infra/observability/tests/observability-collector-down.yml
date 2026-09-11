@@ -1,0 +1,56 @@
+# Deterministic proof for ObservabilityCollectorDown, the second rule that
+# pages. The first case below is the outage; the second is the reason the first
+# is not enough. A target that is down for the whole test never shows that the
+# comparison is `== 0` rather than something trivially true, so the healthy
+# case is what actually pins the expression: it stays quiet while `up` is 1 and
+# only pages once the scrape starts failing.
+rule_files:
+  - ../prometheus-rules.yml
+
+evaluation_interval: 1m
+
+tests:
+  - interval: 1m
+    input_series:
+      - series: 'up{job="otel-collector"}'
+        values: 0x5
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: ObservabilityCollectorDown
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: ObservabilityCollectorDown
+        exp_alerts:
+          - exp_labels:
+              job: otel-collector
+              severity: page
+            exp_annotations:
+              summary: Prometheus cannot scrape the OpenTelemetry Collector
+              description: The otel-collector scrape target has been down for 2 minutes. All traces, metrics, and logs are being dropped in the meantime.
+              runbook: https://github.com/MLOps-Courses/agentops-open-course/blob/main/content/7.%20Observability/7.2b.%20Alerting.md#the-four-responses-worth-memorising
+
+  # A healthy collector for six minutes, then a scrape failure at minute 6. The
+  # quiet half is the assertion that costs nothing to get wrong: an expression
+  # that fired on any `up` sample would already be firing at minute 5.
+  - interval: 1m
+    input_series:
+      - series: 'up{job="otel-collector"}'
+        values: 1x5 0x5
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: ObservabilityCollectorDown
+        exp_alerts: []
+      # Minute 7 is inside the 2m `for:` window that started at minute 6.
+      - eval_time: 7m
+        alertname: ObservabilityCollectorDown
+        exp_alerts: []
+      - eval_time: 9m
+        alertname: ObservabilityCollectorDown
+        exp_alerts:
+          - exp_labels:
+              job: otel-collector
+              severity: page
+            exp_annotations:
+              summary: Prometheus cannot scrape the OpenTelemetry Collector
+              description: The otel-collector scrape target has been down for 2 minutes. All traces, metrics, and logs are being dropped in the meantime.
+              runbook: https://github.com/MLOps-Courses/agentops-open-course/blob/main/content/7.%20Observability/7.2b.%20Alerting.md#the-four-responses-worth-memorising

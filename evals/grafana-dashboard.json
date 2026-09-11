@@ -1,0 +1,101 @@
+{
+  "annotations": { "list": [] },
+  "description": "Compares two evaluation runs by run id. The harness declares its gauges with unit \"1\", so the collector's Prometheus exporter publishes them with a _ratio suffix; the panel expressions below query the published names, not the instrument names.",
+  "editable": true,
+  "graphTooltip": 1,
+  "panels": [
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Which scorer moved, and in which direction? One series per scorer per run, so a run that gained on groundedness while losing on trajectory cannot hide behind a single average.",
+      "fieldConfig": { "defaults": { "min": 0, "max": 1, "unit": "percentunit" }, "overrides": [] },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 0 },
+      "id": 1,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom" } },
+      "targets": [
+        {
+          "expr": "avg by (eval_run_id, agentops_eval_score_name) (agentops_eval_score_ratio{eval_run_id=~\"$baseline_run|$candidate_run\"})",
+          "legendFormat": "{{eval_run_id}} {{agentops_eval_score_name}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Score comparison",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Did the run get better overall, or only on one scorer? The case gauge is 0 or 1 per case sample, so averaging it over a run is that run's pass rate.",
+      "fieldConfig": { "defaults": { "min": 0, "max": 1, "unit": "percentunit" }, "overrides": [] },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 0 },
+      "id": 2,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom" } },
+      "targets": [
+        {
+          "expr": "avg by (eval_run_id) (agentops_eval_case_passed_ratio{eval_run_id=~\"$baseline_run|$candidate_run\"})",
+          "legendFormat": "{{eval_run_id}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Case pass rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "What did the change cost? Tokens and model calls summed per run, so an improvement bought with three extra retries per case is visible next to the score that bought it.",
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 9 },
+      "id": 3,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom" } },
+      "targets": [
+        {
+          "expr": "sum by (eval_run_id) (agentops_eval_tokens{eval_run_id=~\"$baseline_run|$candidate_run\"})",
+          "legendFormat": "{{eval_run_id}} tokens",
+          "refId": "A"
+        },
+        {
+          "expr": "sum by (eval_run_id) (agentops_eval_model_calls{eval_run_id=~\"$baseline_run|$candidate_run\"})",
+          "legendFormat": "{{eval_run_id}} model calls",
+          "refId": "B"
+        }
+      ],
+      "title": "Cost evidence",
+      "type": "timeseries"
+    }
+  ],
+  "schemaVersion": 41,
+  "tags": ["agentops", "evaluation"],
+  "templating": {
+    "list": [
+      {
+        "current": {},
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "definition": "label_values(agentops_eval_run_passed_ratio, eval_run_id)",
+        "label": "Reviewed baseline run",
+        "name": "baseline_run",
+        "query": {
+          "query": "label_values(agentops_eval_run_passed_ratio, eval_run_id)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 1,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "definition": "label_values(agentops_eval_run_passed_ratio, eval_run_id)",
+        "label": "Candidate run",
+        "name": "candidate_run",
+        "query": {
+          "query": "label_values(agentops_eval_run_passed_ratio, eval_run_id)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 1,
+        "type": "query"
+      }
+    ]
+  },
+  "time": { "from": "now-24h", "to": "now" },
+  "timezone": "browser",
+  "title": "AgentOps evaluation comparison",
+  "uid": "agentops-evaluation-comparison",
+  "version": 1
+}

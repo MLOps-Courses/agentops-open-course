@@ -1,0 +1,206 @@
+# Temporary Chapter 6.9 exercise fixture: the shared session store, in cluster.
+#
+# Apply it by hand, point one agent at it, watch what changes and what does not,
+# then delete it. It is the in-cluster form of the `docker run postgres` step in
+# 6.9. Scale Out, and it exists so the shared-session-store lesson can be read
+# against a Service, a StatefulSet, and the NetworkPolicies that fence them,
+# rather than against a container on your laptop.
+#
+# It is deliberately absent from every deployable overlay. Readiness is no longer
+# the reason: `a2aserver/postgres.go` probes the shared store through
+# information_schema, so an agent on PostgreSQL reports ready, and an earlier
+# version of this comment claiming it stays `{"status":"unready"}` forever was
+# wrong — 6.9 says so too. The reason it stays out of the overlays is ownership:
+# this StatefulSet has no backup, no restore drill, and a password in plain sight,
+# which is exactly what an exercise may have and a deployment may not.
+#
+# `check:infra` validates this file with kubeconform so a fixture nobody applies
+# still cannot go stale against the API version the cluster runs.
+#
+# The password below is a non-secret marker, exactly like the `agentgateway` and
+# `local-ollama` markers elsewhere in this repository: this fixture is reachable
+# only from the agent pod, by the NetworkPolicies at the bottom of this file, and
+# it is deleted at the end of the exercise. A deployment that outlives an
+# exercise takes its password from a sops-encrypted Secret — see
+# `infra/scripts/secrets.sh` and `infra/k8s/base/secrets/`.
+apiVersion: v1
+kind: Service
+metadata:
+  name: agentops-sessions
+  namespace: agentops
+  labels:
+    app.kubernetes.io/name: agentops-sessions
+    app.kubernetes.io/part-of: agentops-open-course
+    agentops.fmind.dev/exercise: sessions-postgres
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: agentops-sessions
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: agentops-sessions
+  namespace: agentops
+  labels:
+    app.kubernetes.io/name: agentops-sessions
+    app.kubernetes.io/part-of: agentops-open-course
+    agentops.fmind.dev/exercise: sessions-postgres
+spec:
+  # A StatefulSet rather than a Deployment, for one reason that matters: its
+  # volumeClaimTemplate binds this database to this identity. A Deployment's
+  # rolling update would happily start a second PostgreSQL on the same claim,
+  # and two postmasters on one data directory is how a lab loses its data.
+  serviceName: agentops-sessions
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: agentops-sessions
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: agentops-sessions
+        app.kubernetes.io/part-of: agentops-open-course
+        agentops.fmind.dev/exercise: sessions-postgres
+    spec:
+      # Long enough for a clean shutdown checkpoint; PostgreSQL recovers from a
+      # SIGKILL through its write-ahead log, but recovery is time a restart does
+      # not have to spend.
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        # The alpine image's own postgres user. fsGroup is what makes the
+        # freshly provisioned volume writable by it.
+        runAsUser: 70
+        runAsGroup: 70
+        fsGroup: 70
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: postgres
+          # The same digest the kagent chart pins for its own bundled database,
+          # so this cluster pulls one PostgreSQL image rather than two.
+          image: postgres:18.3-alpine@sha256:54451ecb8ab38c24c3ec123f2fd501303a3a1856a5c66e98cecf2460d5e1e9d7
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: POSTGRES_USER
+              value: agentops
+            - name: POSTGRES_DB
+              value: sessions
+            # Non-secret marker; see the file header.
+            - name: POSTGRES_PASSWORD
+              value: local-postgres
+            # A subdirectory, never the mount root: initdb refuses a directory
+            # that already has content, and some volumes arrive with some.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          ports:
+            - name: postgres
+              containerPort: 5432
+          # pg_isready answers the question a readiness probe actually asks —
+          # will a connection be accepted — rather than whether a port is open.
+          startupProbe:
+            exec:
+              command: [pg_isready, -U, agentops, -d, sessions]
+            periodSeconds: 2
+            failureThreshold: 30
+          readinessProbe:
+            exec:
+              command: [pg_isready, -U, agentops, -d, sessions]
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: [pg_isready, -U, agentops, -d, sessions]
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          # A read-only root filesystem plus exactly two writable paths is
+          # enough for this image: the unix socket directory and /tmp. Everything
+          # durable belongs on the claim.
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            - name: run
+              mountPath: /var/run/postgresql
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: run
+          emptyDir:
+            sizeLimit: 16Mi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          app.kubernetes.io/name: agentops-sessions
+          app.kubernetes.io/part-of: agentops-open-course
+          agentops.fmind.dev/exercise: sessions-postgres
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests:
+            storage: 1Gi
+---
+# NetworkPolicies are additive, so these two rules open exactly one flow on top
+# of the namespace default-deny without editing a base policy. Nothing else in
+# the namespace may reach the database — not the MCP server, not the collector,
+# not the gateway.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: agentops-sessions-ingress
+  namespace: agentops
+  labels:
+    app.kubernetes.io/part-of: agentops-open-course
+    agentops.fmind.dev/exercise: sessions-postgres
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: agentops-sessions
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: agentops-agent
+      ports:
+        - { port: 5432, protocol: TCP }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: agent-sessions-egress
+  namespace: agentops
+  labels:
+    app.kubernetes.io/part-of: agentops-open-course
+    agentops.fmind.dev/exercise: sessions-postgres
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: agentops-agent
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: agentops-sessions
+      ports:
+        - { port: 5432, protocol: TCP }

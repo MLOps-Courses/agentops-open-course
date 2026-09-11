@@ -1,0 +1,183 @@
+name: agentops-observability
+
+x-hardened-service: &hardened-service
+  cap_drop: [ALL]
+  init: true
+  read_only: true
+  security_opt:
+    - no-new-privileges:true
+
+services:
+  tempo:
+    <<: *hardened-service
+    # Distroless image (no shell), so no Compose healthcheck; the collector
+    # retries failed exports and Grafana proxies queries on demand.
+    image: grafana/tempo:3.0.2@sha256:cda87c212d8c584dc0b89e337e7ed648a5100feb657e5d528480ee4fa03dbbe3
+    command: ["-config.file=/etc/tempo/config.yaml"]
+    volumes:
+      - ./tempo.yaml:/etc/tempo/config.yaml:ro
+      - tempo-data:/var/tempo
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cpus: 0.5
+    mem_limit: 1g
+    pids_limit: 128
+    user: "10001:10001"
+    ports:
+      - "127.0.0.1:${TEMPO_PORT:-3200}:3200"
+
+  loki:
+    <<: *hardened-service
+    # Distroless image (no shell), so no Compose healthcheck; the collector
+    # retries failed exports and Grafana proxies queries on demand.
+    image: grafana/loki:3.7.4@sha256:87f0a067673756a3cede1bcbf0c74875f7df9b09fddb53e399d0c576f756cfcc
+    command: ["-config.file=/etc/loki/config.yaml"]
+    volumes:
+      - ./loki.yaml:/etc/loki/config.yaml:ro
+      - loki-data:/loki
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cpus: 0.5
+    mem_limit: 512m
+    pids_limit: 128
+    user: "10001:10001"
+    ports:
+      - "127.0.0.1:${LOKI_PORT:-3100}:3100"
+
+  otel-collector:
+    <<: *hardened-service
+    image: otel/opentelemetry-collector-contrib:0.157.0@sha256:f2f01157055a9b2aab9df7118e1f1c9abf345e99b23bc7a2bc791db374a7d0f6
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./otel-collector.yaml:/etc/otelcol/config.yaml:ro
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cpus: 0.5
+    mem_limit: 512m
+    pids_limit: 128
+    user: "10001:10001"
+    ports:
+      - "127.0.0.1:${OTEL_GRPC_PORT:-4317}:4317"
+      - "127.0.0.1:${OTEL_HTTP_PORT:-4318}:4318"
+    depends_on:
+      loki:
+        condition: service_started
+      tempo:
+        condition: service_started
+
+  alertmanager:
+    <<: *hardened-service
+    image: prom/alertmanager:v0.33.1@sha256:9e082985f56f4c8c9f724e18f2288c6708f472e56a5286b8863d080434ea065d
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+    # Docker Desktop resolves this to its host transport. On native Linux the
+    # placeholder receiver must listen on the bridge address, not host loopback.
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    volumes:
+      - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager-data:/alertmanager
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    cpus: 0.25
+    mem_limit: 256m
+    pids_limit: 128
+    user: "65534:65534"
+    ports:
+      - "127.0.0.1:${ALERTMANAGER_PORT:-9093}:9093"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9093/-/healthy"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  prometheus:
+    <<: *hardened-service
+    image: prom/prometheus:v3.13.2@sha256:508729e0e2d18e11fd742a5a5ca70e557b940a93948c3c95fd0123a6fd538b69
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus-rules.yml:/etc/prometheus/rules/agentops.yml:ro
+      - prometheus-data:/prometheus
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cpus: 0.5
+    mem_limit: 1g
+    pids_limit: 128
+    user: "65534:65534"
+    ports:
+      - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
+    depends_on:
+      - otel-collector
+      - alertmanager
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  grafana:
+    <<: *hardened-service
+    image: grafana/grafana:13.1.1@sha256:7cb8c64c4d57a57e734073f3cc94620adb24a0acb929bd80ba9f14017e3a975b
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_SECURITY_DISABLE_INITIAL_ADMIN_CREATION: "true"
+      # Explore is a Viewer capability only when this is on, and Chapter 7.1 asks
+      # every learner to open it — verified on 13 August 2026 against this pinned
+      # image: without it the anonymous role holds datasources:query and
+      # datasources:read but not datasources:explore, and /explore silently
+      # redirects to the home dashboard. The page's central instruction was
+      # therefore impossible to follow against the stack the course ships.
+      #
+      # The widening is smaller than it reads. It grants an in-session editing
+      # surface, not persistence: nothing anonymous can save a dashboard, create a
+      # datasource, or reach an admin route, and this stack publishes on loopback
+      # only. Granting the Editor role instead would have bought the same Explore
+      # access plus write permissions nobody here needs.
+      GF_USERS_VIEWERS_CAN_EDIT: "true"
+    volumes:
+      - ./grafana/datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml:ro
+      - ./grafana/dashboards.yaml:/etc/grafana/provisioning/dashboards/dashboards.yaml:ro
+      # Mount each dashboard as its own file. Binding the directory read-only and then
+      # binding a file inside it makes runc create a mountpoint under a read-only mount,
+      # which fails the container outright ("read-only file system"). Landing both files
+      # directly in the grafana-data volume keeps each one read-only without that nesting.
+      - ./grafana/dashboards/agentops.json:/var/lib/grafana/dashboards/agentops.json:ro
+      - ../../evals/grafana-dashboard.json:/var/lib/grafana/dashboards/evaluations.json:ro
+      - grafana-data:/var/lib/grafana
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+      - /var/log/grafana:size=64m
+    cpus: 0.5
+    mem_limit: 512m
+    pids_limit: 128
+    user: "472:0"
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT:-3002}:3000"
+    depends_on:
+      loki:
+        condition: service_started
+      prometheus:
+        condition: service_healthy
+      tempo:
+        condition: service_started
+
+volumes:
+  alertmanager-data: {}
+  grafana-data: {}
+  loki-data: {}
+  prometheus-data: {}
+  tempo-data: {}
+
+# Share the gateway wrapper's scoped bridge so Prometheus scrapes the gateway
+# container directly. The startup tasks create this external network first.
+networks:
+  default:
+    name: ${AGENTOPS_GATEWAY_NETWORK:-agentops-host-gateway-net}
+    external: true

@@ -1,0 +1,43 @@
+# Single-binary Tempo with filesystem storage and native OTLP ingestion on
+# :4318. Multitenancy stays off because every listener is loopback-only;
+# retention is bounded to 7 days, matching Loki and Prometheus.
+stream_over_http_enabled: true
+
+server:
+  http_listen_port: 3200
+
+# Only the OTLP/HTTP receiver is enabled. The collector is the single writer,
+# and it already owns the vendor-neutral OTLP entry point on :4317/:4318, so a
+# second gRPC listener here would be an unused open port.
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        http:
+          endpoint: 0.0.0.0:4318
+
+storage:
+  trace:
+    backend: local
+    local:
+      path: /var/tempo/blocks
+    wal:
+      path: /var/tempo/wal
+
+# Tempo 3 splits compaction between the scheduler that plans jobs and the
+# worker that runs them; both carry their own retention copy, so a single-binary
+# deployment must set the bound twice or blocks survive for the 14-day default.
+backend_scheduler:
+  provider:
+    compaction:
+      compaction:
+        block_retention: 168h
+
+backend_worker:
+  compaction:
+    block_retention: 168h
+
+# The course promises an account-free path with no mandatory SaaS. Tempo's
+# anonymous usage report is on by default and would contact Grafana Labs.
+usage_report:
+  reporting_enabled: false

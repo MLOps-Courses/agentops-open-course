@@ -1,0 +1,59 @@
+{{- /*
+  Render one level of data/nav.yaml. Calls itself for the nested groups.
+
+  Input: dict entries (the nav list) / current (the page being rendered) / depth
+
+  Styling reuses Hextra's *own* sidebar utility classes verbatim rather than inventing new
+  ones. That is a hard constraint, not a preference: the theme ships a pre-compiled Tailwind
+  bundle built before this template exists, so any class the theme does not already use would
+  simply not be in the CSS. Everything Tailwind cannot express (the <details> marker, the
+  chevron rotation, the nesting guide) lives in assets/css/custom.css under .course-nav.
+
+  Groups are native <details>, open when they contain the current page: the disclosure works
+  without JavaScript, is keyboard-operable, and is announced as expandable. The current page
+  carries aria-current="page" rather than only a colour, so its position in the learning path
+  is available to a screen reader too.
+*/ -}}
+
+{{- $current := .current -}}
+{{- $depth := .depth | default 0 -}}
+
+{{- $row := "hx:flex hx:items-center hx:justify-between hx:gap-2 hx:grow hx:cursor-pointer hx:rounded-sm hx:px-2 hx:py-1.5 hx:text-sm hx:transition-colors hx:hextra-focus-visible-inset" -}}
+{{- $rest := "hx:text-gray-500 hx:hover:bg-gray-100 hx:hover:text-gray-900 hx:contrast-more:border hx:contrast-more:border-transparent hx:contrast-more:text-gray-900 hx:contrast-more:hover:border-gray-900 hx:dark:text-neutral-400 hx:dark:hover:bg-primary-100/5 hx:dark:hover:text-gray-50 hx:contrast-more:dark:text-gray-50 hx:contrast-more:dark:hover:border-gray-50" -}}
+{{- $on := "hextra-sidebar-active-item hx:bg-primary-100 hx:font-semibold hx:text-primary-800 hx:contrast-more:border hx:contrast-more:border-primary-500 hx:dark:bg-primary-400/10 hx:dark:text-primary-600 hx:contrast-more:dark:border-primary-500" -}}
+
+<ul class="course-nav__list" data-depth="{{ $depth }}">
+  {{- range .entries -}}
+    {{- if .children -}}
+      {{- /* A group is open when the current page is inside it — computed by rendering the
+             child links once into a string and testing for the active marker. */ -}}
+      {{- $inner := partial "nav/items.html" (dict "entries" .children "current" $current "depth" (add $depth 1)) -}}
+      {{- $here := strings.Contains $inner "aria-current" -}}
+      <li class="course-nav__group">
+        <details {{ if $here }}open{{ end }}>
+          <summary class="course-nav__summary {{ $row }} {{ if $here }}{{ $on }}{{ else }}{{ $rest }}{{ end }}">
+            <span class="hx:min-w-0 [word-break:break-word]">{{ .label }}</span>
+            {{- partial "nav/chevron.html" . -}}
+          </summary>
+          {{ $inner }}
+        </details>
+      </li>
+    {{- else -}}
+      {{- $target := site.GetPage (printf "/%s" .page) -}}
+      {{- if not $target -}}
+        {{- errorf "data/nav.yaml names a page that does not exist: %q" .page -}}
+      {{- else -}}
+        {{- $active := eq $target.RelPermalink $current.RelPermalink -}}
+        <li class="course-nav__item">
+          <a
+            href="{{ $target.RelPermalink }}"
+            {{ if $active }}aria-current="page"{{ end }}
+            class="course-nav__link {{ $row }} {{ if $active }}{{ $on }}{{ else }}{{ $rest }}{{ end }}"
+          >
+            <span class="hx:min-w-0 [word-break:break-word]">{{- .label | default $target.Title -}}</span>
+          </a>
+        </li>
+      {{- end -}}
+    {{- end -}}
+  {{- end -}}
+</ul>

@@ -1,0 +1,233 @@
+# Model-backed evidence for the Go agent, on explicit dispatch only. A run pulls a
+# local open model, drives the black-box wire harness against the candidate
+# container, and exports sanitized evidence — it is slow, stochastic, and spends a
+# runner for up to two hours, so it is never a merge gate. Every pull request is
+# covered by the deterministic offline validator (`eval:validate`) inside CI.
+name: Eval
+
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: "Ollama model tag to evaluate"
+        type: string
+        default: qwen3:4b-instruct
+
+permissions:
+  contents: read
+
+concurrency:
+  group: eval-${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  evaluate:
+    if: github.repository == 'MLOps-Courses/agentops-open-course'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      AGENT_BUILD_MODE: release
+      AGENT_MODEL_PROVIDER: openai-compatible
+      AGENT_MODEL: ${{ inputs.model || 'qwen3:4b-instruct' }}
+      AGENT_MODEL_TEMPERATURE: "0"
+      AGENT_MODEL_TIMEOUT_S: "180"
+      AGENT_MAX_RETRIES: "0"
+      AGENT_SOURCE_COMMIT: ${{ github.sha }}
+      OPENAI_BASE_URL: http://127.0.0.1:11434/v1
+      OPENAI_API_KEY: local-ollama
+      AGENT_PII_MODEL_BASE_URL: http://127.0.0.1:11434/v1
+      EVAL_JUDGE_BASE_URL: http://127.0.0.1:4000/v1
+      EVAL_JUDGE_API_KEY: local-ollama
+      EVAL_JUDGE_MODEL: ${{ inputs.model || 'qwen3:4b-instruct' }}
+      EVAL_OTEL_EXPORTER_OTLP_ENDPOINT: http://127.0.0.1:4318
+      EVAL_CONTEXT_LENGTH: "8192"
+      EVAL_AGENT_RUNTIME: container
+      EVAL_AGENT_IMAGE: agentops-agent:dev
+      EVAL_CONTAINER_ENGINE: docker
+      EVAL_PLATFORM_IDENTITY: github-actions-ubuntu-24.04-container
+      OLLAMA_CONTEXT_LENGTH: "8192"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Select the pinned tool manager
+        uses: jdx/mise-action@9e7f7633ff6f6d6048a9418a68d48f288f50eb14 # v4.2.3
+        with:
+          install: false
+
+      - name: Restore Go module and build caches
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: eval-go-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('agents/go/go.sum', 'evals/go.sum', 'tools/go.sum') }}
+
+      # The harness refuses a binary that does not match this checkout, so proving
+      # the image identity here turns a later mismatch into a build error instead of
+      # evidence attributed to the wrong commit.
+      - name: Build and identify the agent image under evaluation
+        run: |
+          mise install -y --locked go jq github:mikefarah/yq
+          mise run build:agent-image
+          source_identity="$(go -C tools run ./cmd/source-identity --root .. --mode release)"
+          source_tree_digest="$(jq -er .tree_digest <<<"$source_identity")"
+          version="$(tr -d '\n' < VERSION)"
+          created="$(git show -s --format=%cI HEAD)"
+          binary_identity="$(docker run --rm "$EVAL_AGENT_IMAGE" version)"
+          jq -e \
+            --arg revision "$GITHUB_SHA" \
+            --arg tree_digest "$source_tree_digest" \
+            --arg version "$version" \
+            --arg created "$created" '
+              .mode == "release" and
+              .version == $version and
+              .source_identity == $revision and
+              .revision == $revision and
+              .tree_digest == $tree_digest and
+              .build_timestamp == $created and
+              .dirty == false
+            ' <<<"$binary_identity" >/dev/null
+          cd evals
+          mise run install
+
+      - name: Install Ollama and load the pinned model
+        # compatibility hold: owner=go-eval-cost constraint=reviewed-Go-rebaseline validator=full-Eval-workflow
+        run: |
+          archive="${RUNNER_TEMP}/ollama-linux-amd64.tar.zst"
+          curl --fail --show-error --location --retry 3 \
+            --output "${archive}" \
+            "https://github.com/ollama/ollama/releases/download/v0.32.5/ollama-linux-amd64.tar.zst"
+          echo "f7d6bdbcf71b83aa8670c4e7dc4b6936c0952fcf8b114eaf6a11cbadb9684214  ${archive}" |
+            sha256sum --check -
+          zstd --decompress --stdout "${archive}" | sudo tar -xf - -C /usr/local
+          ollama serve > evals/ollama.log 2>&1 &
+          echo "OLLAMA_PID=$!" >> "$GITHUB_ENV"
+          # `ollama --version` writes its warnings to stdout, and the client raced the
+          # `ollama serve` backgrounded two lines above, so this captured
+          # "Warning: could not connect..." ahead of the version and handed $GITHUB_ENV a
+          # multi-line value it rejects — which killed the run before its first model call.
+          # One line, always.
+          echo "EVAL_OLLAMA_VERSION=$(ollama --version 2>&1 | tail -n 1 | tr -d '\r')" >> "$GITHUB_ENV"
+          timeout 60 bash -c 'until curl -fsS http://127.0.0.1:11434/ >/dev/null; do sleep 1; done'
+          ollama pull "$AGENT_MODEL"
+          model_digest="$(
+            curl -fsS http://127.0.0.1:11434/api/tags |
+              jq -er --arg model "$AGENT_MODEL" \
+                '.models[] | select(.name == $model or .model == $model) | .digest' |
+              head -n 1
+          )"
+          echo "EVAL_MODEL_DIGEST=${model_digest}" >> "$GITHUB_ENV"
+
+      - name: Start evaluation observability and judge boundary
+        env:
+          AGENT_ENTRYPOINT: agent
+          AGENT_A2A_BIND_HOST: 127.0.0.1
+          AGENT_A2A_PORT: "8080"
+          OTEL_SDK_DISABLED: "true"
+        run: |
+          mise run observability:up
+          docker run --detach --rm \
+            --name agentops-eval-judge \
+            --network host \
+            --tmpfs /app/state:rw,nosuid,nodev,noexec,uid=10001,gid=10001,mode=0700 \
+            --label "agentops.eval.source_commit=${GITHUB_SHA}" \
+            --env AGENT_ENTRYPOINT \
+            --env AGENT_A2A_BIND_HOST \
+            --env AGENT_A2A_PORT \
+            --env AGENT_MODEL_PROVIDER \
+            --env AGENT_MODEL \
+            --env AGENT_MODEL_TEMPERATURE \
+            --env AGENT_MODEL_TIMEOUT_S \
+            --env AGENT_MAX_RETRIES \
+            --env AGENT_SOURCE_COMMIT \
+            --env OPENAI_BASE_URL \
+            --env OPENAI_API_KEY \
+            --env AGENT_PII_MODEL_BASE_URL \
+            --env OTEL_SDK_DISABLED \
+            "$EVAL_AGENT_IMAGE" a2a
+          timeout 60 bash -c 'until curl -fsS http://127.0.0.1:8080/healthz >/dev/null; do sleep 1; done'
+          mise run gateway:host:start
+
+      # Calibration first: an uncalibrated judge makes the campaign's judge score
+      # unreadable. Both steps continue on error so one weak signal still produces
+      # the full sanitized verdict below instead of an empty run.
+      - name: Measure judge agreement against the labeled set
+        id: judge
+        continue-on-error: true
+        run: mise run eval:judge-calibration
+
+      - name: Run the model-backed operations campaign
+        id: core
+        continue-on-error: true
+        run: mise run eval
+
+      - name: Prove Tempo, Prometheus, and Grafana received the run
+        id: observability
+        continue-on-error: true
+        run: |
+          timeout 90 bash -c '
+            until curl -fsS --get --data-urlencode "query=agentops_eval_run_passed" \
+              http://127.0.0.1:9090/api/v1/query | jq -e ".data.result | length > 0" >/dev/null; do sleep 3; done
+          '
+          timeout 90 bash -c '
+            until curl -fsS "http://127.0.0.1:3200/api/search?tags=resource.service.name%3Dagentops-evals" |
+              jq -e ".traces | length > 0" >/dev/null; do sleep 3; done
+          '
+          curl -fsS "http://127.0.0.1:3002/api/search?query=AgentOps%20evaluation%20comparison" |
+            jq -e 'map(select(.uid == "agentops-evaluation-comparison")) | length == 1' >/dev/null
+
+      - name: Write sanitized campaign verdict
+        if: always()
+        env:
+          CORE_OUTCOME: ${{ steps.core.outcome }}
+          JUDGE_OUTCOME: ${{ steps.judge.outcome }}
+          OBSERVABILITY_OUTCOME: ${{ steps.observability.outcome }}
+        run: |
+          jq -n \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg sha "$GITHUB_SHA" \
+            --arg run_id "$GITHUB_RUN_ID" \
+            --arg model "$AGENT_MODEL" \
+            --arg digest "${EVAL_MODEL_DIGEST:-}" \
+            --arg core "$CORE_OUTCOME" \
+            --arg judge "$JUDGE_OUTCOME" \
+            --arg observability "$OBSERVABILITY_OUTCOME" \
+            '{
+              schema_version: 1,
+              repository: $repository,
+              source_commit: $sha,
+              run: {id: ($run_id | tonumber)},
+              model: {name: $model, digest: $digest},
+              signals: {core: $core, judge_calibration: $judge, observability: $observability},
+              overall: ([$core, $judge, $observability] | if all(. == "success") then "signals-collected" else "failure" end),
+              privacy: "sanitized evidence only; no prompts, responses, tool data, errors, URLs, secrets, or model transcripts"
+            }' > evals/verdict.json
+
+      - name: Upload sanitized evaluation evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: eval-evidence-${{ github.run_id }}
+          path: |
+            evals/results.json
+            evals/judge-calibration-results.json
+            evals/verdict.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Stop temporary evidence services
+        if: always()
+        run: |
+          mise run gateway:host:stop || true
+          docker stop --timeout 30 agentops-eval-judge || true
+          if [[ -n "${OLLAMA_PID:-}" ]]; then kill "$OLLAMA_PID" || true; fi
+          mise run observability:down || true
+
+      - name: Surface failed evaluation signals
+        if: always() && (steps.core.outcome == 'failure' || steps.judge.outcome == 'failure' || steps.observability.outcome == 'failure')
+        run: |
+          echo "::error::At least one model-backed evaluation signal failed; inspect the named step and sanitized artifacts."
+          exit 1

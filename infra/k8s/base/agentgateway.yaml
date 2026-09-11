@@ -1,0 +1,112 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agentgateway
+  namespace: agentops
+  labels:
+    app.kubernetes.io/name: agentgateway
+    app.kubernetes.io/part-of: agentops-open-course
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: agentgateway
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: agentgateway
+        app.kubernetes.io/part-of: agentops-open-course
+    spec:
+      serviceAccountName: agentgateway
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: agentgateway
+          image: cr.agentgateway.dev/agentgateway:v1.4.1@sha256:efd79355b89094a8225a9db465d9a01dc656b377f0bab458761b935a13231d29
+          imagePullPolicy: IfNotPresent
+          args: ["-f", "/etc/agentgateway/config.yaml"]
+          ports:
+            - name: mcp
+              containerPort: 3000
+            - name: a2a
+              containerPort: 3001
+            - name: llm
+              containerPort: 4000
+            - name: metrics
+              containerPort: 15020
+            - name: readiness
+              containerPort: 15021
+          # Real HTTP probes, for the same reason as mcp.yaml: a data port
+          # accepts TCP as soon as the listener binds, which is before the
+          # backends, policies, and JWKS are loaded — so a tcpSocket probe on
+          # :3000 marks the pod Ready while requests would still fail. The
+          # profile configs set `config.readinessAddr: 0.0.0.0:15021`, which is
+          # pod-local and deliberately absent from the Service: the kubelet
+          # dials the pod IP, so no cluster-reachable port is needed.
+          readinessProbe:
+            httpGet:
+              path: /healthz/ready
+              port: readiness
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz/ready
+              port: readiness
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: config
+              mountPath: /etc/agentgateway
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: config
+          configMap:
+            name: agentgateway-config
+        - name: tmp
+          emptyDir:
+            sizeLimit: 32Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agentgateway
+  namespace: agentops
+  labels:
+    app.kubernetes.io/name: agentgateway
+    app.kubernetes.io/part-of: agentops-open-course
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: agentgateway
+  ports:
+    - name: mcp
+      port: 3000
+      targetPort: mcp
+    - name: a2a
+      port: 3001
+      targetPort: a2a
+    - name: llm
+      port: 4000
+      targetPort: llm
+    - name: metrics
+      port: 15020
+      targetPort: metrics

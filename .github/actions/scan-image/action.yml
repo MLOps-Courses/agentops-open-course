@@ -1,0 +1,33 @@
+name: Scan a course image
+description: Apply the pinned vulnerability, secret, and license policy to one image.
+inputs:
+  image:
+    description: Local image reference to scan.
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Select the repository tool manager
+      uses: jdx/mise-action@9e7f7633ff6f6d6048a9418a68d48f288f50eb14 # v4.2.3
+      with:
+        install: false
+
+    - name: Install the repository-pinned Trivy
+      shell: bash
+      run: mise install -y --locked trivy
+
+    - name: Scan image vulnerabilities and secrets
+      shell: bash
+      env:
+        IMAGE: ${{ inputs.image }}
+      run: >-
+        trivy image --config trivy.yaml --scanners vuln,secret
+        --severity HIGH,CRITICAL --exit-code 1 "$IMAGE"
+
+    - name: Verify image licenses
+      shell: bash
+      env:
+        IMAGE: ${{ inputs.image }}
+      run: >-
+        trivy image --config trivy.yaml --scanners license
+        --severity UNKNOWN,HIGH,CRITICAL --exit-code 1 "$IMAGE"

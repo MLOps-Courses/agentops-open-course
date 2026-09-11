@@ -1,0 +1,44 @@
+# Local-only notification fan-out: Prometheus groups fired alerts here. The
+# webhook posts to a placeholder endpoint on the Docker host; until you run a
+# receiver there (or swap in Slack, ntfy, PagerDuty, ...), failed posts only
+# log an error and every alert stays visible in the Alertmanager UI at
+# http://localhost:9093 and its API at /api/v2/alerts.
+route:
+  receiver: local-webhook
+  group_by: [alertname, severity]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    # Money is not an emergency. A budget breach is a decision someone makes
+    # during working hours with the month's numbers in front of them, so the
+    # cost alerts leave the default path before it can treat them like an
+    # outage: they wait five minutes to gather the whole picture instead of
+    # thirty seconds, and they repeat once a day instead of six times, so a
+    # budget that stays over its line nags once rather than all night.
+    # Routing is where an alert's urgency is actually expressed; the severity
+    # label only describes it.
+    - matchers:
+        - category = "cost"
+      receiver: cost-budget
+      group_by: [alertname]
+      group_wait: 5m
+      group_interval: 30m
+      repeat_interval: 24h
+
+receivers:
+  - name: local-webhook
+    webhook_configs:
+      # Placeholder: Docker Desktop can reach a loopback listener on port 5001.
+      # Native Linux needs a listener on the Docker bridge address or a receiver
+      # container on the shared network. Nothing in the course depends on it.
+      - url: http://host.docker.internal:5001/alerts
+        send_resolved: true
+
+  - name: cost-budget
+    webhook_configs:
+      # Separate placeholder path, same placeholder caveat: a real deployment
+      # points this at the finance or platform channel that owns the budget,
+      # which is rarely the channel that owns the pager.
+      - url: http://host.docker.internal:5001/alerts/cost
+        send_resolved: true

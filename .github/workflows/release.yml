@@ -1,0 +1,295 @@
+# Release authority starts from one explicit protected-main commit, never from a
+# tag: a tag is a movable label, while a full commit SHA names the exact reviewed
+# bytes the hosted gates already ran against. The build job holds no registry
+# authority; only the protected publish job may write to GHCR, sign, attest, and
+# create the tag and release from that same commit.
+name: Release
+
+# --8<-- [start:release-dispatch-authority]
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "v-prefixed SemVer already recorded in release metadata"
+        required: true
+        type: string
+      sha:
+        description: "Full protected-main commit SHA to build and release"
+        required: true
+        type: string
+
+permissions: {}
+# --8<-- [end:release-dispatch-authority]
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout the requested source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.sha }}
+          persist-credentials: false
+
+      - name: Select the pinned Go toolchain
+        uses: jdx/mise-action@9e7f7633ff6f6d6048a9418a68d48f288f50eb14 # v4.2.3
+        with:
+          install: false
+          # No tool cache in the job that produces the released bytes: a cache is
+          # writable by any branch, and nothing that reaches the image may be.
+          cache: false
+
+      # One image, so no matrix here: scripts/container-matrix.json stays the
+      # fan-out contract for Scan, which builds every course image.
+      - name: Resolve the immutable build metadata
+        id: metadata
+        env:
+          SHA: ${{ inputs.sha }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          # Dispatch must come from main and name main's current head, so the
+          # released bytes are the protected ones and not a side branch.
+          test "$GITHUB_REF" = refs/heads/main
+          test "$GITHUB_SHA" = "$SHA"
+          mise install -y --locked go
+          # VERSION, CITATION.cff, and the newest CHANGELOG.md section must already
+          # agree with the dispatched version; the release notes below are read out
+          # of that same curated changelog section.
+          go -C tools run ./cmd/conventions release-metadata "$VERSION" "$GITHUB_REPOSITORY"
+          source_identity="$(go -C tools run ./cmd/source-identity --root .. --mode release)"
+          {
+            echo "created=$(git show -s --format=%cI HEAD)"
+            echo "image=ghcr.io/${GITHUB_REPOSITORY,,}/agent"
+            echo "tree_digest=$(jq -er .tree_digest <<<"$source_identity")"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        # zizmor: ignore[self-repository] — zizmor 1.30 prefers GitHub's `$/…` form, which
+        # actionlint 1.7.12 still rejects as a malformed `uses:`. Both linters gate this
+        # repository, so the local path stays until actionlint parses the new spelling.
+        # The path is safe here regardless: neither workflow is `pull_request_target`, so
+        # the composite action is always read from the trusted checked-out revision.
+        uses: ./.github/actions/setup-buildx # zizmor: ignore[self-repository]
+
+      - name: Build the exact release image
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: agents
+          file: agents/go/Dockerfile
+          tags: ${{ steps.metadata.outputs.image }}:candidate-${{ inputs.sha }}
+          build-args: |
+            AGENT_BUILD_MODE=release
+            AGENT_SOURCE_COMMIT=${{ inputs.sha }}
+            AGENT_SOURCE_REVISION=${{ inputs.sha }}
+            AGENT_SOURCE_TREE_DIGEST=${{ steps.metadata.outputs.tree_digest }}
+            AGENT_SOURCE_DIRTY=false
+            OCI_CREATED=${{ steps.metadata.outputs.created }}
+            OCI_VERSION=${{ inputs.version }}
+          outputs: type=docker,dest=${{ runner.temp }}/agent.tar
+          provenance: false
+          sbom: false
+
+      - name: Load, inspect, and runtime-smoke the built image
+        env:
+          CREATED: ${{ steps.metadata.outputs.created }}
+          IMAGE: ${{ steps.metadata.outputs.image }}:candidate-${{ inputs.sha }}
+          REVISION: ${{ inputs.sha }}
+          SOURCE_TREE_DIGEST: ${{ steps.metadata.outputs.tree_digest }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          docker load --input "${RUNNER_TEMP}/agent.tar"
+          user="$(docker image inspect --format '{{.Config.User}}' "$IMAGE")"
+          [[ -n "$user" && "${user%%:*}" != 0 ]]
+          # The binary reports the identity it was compiled with. Asserting it here
+          # is what makes the digest below traceable to this commit; the OCI labels
+          # carry the same values because they come from the same build arguments.
+          binary_identity="$(docker run --rm --read-only "$IMAGE" version)"
+          jq -e \
+            --arg revision "$REVISION" \
+            --arg tree_digest "$SOURCE_TREE_DIGEST" \
+            --arg version "$VERSION" \
+            --arg created "$CREATED" '
+              .mode == "release" and
+              .version == $version and
+              .source_identity == $revision and
+              .revision == $revision and
+              .tree_digest == $tree_digest and
+              .build_timestamp == $created and
+              .dirty == false
+            ' <<<"$binary_identity" >/dev/null
+          # No interpreter and no shell in a distroless image: the smoke is a subcommand of
+          # the image's own entrypoint, run under the same read-only root the manifests use.
+          # Serving readiness is proven by Platform against this same image, not here.
+          docker run --rm --read-only \
+            --tmpfs /tmp:rw,noexec,nosuid,size=128m \
+            --tmpfs /app/state:rw,noexec,nosuid,size=128m,uid=10001,gid=10001 \
+            "$IMAGE" config:check
+
+      - name: Scan image
+        # zizmor: ignore[self-repository] — zizmor 1.30 prefers GitHub's `$/…` form, which
+        # actionlint 1.7.12 still rejects as a malformed `uses:`. Both linters gate this
+        # repository, so the local path stays until actionlint parses the new spelling.
+        # The path is safe here regardless: neither workflow is `pull_request_target`, so
+        # the composite action is always read from the trusted checked-out revision.
+        uses: ./.github/actions/scan-image # zizmor: ignore[self-repository]
+        with:
+          image: ${{ steps.metadata.outputs.image }}:candidate-${{ inputs.sha }}
+
+      - name: Generate the SPDX SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          image: ${{ steps.metadata.outputs.image }}:candidate-${{ inputs.sha }}
+          format: spdx-json
+          output-file: ${{ runner.temp }}/agent.sbom.spdx.json
+          upload-artifact: false
+
+      # A transient handoff to the protected job, not evidence: the durable copies
+      # are the release assets and the attestations attached to the digest.
+      - name: Upload the exact build artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: agent-build
+          path: |
+            ${{ runner.temp }}/agent.tar
+            ${{ runner.temp }}/agent.sbom.spdx.json
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: release
+    permissions:
+      artifact-metadata: write
+      attestations: write
+      contents: write
+      id-token: write
+      packages: write
+    steps:
+      - name: Checkout the qualified source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.sha }}
+          persist-credentials: false
+
+      - name: Download the build artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: agent-build
+          path: artifact
+
+      - name: Set up Docker Buildx
+        # zizmor: ignore[self-repository] — zizmor 1.30 prefers GitHub's `$/…` form, which
+        # actionlint 1.7.12 still rejects as a malformed `uses:`. Both linters gate this
+        # repository, so the local path stays until actionlint parses the new spelling.
+        # The path is safe here regardless: neither workflow is `pull_request_target`, so
+        # the composite action is always read from the trusted checked-out revision.
+        uses: ./.github/actions/setup-buildx # zizmor: ignore[self-repository]
+
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      # The pushed bytes are the preflighted bytes: this loads the tar the build
+      # job produced instead of rebuilding, so the digest below is the one smoked.
+      - name: Push the exact build bytes by source SHA and version
+        id: push
+        env:
+          SHA: ${{ inputs.sha }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          image="ghcr.io/${GITHUB_REPOSITORY,,}/agent"
+          docker load --input artifact/agent.tar
+          # Both tags address one manifest: sha- is the permanent source address and
+          # the version tag is the human one. Neither can be re-pointed by a rebuild.
+          for tag in "sha-${SHA}" "$VERSION"; do
+            docker tag "${image}:candidate-${SHA}" "${image}:${tag}"
+            docker push "${image}:${tag}"
+          done
+          digest="$(
+            docker buildx imagetools inspect "${image}:${VERSION}" \
+              --format '{{json .Manifest}}' |
+              jq -er .digest
+          )"
+          [[ ${digest} =~ ^sha256:[0-9a-f]{64}$ ]]
+          echo "image=${image}" >> "$GITHUB_OUTPUT"
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+          echo "${image}@${digest}" > agent.digest.txt
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Sign the digest and attach its SBOM
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+          IMAGE: ${{ steps.push.outputs.image }}
+        run: |
+          cosign sign --yes "${IMAGE}@${DIGEST}"
+          cosign attest --yes \
+            --type spdxjson \
+            --predicate artifact/agent.sbom.spdx.json \
+            "${IMAGE}@${DIGEST}"
+
+      - name: Create signed SLSA build provenance
+        id: provenance
+        uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4.2.1
+        with:
+          subject-name: ${{ steps.push.outputs.image }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          subject-version: ${{ inputs.version }}
+          push-to-registry: true
+
+      - name: Create the tag and publish the release with its durable evidence
+        env:
+          BUNDLE: ${{ steps.provenance.outputs.bundle-path }}
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ inputs.sha }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          cp artifact/agent.sbom.spdx.json agent.sbom.spdx.json
+          cp "$BUNDLE" agent.provenance.sigstore.json
+          # The changelog is curated, not derived from commit subjects. The metadata
+          # gate above already proved this version heads CHANGELOG.md, so the notes
+          # are that section verbatim.
+          bare_version="${VERSION#v}"
+          awk \
+            -v heading="## [${bare_version}]" '
+              index($0, heading) == 1 { capture = 1; next }
+              capture && /^## \[/ { exit }
+              capture { print }
+            ' CHANGELOG.md > release-notes.md
+          test -s release-notes.md
+          # --target pins the tag to the qualified commit, so the tag can never name
+          # bytes other than the ones signed and attested above. Publication is the
+          # last fallible command: everything it references already exists.
+          gh release create "$VERSION" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$SHA" \
+            --title "$VERSION" \
+            --notes-file release-notes.md \
+            --latest \
+            agent.digest.txt agent.sbom.spdx.json agent.provenance.sigstore.json
+          {
+            echo "## Published ${VERSION}"
+            echo
+            echo "- Released commit: \`${SHA}\`"
+            echo "- Image: \`$(cat agent.digest.txt)\`"
+            echo "- Release: https://github.com/${GITHUB_REPOSITORY}/releases/tag/${VERSION}"
+          } >> "$GITHUB_STEP_SUMMARY"

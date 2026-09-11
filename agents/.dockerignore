@@ -1,0 +1,11 @@
+# Docker build context is agents/ (see agents/go/Dockerfile). Keep it small: the image
+# only needs go/{go.mod,go.sum,**/*.go} and data/ — everything else is noise.
+# Disposable runtime state. Never build an image around a developer's local database:
+# agents/data is the immutable seed, and /app/state starts empty in every image.
+**/.state/
+
+# Build artifacts and local env.
+**/bin/
+**/coverage.out
+**/.env
+**/.adk/

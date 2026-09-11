@@ -1,0 +1,12 @@
+apiVersion: kagent.dev/v1alpha2
+kind: RemoteMCPServer
+metadata:
+  name: agentops-tools
+  namespace: agentops
+  labels:
+    app.kubernetes.io/part-of: agentops-open-course
+spec:
+  description: Read-only incident, service, log, and runbook tools through agentgateway.
+  url: http://agentgateway.agentops.svc.cluster.local:3000/mcp
+  protocol: STREAMABLE_HTTP
+  timeout: 30s

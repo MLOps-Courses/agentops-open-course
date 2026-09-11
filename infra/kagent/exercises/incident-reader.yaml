@@ -1,0 +1,157 @@
+# Optional Phase 6 comparison exercise. This bundle is intentionally absent
+# from infra/kagent/kustomization.yaml so the required BYO path stays unchanged.
+apiVersion: kagent.dev/v1alpha2
+kind: Agent
+metadata:
+  name: incident-reader
+  namespace: agentops
+  labels:
+    app.kubernetes.io/part-of: agentops-open-course
+    agentops.course/exercise: kagent-interop
+spec:
+  description: Optional read-only incident evidence specialist managed declaratively by kagent.
+  type: Declarative
+  declarative:
+    runtime: go
+    modelConfig: agentgateway
+    stream: false
+    systemMessage: |
+      You are the optional read-only incident evidence specialist.
+      Investigate only the incident or service named by the user.
+      Use the available incident, service, log, and runbook tools for evidence.
+      Never invent evidence or claim that you changed runtime state.
+      You cannot restart services, resolve incidents, execute code, or delegate.
+      Return the incident ID, affected service, concise evidence, and a safe next step.
+    tools:
+      - type: McpServer
+        mcpServer:
+          name: agentops-tools
+          kind: RemoteMCPServer
+          apiGroup: kagent.dev
+          toolNames:
+            - list_incidents
+            - get_incident
+            - get_service_status
+            - search_service_logs
+            - get_runbook
+            - search_runbooks
+    a2aConfig:
+      skills:
+        - id: read-incident-evidence
+          name: Read incident evidence
+          description: Correlate read-only incident, service, log, and runbook evidence.
+          tags: [incident-response, read-only]
+          examples: [Investigate INC-002 and cite the evidence.]
+    deployment:
+      replicas: 1
+      labels:
+        agentops.course/exercise: kagent-interop
+      # The agentops namespace enforces the restricted Pod Security Standard,
+      # and kagent copies these two blocks into the generated pod verbatim with
+      # no controller-side default. Omit them and the pod is never admitted:
+      # the rejection lands on the ReplicaSet, so the Agent simply never goes
+      # Ready. The image is distroless nonroot with a numeric USER, so
+      # `runAsNonRoot` needs no `runAsUser` to pin.
+      podSecurityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: [ALL]
+      env:
+        # Defense in depth: model-message payloads are elided even though the
+        # egress policy below already prevents runtime OTLP export.
+        - name: OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT
+          value: "false"
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+---
+# kagent's agent-as-MCP handler invokes the generated A2A Service from the
+# controller. The generated pod label is verified in the pinned kagent source.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: incident-reader-ingress
+  namespace: agentops
+  labels:
+    agentops.course/exercise: kagent-interop
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: incident-reader
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kagent
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: kagent
+              app.kubernetes.io/component: controller
+      ports:
+        - { port: 8080, protocol: TCP }
+---
+# The specialist reaches only its declared ModelConfig and RemoteMCPServer
+# through agentgateway plus kagent's session/task API. Runtime OTLP is denied:
+# the pinned ADK execute_tool spans include tool arguments and results.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: incident-reader-egress
+  namespace: agentops
+  labels:
+    agentops.course/exercise: kagent-interop
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: incident-reader
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: agentgateway
+      ports:
+        - { port: 3000, protocol: TCP }
+        - { port: 4000, protocol: TCP }
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kagent
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: kagent
+              app.kubernetes.io/component: controller
+      ports:
+        - { port: 8083, protocol: TCP }
+---
+# NetworkPolicy ingress rules are additive. Keeping this permission in the
+# optional bundle makes removal restore the required gateway policy exactly.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: incident-reader-gateway-ingress
+  namespace: agentops
+  labels:
+    agentops.course/exercise: kagent-interop
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: agentgateway
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: incident-reader
+      ports:
+        - { port: 3000, protocol: TCP }
+        - { port: 4000, protocol: TCP }

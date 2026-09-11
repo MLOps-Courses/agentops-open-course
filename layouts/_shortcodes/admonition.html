@@ -1,0 +1,30 @@
+{{- /*
+  admonition — the Hugo replacement for Material's `!!! type "Title"` blocks.
+
+  Called with the `{{%` delimiter so the body renders as Markdown; the bodies carry lists,
+  tables, links, fenced code, and nested `include` shortcodes.
+
+  The seven-type Material vocabulary (abstract, danger, info, note, success, tip, warning) is
+  reproduced exactly rather than folded into Hextra's three-type callout: the vocabulary is
+  small on purpose and `check_conventions.check_admonitions` enforces it, so collapsing it
+  would weaken a gate rather than port it. Colours and icons live in assets/css/extra.css.
+*/ -}}
+
+{{- $type := .Get 0 -}}
+{{- /* `.Get 1` on a missing positional parameter raises "index out of range", so the
+       untitled form is detected before it is read. */ -}}
+{{- $title := cond (gt (len .Params) 1) (index .Params 1) "" -}}
+{{- $allowed := slice "abstract" "danger" "info" "note" "success" "tip" "warning" -}}
+
+{{- if not (in $allowed $type) -}}
+  {{- errorf "admonition: unsupported type %q; use one of %s (%s)" $type (delimit $allowed ", ") .Position -}}
+{{- else -}}
+  <div class="course-admonition course-admonition--{{ $type }}" role="note">
+    {{- with $title -}}
+      <p class="course-admonition__title">{{ . }}</p>
+    {{- end -}}
+    <div class="course-admonition__body">
+      {{- .Inner -}}
+    </div>
+  </div>
+{{- end -}}

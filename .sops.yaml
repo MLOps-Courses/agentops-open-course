@@ -1,0 +1,9 @@
+# SOPS creation rules (Ch. 6.5): encrypt only the data/stringData values of
+# Kubernetes Secret manifests under infra/**/secrets/, so kind/metadata stay
+# reviewable in diffs. The age recipient below is the course DEMO public key;
+# its private half is gitignored and never published. Learners run
+# infra/scripts/secrets.sh keygen and replace the recipient with their own.
+creation_rules:
+  - path_regex: infra/.*/secrets/.*\.ya?ml$
+    encrypted_regex: ^(data|stringData)$
+    age: age1t2tuf4cr90dtm2al035tc7zawm2f0dzlgxg99k89z5hpw02z74usx96zey

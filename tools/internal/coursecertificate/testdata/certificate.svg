@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="875" viewBox="0 0 1000 875" role="img" aria-labelledby="title desc">
+  <title id="title">Ada Lovelace — AgentOps Open Course capstone, Gold tier</title>
+  <desc id="desc">Self-attested completion certificate for manifest 3db5c3c377f06e8c600565399e5171c1e95943af2bd1f67ea68a0adf2686cc80 at source revision 0f4b1c9a7d25e830b6a41f5c9e2d7038a1b4c6d9.</desc>
+  <style>
+    .page { fill: #fdfdfb; }
+    .frame { fill: none; stroke: #1d1d1b; stroke-width: 2; }
+    text { font-family: ui-sans-serif, system-ui, "Helvetica Neue", Arial, sans-serif; fill: #1d1d1b; }
+    .mono, .mono-fine { font-family: ui-monospace, "DejaVu Sans Mono", "Courier New", monospace; }
+    .eyebrow, .eyebrow-left { font-size: 13px; letter-spacing: 2px; fill: #55554e; }
+    .eyebrow { text-anchor: end; }
+    .holder { font-weight: 700; }
+    .statement { font-size: 20px; }
+    .label { font-size: 11px; letter-spacing: 1.6px; fill: #6b6b62; }
+    .mono { font-size: 15px; }
+    .mono-fine { font-size: 13px; fill: #3a3a35; }
+    .fine { font-size: 13px; fill: #3a3a35; }
+    .rule { stroke: #c9c9c0; stroke-width: 1; }
+  </style>
+  <rect class="page" width="1000" height="875"/>
+  <rect class="frame" x="14" y="14" width="972" height="847" rx="6"/>
+  <text class="eyebrow" x="944" y="66">SELF-ATTESTED · REPRODUCIBLE</text>
+  <text class="eyebrow-left" x="56" y="66">AGENTOPS OPEN COURSE · CAPSTONE</text>
+  <line class="rule" x1="56" y1="84" x2="944" y2="84"/>
+  <text class="holder" x="56" y="148" font-size="42.0">Ada Lovelace</text>
+  <text class="statement" x="56" y="182">completed the capstone at the Gold tier.</text>
+  <text class="label" x="56" y="228">WHAT A MACHINE CHECKED, AT THE REVISION BELOW</text>
+  <text class="mono" x="56.0" y="252" textLength="171.0" lengthAdjust="spacingAndGlyphs">mise run check:core</text>
+  <text class="mono" x="254.0" y="252" textLength="54.0" lengthAdjust="spacingAndGlyphs">passed</text>
+  <text class="mono" x="56.0" y="276" textLength="117.0" lengthAdjust="spacingAndGlyphs">mise run test</text>
+  <text class="mono" x="254.0" y="276" textLength="54.0" lengthAdjust="spacingAndGlyphs">passed</text>
+  <text class="mono" x="56.0" y="300" textLength="243.0" lengthAdjust="spacingAndGlyphs">2 evidence artifacts hashed</text>
+  <text class="label" x="56" y="338">COURSE</text>
+  <text class="mono" x="56.0" y="359" textLength="344.4" lengthAdjust="spacingAndGlyphs">MLOps-Courses/agentops-open-course v0.7.0</text>
+  <text class="label" x="56" y="397">SOURCE REVISION</text>
+  <text class="mono" x="56.0" y="418" textLength="336.0" lengthAdjust="spacingAndGlyphs">0f4b1c9a7d25e830b6a41f5c9e2d7038a1b4c6d9</text>
+  <text class="label" x="56" y="456">TREE DIGEST</text>
+  <text class="mono" x="56.0" y="477" textLength="596.4" lengthAdjust="spacingAndGlyphs">sha256:3d5f81a0c47b92e6d18f3a05c72be914d60a8f37c2915ebd4076af38c1b95e2d</text>
+  <text class="label" x="56" y="515">MANIFEST DIGEST (SHA-256)</text>
+  <text class="mono" x="56.0" y="536" textLength="537.6" lengthAdjust="spacingAndGlyphs">3db5c3c377f06e8c600565399e5171c1e95943af2bd1f67ea68a0adf2686cc80</text>
+  <text class="label" x="56" y="574">MANIFEST GENERATED</text>
+  <text class="mono" x="56.0" y="595" textLength="117.6" lengthAdjust="spacingAndGlyphs">2026-08-13 UTC</text>
+  <line class="rule" x1="56" y1="629" x2="944" y2="629"/>
+  <text class="label" x="56" y="657">WHAT NOBODY CHECKED</text>
+  <text class="fine" x="56" y="677">Nobody issued, graded, signed, or registered this certificate; the holder rendered it. The gates</text>
+  <text class="fine" x="56" y="697">above ran on the holder&#39;s own machine, and the Gold tier is the holder&#39;s own claim against the</text>
+  <text class="fine" x="56" y="717">capstone milestones, which no command measures. What is checkable is the pair below: the digest</text>
+  <text class="fine" x="56" y="737">identifies one manifest exactly, and the verify command re-runs those gates at that revision and</text>
+  <text class="fine" x="56" y="757">refuses a changed tree. Rendering is deterministic, so the same manifest, name, and tier produce</text>
+  <text class="fine" x="56" y="777">this file byte for byte.</text>
+  <text class="mono-fine" x="56.0" y="805" textLength="343.2" lengthAdjust="spacingAndGlyphs">sha256sum .agents/tmp/course-completion.json</text>
+  <text class="mono-fine" x="422.6" y="805" textLength="218.4" lengthAdjust="spacingAndGlyphs">-&gt; the manifest digest above</text>
+  <text class="mono-fine" x="56.0" y="825" textLength="241.8" lengthAdjust="spacingAndGlyphs">mise run course:evidence:verify</text>
+  <text class="mono-fine" x="422.6" y="825" textLength="288.6" lengthAdjust="spacingAndGlyphs">-&gt; re-runs the gates at that revision</text>
+</svg>

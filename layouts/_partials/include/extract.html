@@ -1,0 +1,41 @@
+{{- /*
+  Resolve one `include` source file and hand it to include/region.html.
+
+  Lives in a partial rather than inline in the shortcode because `errorf` only logs — it does
+  not stop template execution — so every guard must fall through an `else` or the next
+  expression dereferences a nil resource and buries the real message under a panic trace.
+  Hugo also permits exactly one `return` per partial, which is why the guards form an
+  if/else-if chain instead of early returns.
+
+  Input:  dict path / region / position
+  Output: the dedented region text, or "" when a guard has already failed the build.
+*/ -}}
+
+{{- $path := .path -}}
+{{- $region := .region -}}
+{{- $where := .position -}}
+{{- $code := "" -}}
+
+{{- if not $path -}}
+  {{- errorf "include: missing source path (%s)" $where -}}
+{{- else if not $region -}}
+  {{- errorf "include %q: a trusted snippet must name a source region (%s)" $path $where -}}
+{{- else if or (hasPrefix $path "/") (in (split $path "/") "..") -}}
+  {{- errorf "include %q: snippet source is outside the repository (%s)" $path $where -}}
+{{- else -}}
+  {{- /* Read through the `assets/source/**` mounts declared in hugo.toml, not os.ReadFile,
+         so `hugo server` watches the quoted file and rebuilds the page when it changes. */ -}}
+  {{- $resource := resources.Get (printf "source/%s" $path) -}}
+  {{- if not $resource -}}
+    {{- errorf "include %q: snippet source does not exist (%s)" $path $where -}}
+  {{- else -}}
+    {{- $code = partial "include/region.html" (dict
+      "text" $resource.Content
+      "path" $path
+      "region" $region
+      "position" $where
+    ) -}}
+  {{- end -}}
+{{- end -}}
+
+{{- return $code -}}

@@ -1,0 +1,142 @@
+{
+  "cases": [
+    {
+      "id": "restart-approval-verified",
+      "match": "Approve the restart once the evidence supports it",
+      "steps": [
+        {
+          "tool": "get_incident",
+          "arguments": {
+            "incident_id": "INC-002"
+          }
+        },
+        {
+          "tool": "get_service_status",
+          "arguments": {
+            "name": "inventory"
+          }
+        },
+        {
+          "tool": "get_runbook",
+          "arguments": {
+            "slug": "service-down"
+          }
+        },
+        {
+          "tool": "restart_service",
+          "arguments": {
+            "name": "inventory"
+          }
+        },
+        {
+          "tool": "get_service_status",
+          "arguments": {
+            "name": "inventory"
+          }
+        }
+      ],
+      "answer": "The approved restart ran and a fresh read reports inventory operational; the audit record names the approver."
+    },
+    {
+      "id": "investigation-recalls-context",
+      "match": "Investigate INC-002.",
+      "steps": [
+        {
+          "tool": "recall_incident_context",
+          "arguments": {
+            "incident_id": "INC-002"
+          }
+        },
+        {
+          "tool": "get_incident",
+          "arguments": {
+            "incident_id": "INC-002"
+          }
+        }
+      ],
+      "answer": "INC-002 is the crash-looping inventory service. Prior context and the incident record both name inventory, so start there."
+    },
+    {
+      "id": "remediation-loads-skill",
+      "match": "reviewed remediation skill",
+      "steps": [
+        {
+          "tool": "load_skill",
+          "arguments": {
+            "name": "remediation"
+          }
+        }
+      ],
+      "answer": "The remediation skill is loaded; its steps govern any change from here."
+    },
+    {
+      "id": "restart-needs-approval",
+      "match": "crash-looping inventory pods",
+      "steps": [
+        {
+          "tool": "get_incident",
+          "arguments": {
+            "incident_id": "INC-002"
+          }
+        },
+        {
+          "tool": "get_service_status",
+          "arguments": {
+            "name": "inventory"
+          }
+        },
+        {
+          "tool": "search_service_logs",
+          "arguments": {
+            "query": "",
+            "service": "inventory"
+          }
+        },
+        {
+          "tool": "get_runbook",
+          "arguments": {
+            "slug": "service-down"
+          }
+        },
+        {
+          "tool": "restart_service",
+          "arguments": {
+            "name": "inventory"
+          }
+        }
+      ],
+      "answer": "Inventory is down and the service-down runbook applies. A restart is proposed and waits for a named approver."
+    },
+    {
+      "id": "resolve-needs-approval",
+      "match": "Search latency for INC-005",
+      "steps": [
+        {
+          "tool": "get_incident",
+          "arguments": {
+            "incident_id": "INC-005"
+          }
+        },
+        {
+          "tool": "get_service_status",
+          "arguments": {
+            "name": "search"
+          }
+        },
+        {
+          "tool": "get_runbook",
+          "arguments": {
+            "slug": "high-latency"
+          }
+        },
+        {
+          "tool": "resolve_incident",
+          "arguments": {
+            "incident_id": "INC-005"
+          }
+        }
+      ],
+      "answer": "Search is operational and the high-latency runbook is satisfied. Resolving INC-005 is proposed and waits for a named approver."
+    }
+  ]
+}

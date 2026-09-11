@@ -1,0 +1,23 @@
+# A workflow that breaks both contracts the .yml-only globs used to miss: it deploys the
+# live site from a job that is not named "deploy", and it keeps an artifact far past the
+# documented retention cap. The test copies it into a temporary .github/workflows so no
+# repository-wide workflow linter collects a deliberately broken fixture.
+name: Fixture publish
+on:
+  push:
+    branches:
+      - main
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: github-pages
+    permissions:
+      pages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/upload-artifact@v5
+        with:
+          name: evidence
+          retention-days: 400
+      - uses: actions/deploy-pages@v4

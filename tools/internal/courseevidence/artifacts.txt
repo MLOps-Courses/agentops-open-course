@@ -1,0 +1,13 @@
+# The inventory a course-completion manifest attests to, one repository-relative
+# path per line. It lives here rather than in Go so that changing what a
+# completion certificate covers is a diff someone reviews, not a recompile.
+#
+# Each entry answers "what would make this run mean something different":
+# the pinned toolchain, the three resolved dependency graphs, the immutable seed
+# data every deterministic claim reads, and the evaluation cases.
+mise.lock
+agents/go/go.sum
+evals/go.sum
+tools/go.sum
+agents/data/incidents.db
+evals/ops.evalset.json

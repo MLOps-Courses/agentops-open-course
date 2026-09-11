@@ -1,0 +1,85 @@
+# Deterministic proof for AgentTokenTelemetryMissing. This rule watches for a
+# silent failure — the agent keeps answering while its token counter stops
+# moving — which makes it the one alert whose own correctness is hardest to
+# trust: it must fire when the counter stalls under traffic and stay silent on
+# an idle lab, and those two states look identical if you only read the token
+# series. `unless` is what separates them, and the second case below is the
+# reason the rule is not a bare `absent()`.
+rule_files:
+  - ../prometheus-rules.yml
+
+evaluation_interval: 1m
+
+tests:
+  # The failure the rule is for: spans keep arriving at 5/min while the token
+  # counters flatten at minute 61 — an agent started without a working meter
+  # provider, or a broken OTLP metrics pipeline. Both directions stall together
+  # because they share one instrument.
+  - interval: 1m
+    input_series:
+      - series: 'agentops_calls_total{service_name="agentops-agent",span_name="invocation",span_kind="SPAN_KIND_INTERNAL",status_code="STATUS_CODE_OK"}'
+        values: "0+5x180"
+      - series: 'agentops_tokens_token_total{direction="input"}'
+        values: "0+400x60 24000x59 24400+400x59"
+      - series: 'agentops_tokens_token_total{direction="output"}'
+        values: "0+120x60 7200x59 7320+120x59"
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: AgentTokenTelemetryMissing
+        exp_alerts: []
+      # Minute 80 is inside the `for: 10m` window. The [15m] rate does not reach
+      # zero until minute 74, thirteen minutes after the counter actually
+      # stalled, so this rule is slow by construction — acceptable for a ticket,
+      # and the reason it is not a page.
+      - eval_time: 80m
+        alertname: AgentTokenTelemetryMissing
+        exp_alerts: []
+      - eval_time: 90m
+        alertname: AgentTokenTelemetryMissing
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+            exp_annotations:
+              summary: Spans are flowing but no token counters are recorded
+              description: Agent spans were observed in the last 15m without any agentops_tokens_token_total increase. The token budget callback or the OTLP metrics pipeline is likely broken.
+              runbook: https://github.com/MLOps-Courses/agentops-open-course/blob/main/content/7.%20Observability/7.2b.%20Alerting.md#the-four-responses-worth-memorising
+      # The pipeline is fixed at minute 121 and the ticket clears itself.
+      - eval_time: 140m
+        alertname: AgentTokenTelemetryMissing
+        exp_alerts: []
+
+  # An idle lab: traffic stops at minute 31 and nothing has been invoked since.
+  # The token counter is just as flat as it is above, so `absent()` or a plain
+  # threshold on tokens would file a ticket every night. The span-traffic gate
+  # is what keeps this quiet, and this case is the proof.
+  - interval: 1m
+    input_series:
+      - series: 'agentops_calls_total{service_name="agentops-agent",span_name="invocation",span_kind="SPAN_KIND_INTERNAL",status_code="STATUS_CODE_OK"}'
+        values: "0+5x30 150x60"
+      - series: 'agentops_tokens_token_total{direction="input"}'
+        values: "0+400x30 12000x60"
+      - series: 'agentops_tokens_token_total{direction="output"}'
+        values: "0+120x30 3600x60"
+    # Both sides of the `unless` are zero, which is exactly the ambiguity the
+    # rule has to resolve. Reading the token rate alone cannot tell this apart
+    # from the first case.
+    promql_expr_test:
+      - expr: sum(rate(agentops_calls_total[15m]))
+        eval_time: 60m
+        exp_samples:
+          - labels: "{}"
+            value: 0
+      - expr: sum(rate(agentops_tokens_token_total[15m]))
+        eval_time: 60m
+        exp_samples:
+          - labels: "{}"
+            value: 0
+    alert_rule_test:
+      - eval_time: 60m
+        alertname: AgentTokenTelemetryMissing
+        exp_alerts: []
+      # Well past the 10m `for:` window, so a pending state started at any point
+      # after traffic stopped would have become firing by now.
+      - eval_time: 85m
+        alertname: AgentTokenTelemetryMissing
+        exp_alerts: []

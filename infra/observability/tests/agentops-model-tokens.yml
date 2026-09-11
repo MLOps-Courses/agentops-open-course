@@ -1,0 +1,60 @@
+# Deterministic proof for the gateway token-throughput recording rule. It is
+# the one rule in the file with no alert reading it and no shipped panel
+# plotting it — the dashboard's token panel is deliberately left for the
+# learner to write in 7.2. Monitoring — so nothing else in this repository
+# would notice it breaking, and a broken recording rule surfaces as an empty
+# graph rather than as a failure.
+#
+# Two things can break it silently. The first is the metric name: the gateway
+# exports token usage as a histogram, and only the `_sum` series carries token
+# counts, while `_count` carries the number of calls. A collector or gateway
+# upgrade that moved the suffix, or an edit that "corrected" `_sum` to
+# `_count`, would keep returning a plausible line at a fraction of the real
+# value. The decoy `_count` series below is what makes that swap fail here.
+# The second is the `by (gen_ai_token_type)` grouping: dropping it still
+# returns a series, but one that adds prompt tokens to completion tokens, and
+# the direction split is the entire reason to keep this rule.
+rule_files:
+  - ../prometheus-rules.yml
+
+evaluation_interval: 1m
+
+tests:
+  # Two models served through the same listener, so the sum has to fold
+  # `gen_ai_request_model` and `listener` away while keeping the token type.
+  # Input runs at 900 tokens a minute across the pair and output at 180, which
+  # the rule must report as 15 and 3 tokens per *second*: a per-window reading
+  # would be 300 times larger, so the two expected values pin the unit as well
+  # as the arithmetic.
+  - interval: 1m
+    input_series:
+      - series: 'agentgateway_gen_ai_client_token_usage_sum{gen_ai_token_type="input",gen_ai_request_model="qwen3:4b-instruct",listener="llm"}'
+        values: "0+600x60"
+      - series: 'agentgateway_gen_ai_client_token_usage_sum{gen_ai_token_type="input",gen_ai_request_model="gemini-3.5-flash",listener="llm"}'
+        values: "0+300x60"
+      - series: 'agentgateway_gen_ai_client_token_usage_sum{gen_ai_token_type="output",gen_ai_request_model="qwen3:4b-instruct",listener="llm"}'
+        values: "0+120x60"
+      - series: 'agentgateway_gen_ai_client_token_usage_sum{gen_ai_token_type="output",gen_ai_request_model="gemini-3.5-flash",listener="llm"}'
+        values: "0+60x60"
+      # A token type that exists and never moves, which is what the shipped
+      # local path really reports: the scrape in 7.3b shows
+      # `input_cache_read` at 0.0 because Ollama caches nothing. It must stay
+      # on the result at zero rather than disappear, so a future `> 0` filter
+      # that would quietly hide an idle direction fails here.
+      - series: 'agentgateway_gen_ai_client_token_usage_sum{gen_ai_token_type="input_cache_read",gen_ai_request_model="qwen3:4b-instruct",listener="llm"}'
+        values: "0x60"
+      # The decoy: same histogram, same labels, calls instead of tokens. Six
+      # model calls a minute is 0.1/s, so a rule reading `_count` would report
+      # a tidy-looking 0.1 for input instead of 15.
+      - series: 'agentgateway_gen_ai_client_token_usage_count{gen_ai_token_type="input",gen_ai_request_model="qwen3:4b-instruct",listener="llm"}'
+        values: "0+6x60"
+    promql_expr_test:
+      - expr: agentops:gateway:model_tokens:rate5m
+        eval_time: 30m
+        exp_samples:
+          - labels: '{__name__="agentops:gateway:model_tokens:rate5m", gen_ai_token_type="input"}'
+            value: 15
+          - labels: '{__name__="agentops:gateway:model_tokens:rate5m", gen_ai_token_type="input_cache_read"}'
+            value: 0
+          - labels: '{__name__="agentops:gateway:model_tokens:rate5m", gen_ai_token_type="output"}'
+            value: 3

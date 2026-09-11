@@ -1,0 +1,12 @@
+{
+  "flexsearch.bundle.min.js": {
+    "sha256": "62e33d2d18493ebd341e5692df6e0c7fc74a24bf038f2770f903f6da19525003",
+    "source": "https://cdn.jsdelivr.net/npm/flexsearch@0.8.212/dist/flexsearch.bundle.min.js",
+    "version": "0.8.212"
+  },
+  "mermaid.min.js": {
+    "sha256": "18327bef70d96fb505fe7287d9f6a7362ebf07ff6576ddfaffb1a06f3e1a2954",
+    "source": "https://cdn.jsdelivr.net/npm/mermaid@11.16.1/dist/mermaid.min.js",
+    "version": "11.16.1"
+  }
+}

@@ -1,0 +1,117 @@
+# Infrastructure
+
+The same container images run on a local k3d cluster and a small GKE Standard cluster. The software data plane is OSS: Google ADK, agentgateway, kagent, OpenTelemetry, Tempo, Loki, Prometheus, and Grafana. GKE, Vertex AI, and Artifact Registry are optional managed Google Cloud services, not OSS.
+
+## Layout
+
+- `agentgateway/{host,k3d,gke}/config.yaml` declares separate MCP `:3000`, A2A `:3001`, and OpenAI-compatible LLM `:4000` listeners. Metrics stay internal on `:15020`.
+- `agentgateway/host/config-auth.yaml` is the opt-in secured host profile: strict JWT on MCP/A2A, an enforced API key on the model route, and TLS on all three listeners, backed by demo material from `scripts/gateway-{tls,jwt}.sh` (gitignored under `agentgateway/host/auth/`).
+- `k8s/base` and `k8s/overlays/{local,gke,scale}` are the Kustomize deployment. `local` and `gke` are the two deployable environments; `scale` layers a replicated MCP read plane on `local` for Chapter 6.9. All three are rendered, schema-validated, and linted by `mise run check:infra`.
+- `k8s/base/secrets/` holds SOPS-encrypted Secret manifests (age recipient in the root `.sops.yaml`). `scripts/secrets.sh` generates the gitignored age key under `infra/secrets/`, then encrypts, decrypts, or edits manifests; deploy one with `scripts/secrets.sh decrypt <file> | kubectl apply -f -`. Encrypted files stay out of the Kustomize overlays so rendering never needs the private key.
+- `kagent` contains the BYO `Agent`, gateway `ModelConfig`, MCP registration, and a slim stable-chart values file.
+- `observability` is the loopback-only host stack for running the agent outside Kubernetes.
+- `gcp` is an OpenTofu module. It never runs kubectl or gcloud provisioners.
+
+## Host gateway
+
+The pre-Kubernetes profile expects host processes on MCP `:8000`, A2A `:8080`, Ollama `:11434`, and OTLP/gRPC `:4317`. From the repository root, run the digest-pinned image through the checked wrapper:
+
+```bash
+mise run doctor:gateway
+mise run gateway:host
+```
+
+The wrapper publishes every gateway listener on `127.0.0.1`, drops capabilities, uses a read-only filesystem, and removes only its labelled container. On native Linux, a wrapper-owned relay listens only on the dedicated Docker bridge gateway and forwards to the loopback MCP, A2A, and Ollama processes. Compose joins that scoped bridge and scrapes gateway `:15020` directly through the stable `agentops-gateway` alias; metrics never use the relay or a LAN interface. Detached lifecycle tasks are `gateway:host:start`, `gateway:host:status`, `gateway:host:logs`, and `gateway:host:stop`, including relay cleanup.
+
+The `host`, `k3d`, and `gke` files carry the same policies; only their upstream endpoints and model provider differ, and the Kubernetes profiles enforce the demo API key on the model listener. The raw agentgateway binary currently binds configured listeners on all interfaces, so it is an advanced/manual path rather than the host quickstart.
+
+The secured profile uses the same hardened wrapper. Its task generates demo material, stages only the listener certificate/private key and public JWKS into the wrapper's private runtime directory, and keeps the CA and JWT signing keys on the host:
+
+```bash
+mise run gateway:host:auth
+```
+
+It adds demo JWT/API-key/TLS controls while preserving loopback-only publication, the read-only container filesystem, dropped capabilities, and scoped cleanup.
+
+## Local Kubernetes
+
+Prerequisites are Docker, k3d, kubectl, Helm, Helmfile, Skaffold, and Ollama. The pinned kubectl provides the Kustomize renderer. Kubernetes begins in Chapter 6. From the repository root:
+
+```bash
+mise run doctor:platform
+mise run cluster:start
+mise run platform:install
+```
+
+Bind Ollama only to the k3d bridge, then pull the Apache-2.0 open-weight Qwen3 model in a second shell with the same `OLLAMA_HOST` value:
+
+```bash
+export OLLAMA_HOST="$(docker network inspect k3d-local --format '{{(index .IPAM.Config 0).Gateway}}'):11434"
+ollama serve
+```
+
+```bash
+export OLLAMA_HOST="$(docker network inspect k3d-local --format '{{(index .IPAM.Config 0).Gateway}}'):11434"
+ollama pull qwen3:4b-instruct
+mise run platform:dev
+```
+
+No Ingress or LoadBalancer is created. Open only the path being tested, and run each foreground forward in its own terminal:
+
+```bash
+kubectl -n agentops port-forward svc/agentops-agent 8080:8080
+```
+
+```bash
+kubectl -n agentops port-forward svc/agentgateway 3000:3000 3001:3001 4000:4000 15020:15020
+```
+
+```bash
+kubectl -n agentops port-forward svc/tempo 3200:3200
+```
+
+The local overlay keeps `AGENT_MODEL_PROVIDER=openai-compatible` and sends the agent through agentgateway to `qwen3:4b-instruct`; it does not need an upstream provider key. `OPENAI_API_KEY=agentgateway` is a non-secret marker that the Kubernetes gateway model listener enforces as a demo API key. The direct `agentops-mcp:8000` Service is reachable only behind the gateway.
+
+The agent and MCP server share one RWO `agentops-agent-state` claim so SQLite reads and guarded writes stay coherent. Only the agent mounts it writable; the six-tool MCP service mounts it read-only and remains unready until the agent initializes the runtime database. The claim constrains both consumers to a compatible node. This is a single-replica course architecture, not horizontally scalable SQLite.
+
+## Host observability
+
+Use the Compose stack when running the agent directly on the host, not at the same time as the in-cluster Tempo/collector on the same ports:
+
+```bash
+mise run observability:up
+```
+
+Set `OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318`. Traces are read in Grafana through its Tempo datasource (raw API at <http://127.0.0.1:3200>), the provisioned Grafana dashboard is at <http://127.0.0.1:3002/d/agentops-overview>, Prometheus at <http://127.0.0.1:9090>, and Alertmanager at <http://127.0.0.1:9093>. See `observability/README.md` for gateway metrics and the shipped alert rules. In the local Kubernetes overlay, the same rules run in an in-cluster Prometheus/Alertmanager pair reachable via `kubectl -n agentops port-forward`.
+
+## GKE
+
+The OpenTofu module requires `project_id` and uses one zonal Spot `e2-standard-2` node, public node IPs instead of a chargeable NAT, and no public application endpoint. Review `gcp/README.md`, authenticate ADC, run `GCP_PROJECT_ID=<project-id> mise run doctor:gcp`, and plan first:
+
+```bash
+cd infra/gcp
+tofu init
+tofu validate
+tofu plan -out=tfplan
+```
+
+After a separately approved apply, retrieve credentials using the command in `tofu output -raw get_credentials_command`. Then return to the repository root:
+
+```bash
+cd ../..
+mise run gke:deploy
+```
+
+The task verifies the exact GKE context before it installs kagent, builds and pushes images, resolves the project-neutral manifest from OpenTofu outputs, validates it, and applies it. GKE agentgateway obtains a Vertex access token from ambient Workload Identity; it is the only workload with a Google identity, and it holds no static cloud key.
+
+Prove the compatibility-pinned Vertex function-call loop and one read-only A2A retrieval. This invokes the billed model and belongs only inside an explicitly approved lab:
+
+```bash
+mise run gke:smoke
+```
+
+The task rejects the wrong context, source image, or live model configuration. It owns random loopback-only forwards for the check and closes them afterward.
+
+## Teardown
+
+`(cd infra && skaffold delete --filename skaffold.yaml --profile local)` or the same command with `--profile gke` also deletes the course PVCs and their data. `mise run observability:down` preserves named volumes; adding Compose `-v` deletes them. Stop a detached host gateway with `mise run gateway:host:stop`. The `local` cluster and kagent control plane can be shared by other projects, so `helmfile destroy` and `k3d cluster delete local` are dedicated-lab operations, not routine course cleanup. GCP destruction is likewise separate and must be confirmed from a reviewed plan.

@@ -1,0 +1,6 @@
+2026-07-05T08:00:12Z INFO  checkout deploy v2026.07.05-1 rolled out (3/3 replicas ready)
+2026-07-05T08:14:58Z WARN  checkout p99 latency 3120ms (baseline 210ms) endpoint=/cart/checkout
+2026-07-05T08:15:03Z WARN  checkout db pool wait 1800ms pool=checkout-db in_use=20/20
+2026-07-05T08:15:31Z INFO  checkout incident INC-001 opened severity=SEV2
+2026-07-05T08:16:10Z WARN  checkout downstream=payments latency 90ms (ok)
+2026-07-05T08:16:44Z WARN  checkout downstream=inventory latency 5000ms status=503

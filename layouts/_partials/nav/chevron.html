@@ -1,0 +1,27 @@
+{{- /*
+  The disclosure chevron for a navigation group.
+
+  Inline SVG rather than a font icon or a CSS triangle: it inherits `currentColor`, so it
+  follows the row's light, dark, and forced-colors treatment without a second rule, and it
+  stays visible in Windows high-contrast mode where a background-image marker disappears.
+  Rotation lives in assets/css/custom.css, keyed on the parent <details>[open].
+
+  aria-hidden because <summary> already announces the expanded state; naming the icon too
+  would make a screen reader read the control twice.
+*/ -}}
+<svg
+  class="course-nav__chevron"
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+  width="14"
+  height="14"
+  aria-hidden="true"
+  focusable="false"
+>
+  <path d="m9 18 6-6-6-6" />
+</svg>

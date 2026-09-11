@@ -1,0 +1,12 @@
+# https://git-scm.com/docs/gitattributes
+
+# The self-hosted browser bundles are pinned by sha256 in assets/js/vendor/versions.json and
+# verified by the native documentation conventions gate. Git's end-of-line normalization
+# would rewrite the bytes on checkout and break that digest on a fresh clone, so these files
+# are stored and checked out verbatim.
+assets/js/vendor/*.js -text
+
+# Course screenshots. Git's content heuristic already classifies PNG as binary, but
+# saying so removes the dependence on that heuristic — a clone on a machine with
+# aggressive autocrlf must not corrupt an image the pages render.
+assets/images/*.png binary

@@ -1,0 +1,223 @@
+# Recording and alerting rules for the AgentOps Agent platform. Every expression
+# uses metrics this stack verifiably exports (validated against the pinned
+# collector image):
+# - span_metrics connector: agentops_calls_total, agentops_duration_seconds_*
+#   (the collector's Prometheus exporter appends unit suffixes).
+# - Agent OTLP counters: agentops_tokens_token_total (unit "token" is also
+#   suffixed), agentops_guardrails_injections_neutralized_total, and
+#   agentops_triage_report_schema_failures_total.
+# - agentgateway's own /metrics on :15020, scraped directly rather than through
+#   the collector: agentgateway_gen_ai_client_token_usage_sum,
+#   agentgateway_gen_ai_client_cost_usd_total, agentgateway_requests_total, and
+#   agentgateway_cost_catalog_lookups_total.
+# Single source for both alerting planes. infra/observability/prometheus-rules.yml
+# (host Compose) is a symlink to this file, so the two cannot drift. The real
+# file lives here because kustomize refuses to read a configMapGenerator source
+# outside its own directory, while a Compose bind mount resolves symlinks fine.
+# Edit either path — they are the same bytes.
+groups:
+  - name: agentops-slo
+    rules:
+      # Error ratio across all agent spans. The dashboard's "Agent error
+      # ratio" panel plots this recording rule by name rather than repeating
+      # the expression, so the number a learner watches and the number
+      # AgentErrorBudgetBurn tests are the same series and cannot disagree.
+      # The denominator is deliberately unguarded: 0/0 yields NaN on an idle
+      # lab, so no alert fires and the panel renders "No data" instead of a
+      # false 0% or 100%. Flooring it at 1 (one call per *second*) would scale
+      # the ratio down by up to 100x at this lab's own traffic rate, which
+      # reads as a healthy agent while the alert pages.
+      - record: agentops:calls:error_ratio_rate5m
+        expr: |-
+          sum(rate(agentops_calls_total{status_code="STATUS_CODE_ERROR"}[5m]))
+            / sum(rate(agentops_calls_total[5m]))
+      - record: agentops:calls:error_ratio_rate1h
+        expr: |-
+          sum(rate(agentops_calls_total{status_code="STATUS_CODE_ERROR"}[1h]))
+            / sum(rate(agentops_calls_total[1h]))
+
+  - name: agentops-cost
+    rules:
+      # Tokens per second crossing the model route, split by direction. The
+      # gateway exports token usage as a histogram, so the `_sum` series is the
+      # token count itself and rate() of it reads as tokens/second. This is the
+      # fleet counterpart of the per-session totals on the agent span: it keeps
+      # no session id, so it survives a hundred callers without exploding the
+      # metric store.
+      - record: agentops:gateway:model_tokens:rate5m
+        expr: |-
+          sum by (gen_ai_token_type) (rate(agentgateway_gen_ai_client_token_usage_sum[5m]))
+
+      # Dollars per hour at the current burn. agentgateway prices every call
+      # from config.modelCatalog, whose rates are per 1M tokens. The course
+      # catalog prices self-hosted Qwen at exactly zero, so on the shipped
+      # local path this rule is a true zero rather than an estimate — it starts
+      # reporting money the moment someone points the route at a priced
+      # provider and supplies that provider's rates.
+      - record: agentops:gateway:model_cost_usd:rate1h
+        expr: |-
+          sum(rate(agentgateway_gen_ai_client_cost_usd_total[1h])) * 3600
+
+  - name: agentops-alerts
+    rules:
+      # Spend, as a burn rate against a stated monthly budget — the same shape
+      # as the SLO rule above, with dollars instead of errors. USD 50/month is
+      # a placeholder an operator replaces with their real number; 730 is the
+      # hours in an average month, so 50/730 is the even burn that exactly
+      # spends it. Firing at 4x that means the month's budget is gone in about
+      # a week. The 15m window ignores a single expensive turn.
+      - alert: AgentModelSpendBudgetBurn
+        expr: agentops:gateway:model_cost_usd:rate1h > (4 * (50 / 730))
+        for: 15m
+        labels:
+          severity: ticket
+          category: cost
+        annotations:
+          summary: Model spend is burning the monthly budget about four times too fast
+          description: >-
+            Model calls through the gateway have cost more than four times the
+            even burn of the stated USD 50 monthly budget for 15 minutes. At
+            this rate the month is spent in about a week. Look for a caller
+            whose context is growing, a retry storm, or a model swap.
+          runbook: https://github.com/MLOps-Courses/agentops-open-course/blob/main/content/7.%20Observability/7.3b.%20Cost%20Governance.md
+
+      # The failure that makes a cost dashboard lie. `Missing` means the model
+      # catalog was consulted and had no entry for the model that was actually
+      # served, so the gateway counts those tokens and prices them at nothing.
+      # A budget alert on an under-reported counter cannot fire, which is why
+      # this one exists and why it is not merely informational.
+      - alert: AgentModelUnpriced
+        expr: sum(increase(agentgateway_cost_catalog_lookups_total{status="Missing"}[15m])) > 0
+        for: 5m
+        labels:
+          severity: ticket
+          category: cost
+        annotations:
+          summary: Model calls are being served at a price the catalog does not know
+          description: >-
+            The gateway served calls for a model with no entry in
+            config.modelCatalog in the last 15 minutes. Their tokens are
+            counted and their cost is reported as zero, so every dollar figure
+            downstream is an undercount until the catalog gains that model.
+          runbook: https://github.com/MLOps-Courses/agentops-open-course/blob/main/content/7.%20Observability/7.3b.%20Cost%20Governance.md
+
+      # The model route's own budget caps are refusing calls. Either a caller
+      # is spending far beyond its share, in which case the cap did its job, or
+      # the cap is set below what one honest turn needs, in which case turns
+      # are failing and AgentErrorBudgetBurn will page next. The operator has
+      # to decide which, so this files a ticket instead of waking anyone.
+      - alert: AgentModelBudgetRefusals
+        expr: sum(increase(agentgateway_requests_total{listener="llm",reason="RateLimit"}[10m])) > 0
+        for: 5m
+        labels:
+          severity: ticket
+          category: cost
+        annotations:
+          summary: The gateway is refusing model calls against its route budget
+          description: >-
+            The model route returned HTTP 429 from its request or token bucket
+            in the last 10 minutes. Compare the refusal count with the token
+            burn: a spending caller means the cap worked, a low burn means the
+            cap is smaller than one honest turn.
+          runbook: https://github.com/MLOps-Courses/agentops-open-course/blob/main/content/7.%20Observability/7.3b.%20Cost%20Governance.md
+
+      # Multiwindow burn rate for a 99% span-success SLO: both the fast (5m)
+      # and slow (1h) windows must burn the 30-day error budget at >= 14.4x.
+      # Require three recent failures so one sparse-traffic error cannot page.
+      - alert: AgentErrorBudgetBurn
+        expr: |-
+          agentops:calls:error_ratio_rate5m > (14.4 * 0.010)
+            and agentops:calls:error_ratio_rate1h > (14.4 * 0.010)
+            and sum(increase(agentops_calls_total{status_code="STATUS_CODE_ERROR"}[5m])) >= 3
+        for: 2m
+        labels:
+          severity: page
+        annotations:
+          summary: Agent spans are burning the 99% success error budget
+          description: >-
+            At least three agent spans failed in 5m, and more than 14.4% failed
+            over both the last 5m and 1h. The usual causes are a stopped model
+            provider (Ollama), a misconfigured gateway route, or a failing tool
+            backend.
+          runbook: https://github.com/MLOps-Courses/agentops-open-course/blob/main/content/7.%20Observability/7.2b.%20Alerting.md#the-four-responses-worth-memorising
+
+      # p95 across all agent spans (dashboard panel expression). The
+      # spanmetrics histogram tops out at 30s, so quantiles saturate there.
+      # 15s suits local qwen3:4b-instruct on a modest machine; tune it to your
+      # hardware rather than deleting the alert.
+      - alert: AgentTurnLatencyP95High
+        expr: |-
+          histogram_quantile(0.95, sum by (le) (rate(agentops_duration_seconds_bucket[10m]))) > 15
+        for: 5m
+        labels:
+          severity: ticket
+        annotations:
+          summary: Agent span p95 latency exceeds 15s
+          description: >-
+            The 95th percentile span duration stayed above 15s for 5 minutes.
+            Check for model reloads, CPU contention, or oversized contexts.
+          runbook: https://github.com/MLOps-Courses/agentops-open-course/blob/main/content/7.%20Observability/7.2b.%20Alerting.md#the-four-responses-worth-memorising
+
+      # The collector is the single telemetry entry point: when its scrape
+      # fails, traces, metrics, and logs all go dark at once (observability
+      # of the observability).
+      - alert: ObservabilityCollectorDown
+        expr: up{job="otel-collector"} == 0
+        for: 2m
+        labels:
+          severity: page
+        annotations:
+          summary: Prometheus cannot scrape the OpenTelemetry Collector
+          description: >-
+            The otel-collector scrape target has been down for 2 minutes.
+            All traces, metrics, and logs are being dropped in the meantime.
+          runbook: https://github.com/MLOps-Courses/agentops-open-course/blob/main/content/7.%20Observability/7.2b.%20Alerting.md#the-four-responses-worth-memorising
+
+      # Spans keep arriving but the token counter stalls: the budget callback
+      # or the metrics pipeline broke silently. A bare absent() would also
+      # fire on an idle lab, so the alert gates on real span traffic.
+      - alert: AgentTokenTelemetryMissing
+        expr: |-
+          sum(rate(agentops_calls_total[15m])) > 0
+            unless sum(rate(agentops_tokens_token_total[15m])) > 0
+        for: 10m
+        labels:
+          severity: ticket
+        annotations:
+          summary: Spans are flowing but no token counters are recorded
+          description: >-
+            Agent spans were observed in the last 15m without any
+            agentops_tokens_token_total increase. The token budget callback
+            or the OTLP metrics pipeline is likely broken.
+          runbook: https://github.com/MLOps-Courses/agentops-open-course/blob/main/content/7.%20Observability/7.2b.%20Alerting.md#the-four-responses-worth-memorising
+
+      # A couple of neutralized markers is the offline red-team suite; a
+      # sustained burst means something is actively probing tool-output
+      # injection paths.
+      - alert: AgentInjectionNeutralizedSpike
+        expr: sum(increase(agentops_guardrails_injections_neutralized_total[15m])) > 3
+        for: 2m
+        labels:
+          severity: ticket
+        annotations:
+          summary: Guardrails neutralized an unusual number of injections
+          description: >-
+            More than 3 injection markers were neutralized in tool output
+            within 15 minutes. Inspect the offending traces and the incident
+            seed data feeding the tools.
+          runbook: https://github.com/MLOps-Courses/agentops-open-course/blob/main/content/7.%20Observability/7.2b.%20Alerting.md#the-four-responses-worth-memorising
+
+      # Structured triage reports failed validation even after the built-in
+      # retry — a model-quality regression (model swap, prompt drift).
+      - alert: AgentTriageSchemaFailures
+        expr: sum(increase(agentops_triage_report_schema_failures_total[15m])) > 0
+        for: 2m
+        labels:
+          severity: ticket
+        annotations:
+          summary: Triage reports are failing schema validation
+          description: >-
+            At least one triage report failed schema validation after retry
+            in the last 15 minutes. Re-run the offline evaluation and check
+            the pinned model and prompt.
+          runbook: https://github.com/MLOps-Courses/agentops-open-course/blob/main/content/7.%20Observability/7.2b.%20Alerting.md#the-four-responses-worth-memorising
