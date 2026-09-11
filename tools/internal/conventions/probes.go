@@ -381,7 +381,10 @@ func checkGatewayProbeProse(pages pageSet) []Problem {
 
 // checkProbeWiringTable binds the MCP-versus-BYO asymmetry table to the two
 // manifests it describes: the static Deployment wires all three probes, and the
-// BYO Agent wires none.
+// BYO manifest declares none — the kagent controller supplies a readiness probe
+// of its own on the agent card, which the row has to say, because a row that
+// only denies the three fields reads as "nothing polls this pod" and that is
+// not what the pinned chart renders.
 func checkProbeWiringTable(pages pageSet) []Problem {
 	mcpRow := tableRow(pages[probeTableWhere], "| `agentops-mcp`")
 	agentRow := tableRow(pages[probeTableWhere], "| `agentops-agent`")
@@ -397,6 +400,13 @@ func checkProbeWiringTable(pages pageSet) []Problem {
 	for _, field := range probeFields {
 		if strings.Contains(agentRow, field) {
 			problems = append(problems, problem(probeTableWhere, "the probe-wiring table must keep the BYO A2A workload unwired, but its row names %s", field))
+		}
+	}
+	// The positive half. Without it the row can drift back to claiming nothing polls
+	// the BYO pod while the pinned controller renders a readiness probe on the card.
+	for _, wanted := range []string{"agent-card.json", "controller"} {
+		if !strings.Contains(agentRow, wanted) {
+			problems = append(problems, problem(probeTableWhere, "the probe-wiring table's BYO row must say the controller polls the agent card, but it does not mention %q", wanted))
 		}
 	}
 	return problems

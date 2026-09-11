@@ -1,6 +1,7 @@
 package freshness
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -40,6 +41,97 @@ func misePins(root string) (map[string]string, error) {
 		}
 	}
 	return pins, nil
+}
+
+// handMovedModules are the Go modules `.github/dependabot.yml` ignores, so nothing
+// else in the repository will ever propose their next release.
+//
+// They are ignored for a reason: minimal version selection resolves the OpenAI, genai
+// and OpenTelemetry families from ADK's own go.mod, so moving one alone desynchronises
+// the set, and the a2a and MCP SDKs carry wire contracts whose upgrade re-runs protocol
+// tests. The consequence is that the family moves only when a human notices — and until
+// this table existed, nothing told a human to look. ADK v2.3.0 sat unnoticed for eleven
+// days behind a holds table that reported HELD by re-reading the same file.
+var handMovedModules = []struct {
+	Manifest string
+	Module   string
+	Why      string
+}{
+	{"agents/go/go.mod", "google.golang.org/adk/v2", "owns the OpenAI, genai and OpenTelemetry versions this module resolves"},
+	{"agents/go/go.mod", "github.com/a2aproject/a2a-go/v2", "wire contract; an upgrade re-runs the A2A protocol tests"},
+	{"agents/go/go.mod", "github.com/modelcontextprotocol/go-sdk", "wire contract; an upgrade re-runs the stdio and HTTP protocol tests"},
+	{"tools/go.mod", "github.com/chromedp/chromedp", "owns the cdproto compatibility hold, validated by a real Chrome run"},
+}
+
+// GoModuleStatus is one hand-moved module compared against the Go module proxy.
+type GoModuleStatus struct {
+	Manifest string
+	Module   string
+	Required string
+	Latest   string
+	Why      string
+	Result   string
+}
+
+var goRequirePattern = regexp.MustCompile(`(?m)^\s*(\S+)\s+(v\S+?)(?:\s|$)`)
+
+// requiredModuleVersion reads the version a manifest requires, ignoring `// indirect`
+// markers and trailing comments.
+func requiredModuleVersion(root, manifest, module string) string {
+	text, err := readText(filepath.Join(root, filepath.FromSlash(manifest)))
+	if err != nil {
+		return ""
+	}
+	for _, match := range goRequirePattern.FindAllStringSubmatch(text, -1) {
+		if match[1] == module {
+			return match[2]
+		}
+	}
+	return ""
+}
+
+// goModuleStatuses resolves each hand-moved module's latest release.
+//
+// proxy.golang.org rather than the GitHub API: it needs no token, it is the same
+// source `go get` consults, and it answers for a module path rather than a repository,
+// so a module whose path and repository disagree still resolves. A fetch failure is a
+// warning and an UNKNOWN row, never a failed report — this table informs triage and
+// must not make the quarterly issue depend on a third party being up.
+func goModuleStatuses(ctx context.Context, root string, fetcher Fetcher) ([]GoModuleStatus, []string) {
+	statuses := make([]GoModuleStatus, 0, len(handMovedModules))
+	var warnings []string
+	for _, entry := range handMovedModules {
+		status := GoModuleStatus{Manifest: entry.Manifest, Module: entry.Module, Why: entry.Why, Result: "UNKNOWN", Latest: "unchecked"}
+		status.Required = requiredModuleVersion(root, entry.Manifest, entry.Module)
+		if status.Required == "" {
+			status.Result = "MISSING"
+			warnings = append(warnings, fmt.Sprintf("%s does not require %s", entry.Manifest, entry.Module))
+			statuses = append(statuses, status)
+			continue
+		}
+		// The proxy lowercases uppercase letters as `!x`; these four module paths carry
+		// none, so the escaped form equals the path and no encoder is warranted here.
+		document, err := fetcher.JSON(ctx, "https://proxy.golang.org/"+entry.Module+"/@latest", nil)
+		if err != nil {
+			warnings = append(warnings, fmt.Sprintf("resolve %s: %s", entry.Module, CleanError(err)))
+			statuses = append(statuses, status)
+			continue
+		}
+		record, _ := document.(map[string]any)
+		latest, _ := record["Version"].(string)
+		if latest == "" {
+			warnings = append(warnings, fmt.Sprintf("resolve %s: the proxy returned no version", entry.Module))
+			statuses = append(statuses, status)
+			continue
+		}
+		status.Latest = latest
+		status.Result = "CURRENT"
+		if latest != status.Required {
+			status.Result = "REVIEW"
+		}
+		statuses = append(statuses, status)
+	}
+	return statuses, warnings
 }
 
 type miseOutdatedFunc func(context.Context, string) (map[string]MiseUpdate, error)
@@ -131,6 +223,47 @@ func goCompatibilityHoldStatus(root string, hold goCompatibilityHold) string {
 	return "HELD"
 }
 
+// miseOutdatedArgs is named rather than inlined because --bump is the whole
+// difference between a report and a rubber stamp. Without it mise treats every
+// exact request in mise.toml as already satisfied, prints no row for any of
+// them, and MiseResult reads that silence as "nothing newer" — which is only
+// true when this flag made mise look. TestMiseOutdatedAsksForTheNewestVersion
+// holds it in place.
+var miseOutdatedArgs = []string{"outdated", "--bump", "--json"}
+
+// miseUnresolvedMarker is the one warning mise prints when it cannot reach a
+// tool's version list — a renamed repository, a yanked registry entry, a
+// rate-limited GitHub API in CI. mise still exits 0 and simply omits the row,
+// so the pin would otherwise arrive here as absence, and absence is how this
+// reporter says "nothing newer". That is the rubber stamp --bump was added to
+// remove, walking back in through a different door.
+const miseUnresolvedMarker = "Failed to resolve tool version list for "
+
+// unresolvedMiseTools names the tools mise warned it could not resolve.
+//
+// A name it cannot extract is worth less than a wrong one: an unrecognized
+// warning yields nothing and the pin reads exactly as it did before, while a
+// name no pin claims is looked up by no row.
+func unresolvedMiseTools(diagnostics string) []string {
+	var names []string
+	for _, line := range strings.Split(diagnostics, "\n") {
+		_, named, found := strings.Cut(line, miseUnresolvedMarker)
+		if !found {
+			continue
+		}
+		// mise prints "<tool>: <cause>". A backend-qualified name carries its own
+		// colon with no space after it ("github:owner/repo", "aqua:owner/tool"),
+		// so the first colon-space is where the name ends.
+		if name, _, cut := strings.Cut(named, ": "); cut {
+			named = name
+		}
+		if name := strings.TrimSpace(named); name != "" {
+			names = append(names, name)
+		}
+	}
+	return names
+}
+
 func runMiseOutdated(ctx context.Context, root string) (map[string]MiseUpdate, error) {
 	executable, err := exec.LookPath("mise")
 	if err != nil {
@@ -138,17 +271,31 @@ func runMiseOutdated(ctx context.Context, root string) (map[string]MiseUpdate, e
 	}
 	timeoutContext, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()
-	command := exec.CommandContext(timeoutContext, executable, "outdated", "--json")
+	command := exec.CommandContext(timeoutContext, executable, miseOutdatedArgs...)
 	command.Dir = root
+	// Stderr is read on the success path too, so it is captured here rather than
+	// left to Output's own buffer, which only survives a non-zero exit.
+	var diagnostics bytes.Buffer
+	command.Stderr = &diagnostics
 	output, err := command.Output()
 	if err != nil {
-		var exit *exec.ExitError
-		if errors.As(err, &exit) && len(exit.Stderr) > 0 {
-			return nil, errors.New(cleanError(string(exit.Stderr)))
+		if reported := strings.TrimSpace(diagnostics.String()); reported != "" {
+			return nil, errors.New(cleanError(reported))
 		}
 		return nil, errors.New(cleanError(err))
 	}
-	return parseMiseOutdatedJSON(output)
+	updates, err := parseMiseOutdatedJSON(output)
+	if err != nil {
+		return nil, err
+	}
+	// Record an unresolved tool with no version rather than dropping it, which is
+	// what MiseResult renders as the UNKNOWN gap it is.
+	for _, name := range unresolvedMiseTools(diagnostics.String()) {
+		if _, answered := updates[name]; !answered {
+			updates[name] = MiseUpdate{}
+		}
+	}
+	return updates, nil
 }
 
 func releasePins(root, helmVersion string) (map[string]string, error) {

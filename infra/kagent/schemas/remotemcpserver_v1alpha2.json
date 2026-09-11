@@ -305,5 +305,5 @@
     }
   },
   "type": "object",
-  "x-agentops-source-chart": "oci://ghcr.io/kagent-dev/kagent/helm/kagent-crds@sha256:85174e69eab19e05fcf82dbfda86e8e84c2be97a52c645d60cf1ae51ccbca977"
+  "x-agentops-source-chart": "oci://ghcr.io/kagent-dev/kagent/helm/kagent-crds@sha256:0b8eacbdc85e21ccad6c008e69ef623428db0be8e45c59492b40f3faff6dcf67"
 }

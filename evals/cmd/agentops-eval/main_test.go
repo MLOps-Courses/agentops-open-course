@@ -265,7 +265,7 @@ func runArtifactFixture(expected, graded int) evals.RunArtifact {
 	return artifact
 }
 
-// The taught command carries four required cases, and `mise run eval -- ...` appends to
+// The taught command carries five required cases, and `mise run eval -- ...` appends to
 // it. A repeatable flag could therefore only grow, which is what made the README's
 // other-evalset recipes impossible; a replaceable one lets the last value win.
 func TestSplitCaseListLetsTheLastValueWin(t *testing.T) {
@@ -273,7 +273,7 @@ func TestSplitCaseListLetsTheLastValueWin(t *testing.T) {
 		value string
 		want  []string
 	}{
-		"the taught four": {"a,b,c,d", []string{"a", "b", "c", "d"}},
+		"the taught five": {"a,b,c,d,e", []string{"a", "b", "c", "d", "e"}},
 		"cleared":         {"", nil},
 		"only separators": {" , ,", nil},
 		"trimmed":         {" a , b ", []string{"a", "b"}},

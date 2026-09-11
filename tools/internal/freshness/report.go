@@ -87,7 +87,7 @@ func Report(ctx context.Context, options Options) (string, error) {
 		warnings = append(warnings, "mise outdated: "+cleanError(miseErr))
 	}
 	lines = append(lines, "", "### mise tool pins", "",
-		fmt.Sprintf("%d exact requests are owned by %s; this run installed none of them.", len(localMise), markdownCode("mise.toml")), "",
+		fmt.Sprintf("%d exact requests are owned by %s; this run resolved each against the mise registry and installed none of them.", len(localMise), markdownCode("mise.toml")), "",
 		"| Tool | Pinned | Latest reported | Authority | Required validation | Result |",
 		"| --- | --- | --- | --- | --- | --- |",
 	)
@@ -110,6 +110,22 @@ func Report(ctx context.Context, options Options) (string, error) {
 		"| Evaluations | `evals/go.mod` + `evals/go.sum` | `check:evals + test:evals` |",
 		"| Repository tools | `tools/go.mod` + `tools/go.sum` | `check:tools + test:tools` |",
 	)
+
+	moduleStatuses, moduleWarnings := goModuleStatuses(ctx, options.Root, options.Fetcher)
+	warnings = append(warnings, moduleWarnings...)
+	lines = append(lines, "", "### Hand-moved Go modules", "",
+		"Dependabot ignores these, so nothing else proposes their next release. Each is resolved against `proxy.golang.org`; REVIEW is a decision to schedule, not a defect.", "",
+		"| Manifest | Module | Required | Latest stable | Why it moves by hand | Result |",
+		"| --- | --- | --- | --- | --- | --- |",
+	)
+	for _, status := range moduleStatuses {
+		required := status.Required
+		if required == "" {
+			required = "missing"
+		}
+		lines = append(lines, fmt.Sprintf("| %s | %s | %s | %s | %s | %s |",
+			markdownCode(status.Manifest), markdownCode(status.Module), markdownCode(required), markdownCode(status.Latest), status.Why, status.Result))
+	}
 	holds, err := goCompatibilityHolds(options.Root)
 	if err != nil {
 		return "", fmt.Errorf("read Go compatibility holds: %w", err)
@@ -271,7 +287,7 @@ func Report(ctx context.Context, options Options) (string, error) {
 			lines = append(lines, "- REVIEW — "+warning)
 		}
 	}
-	lines = append(lines, "", "Treat REVIEW, MISMATCH, MISSING, and UNAVAILABLE as triage signals. This reporter never updates a pin or opens a pull request.", "")
+	lines = append(lines, "", "Treat REVIEW, MISMATCH, MISSING, UNKNOWN, and UNAVAILABLE as triage signals. This reporter never updates a pin or opens a pull request.", "")
 	return strings.Join(lines, "\n"), nil
 }
 

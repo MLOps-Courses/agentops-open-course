@@ -31,7 +31,7 @@ type launcherPlan struct {
 	syntax string
 }
 
-// parseLauncherPlan mirrors full.NewLauncher at the one seam ADK v2.2.0 does
+// parseLauncherPlan mirrors full.NewLauncher at the one seam ADK v2.3.0 does
 // not expose: parse now, run later. The sublaunchers and their order are the
 // exact constructors in the installed full launcher; their own Parse methods
 // remain the authority for every flag.

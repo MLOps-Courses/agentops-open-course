@@ -58,6 +58,26 @@ func TestMiseResultDetectsDrift(t *testing.T) {
 	}
 }
 
+// A row that arrives carrying no version is mise answering without answering,
+// and it must not read as a confirmation.
+func TestMiseResultFlagsAnEmptyAnswer(t *testing.T) {
+	latest, status := MiseResult("0.164.0", &MiseUpdate{Requested: "0.164.0"}, true)
+	if latest != "unchecked" || status != "UNKNOWN" {
+		t.Fatalf("result = %q, %q, want an unchecked/UNKNOWN gap", latest, status)
+	}
+}
+
+// Absence means "nothing newer" only because miseOutdatedArgs carries --bump,
+// and a failed mise run outranks every row.
+func TestMiseResultReadsAbsenceAndUnavailability(t *testing.T) {
+	if latest, status := MiseResult("0.164.0", nil, true); latest != "0.164.0" || status != "CURRENT" {
+		t.Fatalf("absent result = %q, %q, want the pin reported CURRENT", latest, status)
+	}
+	if latest, status := MiseResult("0.164.0", &MiseUpdate{Requested: "0.164.0", Latest: "0.166.0"}, false); latest != "unavailable" || status != "UNAVAILABLE" {
+		t.Fatalf("result = %q, %q, want UNAVAILABLE to win over any row", latest, status)
+	}
+}
+
 func TestParseHelmChartsRetainsNamesSourcesAndDigests(t *testing.T) {
 	first, second := strings.Repeat("a", 64), strings.Repeat("b", 64)
 	fixture := "# kagent-chart-version: 0.9.12\nreleases:\n  - name: kagent-crds\n    chart: oci://ghcr.io/kagent-dev/kagent/helm/kagent-crds@sha256:" + first + "\n  - name: kagent\n    chart: oci://ghcr.io/kagent-dev/kagent/helm/kagent@sha256:" + second + "\n"

@@ -4,7 +4,9 @@
 # It is native to GitHub and needs no token, no app install, and no self-hosted workflow.
 #
 # Dependabot does not support globs in `directory`, so each Go module gets its
-# own entry. The root module exists only to pin the Hextra Hugo theme.
+# own entry. The root module exists only to pin the Hextra Hugo theme. `directories`
+# (plural) does take globs, which is how the github-actions entry reaches the composite
+# actions under .github/actions/ as well as the workflows.
 #
 # Nothing auto-merges. The offline gate cannot see model or protocol drift, so every update goes
 # through the local validation playbook in docs 8.2. Releases.
@@ -12,11 +14,24 @@
 # What Dependabot does NOT cover here, and is therefore updated by hand (see AGENTS.md "Pinned
 # contracts" and the quarterly docs-freshness issue): the `[tools]` pins in mise.toml plus
 # mise.lock, the Helm chart versions in infra/helmfile.yaml, the image digests inside
-# infra/k8s/**, and the compatibility holds in agents/go/go.mod and tools/go.mod (ignored below).
+# infra/k8s/**, the vendored bundles in assets/js/vendor/versions.json, the ADK-owned client
+# family in agents/go/go.mod, and the compatibility hold in tools/go.mod (the last two are
+# ignored below, and the freshness report's "Hand-moved Go modules" table resolves that
+# ignored family against proxy.golang.org so it still surfaces quarterly).
 version: 2
 updates:
   - package-ecosystem: github-actions
-    directory: /
+    # For this ecosystem `/` means .github/workflows plus a root action.yml and nothing
+    # else, so the composite actions under .github/actions/ had no proposal path at all:
+    # their mise-action and setup-buildx-action pins sat outside every update while the
+    # eleven workflow copies of the same action moved. The single-star glob is deliberate
+    # — `/.github/actions/*/action.yml` monitors nothing upstream, and `**` opens duplicate
+    # pull requests — and it also covers composite actions added later, which naming the
+    # two existing ones would not. The group below already spans directories, so this stays
+    # one weekly batch.
+    directories:
+      - "/"
+      - "/.github/actions/*"
     schedule:
       interval: weekly
       day: monday
@@ -39,18 +54,14 @@ updates:
       prefix: "chore(deps)"
     open-pull-requests-limit: 5
     ignore:
-      # ADK Go owns this family, and agents/go/go.mod records the ceiling as structured
-      # `// compatibility hold: owner=google.golang.org/adk/v2@<version> constraint=<version>`
-      # comments. check:freshness reports MISMATCH — and CI fails — unless the required
-      # version still matches the recorded constraint AND the manifest still requires the
-      # owner at its recorded version. Dependabot rewrites the require line but never the
-      # hold comment, so every pull request it can open here is red by construction: one
-      # module on its own breaks the constraint, and ADK on its own breaks the owner
-      # version. `exclude-patterns` alone did not prevent this, because excluding a
-      # dependency from a group makes Dependabot open a separate pull request for it
-      # rather than none — which is how five permanently red ones accumulated.
-      # These move by hand and together, prompted by the quarterly freshness report's
-      # "Go module compatibility holds" table, and validated by `agents/go` check + test.
+      # ADK Go owns this family. Minimal version selection resolves openai-go, genai, and
+      # the OpenTelemetry pair from ADK's own module, so a pull request that moves one of
+      # them alone either changes nothing or desynchronises the set — and ADK's telemetry
+      # contract test in tools/internal/conventions pins the reviewed ADK version, so an
+      # unreviewed ADK bump is red by construction. The four transitive holds this list
+      # used to carry were retired when ADK Go v2.3.0 moved its own logs to the OTel
+      # 1.45 / log 0.21 family; the family still moves as one, by hand, prompted by the
+      # quarterly freshness report and validated by `agents/go` check + test.
       - dependency-name: github.com/openai/openai-go/v3
       - dependency-name: go.opentelemetry.io/otel*
       - dependency-name: google.golang.org/adk/v2
@@ -60,8 +71,10 @@ updates:
         patterns:
           - "*"
         exclude-patterns:
-          # The same four as the ignore list above, restated as the batch boundary: if a
-          # hold is ever lifted, these still must not ride into the weekly batch unreviewed.
+          # The same four as the ignore list above, restated as the batch boundary:
+          # excluding a dependency from a group makes Dependabot open a separate pull
+          # request for it rather than none, which is how five permanently red ones
+          # accumulated before both lists existed.
           - "github.com/openai/openai-go/v3"
           - "go.opentelemetry.io/otel*"
           - "google.golang.org/adk/v2"
@@ -140,6 +153,24 @@ updates:
     cooldown:
       default-days: 7
 
+  - package-ecosystem: terraform
+    directory: /infra/gcp # the optional GKE laboratory module, planned with OpenTofu
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "chore(deps)"
+    open-pull-requests-limit: 5
+    ignore:
+      # The 8.x google provider is a major: it changes resource schemas, and this
+      # module's acceptance is `tofu test` plus a plan against a real project, which
+      # nobody has re-run on 8.x. versions.tf records the same decision as `~> 7.42`.
+      - dependency-name: hashicorp/google
+        update-types:
+          - version-update:semver-major
+    cooldown:
+      default-days: 7
+
   - package-ecosystem: docker
     directory: /agents/go # agent image build and distroless runtime stages
     schedule:
@@ -150,10 +181,18 @@ updates:
     open-pull-requests-limit: 5
     ignore:
       # The build stage's Go version is a coordinated pin: it must stay equal to the `go`
-      # directive in agents/go/go.mod and to the `go` entry in the root mise.toml [tools].
+      # entry in the root mise.toml [tools] and to the `go` directive in every go.mod.
+      # `mise run check:docs` compares this tag against mise.toml and against agents/go,
+      # evals and tools; the root go.mod is the one copy no gate reads, so a hand bump
+      # must not forget it. Patch is ignored alongside major and minor for that reason —
+      # a Dockerfile-only patch bump is red by construction, which is exactly what PR #165
+      # (1.26.6 -> 1.26.8-alpine) was. The toolchain moves by hand across all six files,
+      # prompted by the quarterly freshness report's `go` row. Digest-only rebuilds of the
+      # same tag still arrive, which is the part worth automating.
       - dependency-name: golang
         update-types:
           - version-update:semver-major
           - version-update:semver-minor
+          - version-update:semver-patch
     cooldown:
       default-days: 7

@@ -7,7 +7,7 @@ controller:
   image:
     # The chart inserts ':' before tag, so tag@digest preserves the readable
     # version while making the multi-architecture registry index immutable.
-    tag: "0.9.12@sha256:d1ea7b70bb8d97de9f0774d44b598971c944b3ab4e88294b0bb78e59d1a63c15"
+    tag: "0.10.1@sha256:878a55478c1727e048d38154158aae41aa701149c6660f78696fe682c7495146"
   watchNamespaces:
     - agentops
   resources:
@@ -20,7 +20,7 @@ controller:
 
 ui:
   image:
-    tag: "0.9.12@sha256:1d5ada8d7f65a6b9ad28232463f9fd670c4c20875baa1c8008aaa1f1f988382e"
+    tag: "0.10.1@sha256:2c4de55d3ffea5b960a41d667e3cd6b59d64d8da4d6d3ccf528fcd17e6fec4a0"
   replicas: 0
   resources:
     requests:
@@ -83,8 +83,6 @@ cilium-debug-agent:
   enabled: false
 
 grafana-mcp:
-  enabled: false
-querydoc:
   enabled: false
 
 otel:

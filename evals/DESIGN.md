@@ -4,12 +4,12 @@ This note preserves the verified design facts from the abandoned Python scaffold
 
 ## Verified wire contract
 
-- ADK Go 2.2.0 exposes the runtime routes `POST /apps/{app}/users/{user}/sessions`, `POST /run`, `POST /run_sse`, and `GET /list-apps`. Its eval routes are unimplemented.
+- ADK Go 2.3.0 exposes the runtime routes `POST /apps/{app}/users/{user}/sessions`, `POST /run`, `POST /run_sse`, and `GET /list-apps`. Its eval routes are unimplemented.
 - The REST event shape carries `content.parts`, `usageMetadata`, `partial`, `errorCode`, and `errorMessage`.
 - The deployed A2A surface is JSON-RPC, and this harness reads it over `message/stream` rather than `message/send`. The unary reply is a stored Task, and storing a task discards the per-event metadata ADK attaches on the way — including `adk_usage_metadata`, which is where every token a run spent is counted. The stream carries one update per ADK event with that metadata intact, on the same event boundary the REST transport folds. Text, function calls, and function responses arrive in task artifacts or status messages. ADK metadata uses `adk_` prefixes, including `adk_type`, `adk_usage_metadata`, `adk_partial`, and `adk_error_code`.
 - `adk_request_confirmation` is the confirmation wrapper emitted for a guarded tool. A confirmation reply is a function response with the original call id and a `{confirmed, payload: {rationale}}` response.
 
-These facts were checked against the local source of `google.golang.org/adk/v2@v2.2.0`, notably `server/adkrest/internal/{models,routers}` and `server/adka2a/v2/{metadata,parts}.go`. They are covered by fixed-wire HTTP tests in this module so an upstream shape change fails offline.
+These facts were checked against the local source of `google.golang.org/adk/v2@v2.3.0`, notably `server/adkrest/internal/{models,routers}` and `server/adka2a/v2/{metadata,parts}.go`. They are covered by fixed-wire HTTP tests in this module so an upstream shape change fails offline.
 
 ## Folding contract
 

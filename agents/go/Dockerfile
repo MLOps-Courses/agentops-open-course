@@ -21,7 +21,7 @@
 
 # --- Stage 1: compile one static, cgo-free binary ----------------------------
 # --8<-- [start:base-images]
-FROM golang:1.26.6-alpine@sha256:af8d6740070b8906d12eae1c3e3ea0957fb63f492051ea05e354c38ef9fe88df AS build
+FROM golang:1.26.8-alpine@sha256:ce864e7223ac17b1775e6fd0b4c0db580c2eb50e7953a427916379e4b92a1628 AS build
 # --8<-- [end:base-images]
 
 WORKDIR /src
@@ -79,7 +79,7 @@ RUN install -d -o 10001 -g 10001 /out/state
 
 # --- Stage 2: distroless, non-root runtime -----------------------------------
 # --8<-- [start:runtime-base]
-FROM cgr.dev/chainguard/static@sha256:24dd7ff8788fdfadda39eeeaefefb6d1cec6002a545935a5f7e017484053734f AS runtime
+FROM cgr.dev/chainguard/static@sha256:207a5673ab31ed83332e54ae33d0f1de4adb5984bd93b8309789889e7bf30ba6 AS runtime
 # --8<-- [end:runtime-base]
 
 ARG AGENT_BUILD_MODE

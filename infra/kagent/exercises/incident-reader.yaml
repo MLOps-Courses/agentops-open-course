@@ -46,6 +46,20 @@ spec:
       replicas: 1
       labels:
         agentops.course/exercise: kagent-interop
+      # The agentops namespace enforces the restricted Pod Security Standard,
+      # and kagent copies these two blocks into the generated pod verbatim with
+      # no controller-side default. Omit them and the pod is never admitted:
+      # the rejection lands on the ReplicaSet, so the Agent simply never goes
+      # Ready. The image is distroless nonroot with a numeric USER, so
+      # `runAsNonRoot` needs no `runAsUser` to pin.
+      podSecurityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: [ALL]
       env:
         # Defense in depth: model-message payloads are elided even though the
         # egress policy below already prevents runtime OTLP export.

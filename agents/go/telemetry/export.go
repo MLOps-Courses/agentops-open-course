@@ -10,6 +10,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/log"
 	"go.opentelemetry.io/otel/log/global"
 )
@@ -149,7 +150,7 @@ func (h *ExportHandler) Handle(ctx context.Context, record slog.Record) error {
 	body, attributes := h.safeValues(ctx, record.Message, collected)
 	emitted.SetBody(body)
 	if exceptionType != "" {
-		attributes = append(attributes, log.String(ExceptionTypeKey, exceptionType))
+		attributes = append(attributes, attribute.String(ExceptionTypeKey, exceptionType))
 	}
 	emitted.AddAttributes(attributes...)
 
@@ -214,20 +215,20 @@ func (h *ExportHandler) collect(record slog.Record) []exportAttr {
 // path that matters the one path with no protection.
 func (h *ExportHandler) safeValues(
 	ctx context.Context, message string, collected []exportAttr,
-) (body log.Value, attributes []log.KeyValue) {
+) (body attribute.Value, attributes []attribute.KeyValue) {
 	defer func() {
 		// Nothing is logged from here: this handler is on the logging path, and
 		// a diagnostic emitted during a failed export would re-enter it.
 		if recovered := recover(); recovered != nil {
-			body, attributes = log.StringValue(OmittedBody), nil
+			body, attributes = attribute.StringValue(OmittedBody), nil
 		}
 	}()
 
 	body = boundedLogValue(safeValue(ctx, h.redact, message))
-	attributes = make([]log.KeyValue, 0, len(collected))
+	attributes = make([]attribute.KeyValue, 0, len(collected))
 	for _, attr := range collected {
-		attributes = append(attributes, log.KeyValue{
-			Key:   safeKey(ctx, h.redact, attr.key),
+		attributes = append(attributes, attribute.KeyValue{
+			Key:   attribute.Key(safeKey(ctx, h.redact, attr.key)),
 			Value: boundedLogValue(safeValue(ctx, h.redact, attr.value)),
 		})
 	}
@@ -394,26 +395,26 @@ func normalize(value any) any {
 // Capping happens after redaction, never before: truncating first could cut a
 // credential in half and leave the surviving half looking like ordinary text
 // that no recognizer matches.
-func boundedLogValue(value any) log.Value {
+func boundedLogValue(value any) attribute.Value {
 	switch typed := value.(type) {
 	case nil:
-		return log.Value{}
+		return attribute.Value{}
 	case string:
-		return log.StringValue(bounded(typed))
+		return attribute.StringValue(bounded(typed))
 	case bool:
-		return log.BoolValue(typed)
+		return attribute.BoolValue(typed)
 	case int64:
-		return log.Int64Value(typed)
+		return attribute.Int64Value(typed)
 	case float64:
-		return log.Float64Value(typed)
+		return attribute.Float64Value(typed)
 	case map[string]any:
-		members := make([]log.KeyValue, 0, len(typed))
+		members := make([]attribute.KeyValue, 0, len(typed))
 		for key, item := range typed {
-			members = append(members, log.KeyValue{Key: key, Value: boundedLogValue(item)})
+			members = append(members, attribute.KeyValue{Key: attribute.Key(key), Value: boundedLogValue(item)})
 		}
 		// Sorted, because Go randomizes map iteration and two identical records
 		// would otherwise export their attributes in a different order.
-		slices.SortFunc(members, func(a, b log.KeyValue) int {
+		slices.SortFunc(members, func(a, b attribute.KeyValue) int {
 			if a.Key < b.Key {
 				return -1
 			}
@@ -422,18 +423,18 @@ func boundedLogValue(value any) log.Value {
 			}
 			return 0
 		})
-		return log.MapValue(members...)
+		return attribute.MapValue(members...)
 	case []any:
-		members := make([]log.Value, 0, len(typed))
+		members := make([]attribute.Value, 0, len(typed))
 		for _, item := range typed {
 			members = append(members, boundedLogValue(item))
 		}
-		return log.SliceValue(members...)
+		return attribute.SliceValue(members...)
 	default:
 		// Reachable only when a redactor returns a shape normalize did not
 		// produce. Stringifying is the conservative answer: the value is
 		// exported as text, capped, and never as an unexamined structure.
-		return log.StringValue(bounded(fmt.Sprint(value)))
+		return attribute.StringValue(bounded(fmt.Sprint(value)))
 	}
 }
 

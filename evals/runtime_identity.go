@@ -10,6 +10,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
+	"time"
 )
 
 type runtimeCommand func(context.Context, string, ...string) ([]byte, error)
@@ -109,7 +111,36 @@ func decodeRuntimeVersion(output []byte) (SourceEvidence, error) {
 	return evidence, nil
 }
 
+// busyRetryLimit and busyRetryDelay bound the ETXTBSY retry below. Five attempts
+// 20ms apart cover the fork window without turning a genuinely locked binary into
+// a slow failure; a real "text file busy" still surfaces after 100ms.
+const (
+	busyRetryLimit = 5
+	busyRetryDelay = 20 * time.Millisecond
+)
+
 func executeRuntimeCommand(ctx context.Context, name string, arguments ...string) ([]byte, error) {
+	// Linux refuses to exec a file that any process still holds open for writing.
+	// snapshotRuntimeBinary writes the binary this function then runs, and the
+	// harness starts agents concurrently, so a sibling fork can inherit the write
+	// descriptor for the few microseconds between fork and exec and make an
+	// otherwise correct snapshot fail with ETXTBSY (golang/go#22315). The window
+	// closes on its own, so retry it briefly rather than reporting "text file
+	// busy" — an error naming a condition the learner did not cause and cannot fix.
+	for attempt := 0; ; attempt++ {
+		output, err := executeRuntimeCommandOnce(ctx, name, arguments...)
+		if err == nil || !errors.Is(err, syscall.ETXTBSY) || attempt == busyRetryLimit-1 {
+			return output, err
+		}
+		select {
+		case <-ctx.Done():
+			return nil, err
+		case <-time.After(busyRetryDelay):
+		}
+	}
+}
+
+func executeRuntimeCommandOnce(ctx context.Context, name string, arguments ...string) ([]byte, error) {
 	command := exec.CommandContext(ctx, name, arguments...)
 	output, err := command.Output()
 	if err == nil {

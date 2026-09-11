@@ -1,6 +1,7 @@
 package conventions
 
 import (
+	"bytes"
 	"encoding/json"
 	"encoding/xml"
 	"maps"
@@ -156,6 +157,60 @@ func loadBaseURL(root string) string {
 		return ""
 	}
 	return strings.TrimRight(baseURL, "/") + "/"
+}
+
+// checkPublishedHostname holds the published hostname to one authority.
+//
+// static/CNAME is the file GitHub Pages reads, so it owns the name; hugo.toml's baseURL
+// and static/robots.txt's Sitemap line are copies of it, and a divergence is silent —
+// the site keeps returning 200 while every canonical link, sitemap entry, Open Graph tag
+// and absolute asset reference points at a host that is not serving.
+func checkPublishedHostname(root string) []Problem {
+	const cnameWhere = "static/CNAME"
+	text, err := readFile(filepath.Join(root, "static", "CNAME"))
+	if err != nil {
+		return []Problem{problem(cnameWhere, "could not read the published hostname: %v", err)}
+	}
+	var hosts []string
+	for _, line := range strings.Split(text, "\n") {
+		if trimmed := strings.TrimSpace(line); trimmed != "" {
+			hosts = append(hosts, trimmed)
+		}
+	}
+	if len(hosts) != 1 {
+		return []Problem{problem(cnameWhere, "GitHub Pages serves exactly one hostname, found %d", len(hosts))}
+	}
+	host := hosts[0]
+
+	baseURL := loadBaseURL(root)
+	if baseURL == "" {
+		return []Problem{problem("hugo.toml", "baseURL must be set to the hostname %s serves, %q", cnameWhere, host)}
+	}
+	parsed, parseErr := url.Parse(baseURL)
+	if parseErr != nil {
+		return []Problem{problem("hugo.toml", "baseURL %q is not a URL: %v", baseURL, parseErr)}
+	}
+	var problems []Problem
+	if !strings.EqualFold(parsed.Host, host) {
+		problems = append(problems, problem("hugo.toml", "baseURL host is %q, but %s serves %q", parsed.Host, cnameWhere, host))
+	}
+	// A project-pages baseURL carrying a path prefix would relocate every root-relative
+	// asset the rendered pages emit, on a site served from the apex of its own hostname.
+	if parsed.Path != "/" {
+		problems = append(problems, problem("hugo.toml", "baseURL must have no path prefix, found %q", parsed.Path))
+	}
+	// hugo.toml disables enableRobotsTXT, so static/robots.txt is served verbatim and its
+	// Sitemap line is a third copy of the hostname that no build step regenerates.
+	const robotsWhere = "static/robots.txt"
+	robots, robotsErr := readFile(filepath.Join(root, "static", "robots.txt"))
+	if robotsErr != nil {
+		return append(problems, problem(robotsWhere, "could not read the served robots file: %v", robotsErr))
+	}
+	sitemap := "Sitemap: " + strings.TrimRight(baseURL, "/") + "/sitemap.xml"
+	if !slices.Contains(strings.Split(robots, "\n"), sitemap) {
+		problems = append(problems, problem(robotsWhere, "served robots file must announce %q", sitemap))
+	}
+	return problems
 }
 
 func readSearchRoutes(siteRoot string) map[string]bool {
@@ -401,8 +456,13 @@ func checkReleasedRoutes(root, siteRoot string, pages pageSet) []Problem {
 			published[route] = true
 		}
 	}
-	for route := range ledger.Redirects {
+	// Both sides of a redirect are published addresses. A page renamed inside the
+	// pre-Hugo era served its new name too, so reading only the keys left that second
+	// address outside the ratchet — which is how 6.7's post-rename URL became a live
+	// 404 with every gate green.
+	for route, target := range ledger.Redirects {
 		published[route] = true
+		published[target] = true
 	}
 
 	claimed := make(map[string]string)
@@ -435,8 +495,17 @@ func checkReleasedRoutes(root, siteRoot string, pages pageSet) []Problem {
 		if successor == "/" {
 			continue
 		}
-		if _, statErr := os.Stat(filepath.Join(siteRoot, filepath.FromSlash(route))); statErr != nil {
+		stub, readErr := os.ReadFile(filepath.Join(siteRoot, filepath.FromSlash(route)))
+		if readErr != nil {
 			problems = append(problems, problem(where, "published route %q did not render a redirect into the site", route))
+			continue
+		}
+		// A meta refresh navigates to exactly the URL it was given, so the stub has to
+		// forward the incoming fragment in script or every historical deep link lands at
+		// page top. Reading the body is what stops layouts/alias.html from being deleted
+		// with nothing failing.
+		if !bytes.Contains(stub, []byte("location.hash")) {
+			problems = append(problems, problem(where, "published route %q renders a redirect that discards the URL fragment; layouts/alias.html must forward location.hash", route))
 		}
 	}
 

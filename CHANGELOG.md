@@ -2,6 +2,51 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.10.0] - 2026-09-11
+
+A currency release. The reference agent moves to ADK Go v2.3.0, which retires the four compatibility ceilings the course had been teaching around; five dependency advisories leave the shipped modules; and the freshness reporter that was supposed to catch all of this stops answering its own question with the pin it was asked about.
+
+Six pins are deliberately not moved, each with its reason recorded beside it: the Go toolchain stays on the 1.26 line, `kubectl` on 1.36.3, agentgateway on 1.4.1, k3s and the Ollama evaluation archive on their existing evidence holds, and the vendored Mermaid bundle on 11.x. The first five surface as `REVIEW` rows in the quarterly freshness report on purpose; Mermaid is outside that report and its reason lives in `scripts/vendor-assets.sh`.
+
+### 🚀 Features
+
+- _(agent)_ Upgrade Google ADK for Go to v2.3.0 and `a2a-go` to v2.5.0, retiring all four transitive compatibility holds
+- _(platform)_ Take the kagent chart to v0.10.1, the GA release the previous pin was waiting on
+- _(site)_ Give every Mermaid diagram its own accessible name, derived from the prose beside it
+- _(site)_ Publish the ten RSS feeds with items in them, and `llms.txt` with each page's own description
+
+### 🐛 Bug Fixes
+
+- _(tools)_ Ask mise for the newest version instead of whether the pin is satisfied, which made all 30 tool rows report CURRENT against themselves
+- _(scripts)_ Stop `test-lib.sh` committing its throwaway repository into the contributor's checkout when a git hook exports `GIT_DIR`
+- _(evals)_ Wait out `ETXTBSY` when executing a binary the harness has just written, instead of failing a correct run
+- _(site)_ Serve `6. Platform/6.7. Promotion and Rollback.html`, a published URL that had been a live 404, and forward the fragment through every historical alias
+- _(agent)_ Move the MCP read allowlist onto `tool.FilterToolset`, the spelling ADK v2.3.0 deprecated `mcptoolset.Config.ToolFilter` in favor of
+- _(platform)_ Declare both security contexts on the declarative kagent exercise, which restricted Pod Security rejected
+- _(platform)_ Stop the `scale` overlay pinning `spec.replicas` beside its own autoscaler, which snapped the read plane back to two on every apply; `minReplicas` is now the only floor, at the cost of one pod until the first reconcile
+
+### 🔒 Security
+
+- _(deps)_ Upgrade `golang.org/x/mod` past CVE-2026-56864 and CVE-2026-56865, and `google.golang.org/grpc` past CVE-2026-84304 and CVE-2026-84445
+- _(deps)_ Carry `golang.org/x/crypto` past CVE-2026-56854 into the shipped image
+- _(ci)_ Take both container bases and fourteen pinned tools to their current releases, and the Go toolchain to 1.26.8, the newest patch of the line the four modules and the build stage share
+
+### 🔒 Gates
+
+- _(infra)_ Render, schema-validate and lint the `scale` overlay, which Chapter 6.9 claimed as proof and no gate ran
+- _(tools)_ Hold `static/CNAME`, `baseURL` and the served `robots.txt` to one hostname
+- _(tools)_ Hold both sides of a pre-Hugo rename to the published-route ratchet, not only the spelling it replaced — which is how 6.7's live 404 passed every gate
+- _(tools)_ Prove the `ETXTBSY` retry and the mise freshness resolution with tests that fail without them
+
+### 📚 Documentation
+
+- Correct three product claims the course taught as impossible: per-key gateway budgets, MCP server elicitation, and A2A push notifications
+- Rewrite `8.8. From Python` around the ADK-Python course this repository actually shipped, and record that MLflow was removed rather than renamed
+- Regenerate every drifted capture: test counts, coverage figures, release metadata, and the ADK and chart versions quoted in prose
+- Say what a learner's machine truly needs on the pages whose prerequisites over- or under-stated it
+- Give the signing chain a verification command, and say what verifying it does not prove
+- Say plainly that the release workflow checks the version and the commit but never whether the hosted gates passed on them, so that wait stays a human step
+
 ## [0.9.1] - 2026-08-16
 
 A full-repository review, and the corrections it earned. The course now says what the code does, the learner gate installs what it needs, and eight checks that could not fail can fail again.
@@ -217,7 +262,8 @@ The course is now taught in Go. The complete Python course is preserved on the `
 
 - Publish AgentOps Open Course
 
-[unreleased]: https://github.com/MLOps-Courses/agentops-open-course/compare/v0.9.1...HEAD
+[unreleased]: https://github.com/MLOps-Courses/agentops-open-course/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/MLOps-Courses/agentops-open-course/releases/tag/v0.10.0
 [0.9.1]: https://github.com/MLOps-Courses/agentops-open-course/releases/tag/v0.9.1
 [0.9.0]: https://github.com/MLOps-Courses/agentops-open-course/releases/tag/v0.9.0
 [0.7.0]: https://github.com/MLOps-Courses/agentops-open-course/releases/tag/v0.7.0

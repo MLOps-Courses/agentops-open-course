@@ -6,7 +6,7 @@ The same container images run on a local k3d cluster and a small GKE Standard cl
 
 - `agentgateway/{host,k3d,gke}/config.yaml` declares separate MCP `:3000`, A2A `:3001`, and OpenAI-compatible LLM `:4000` listeners. Metrics stay internal on `:15020`.
 - `agentgateway/host/config-auth.yaml` is the opt-in secured host profile: strict JWT on MCP/A2A, an enforced API key on the model route, and TLS on all three listeners, backed by demo material from `scripts/gateway-{tls,jwt}.sh` (gitignored under `agentgateway/host/auth/`).
-- `k8s/base` and `k8s/overlays/{local,gke}` are the Kustomize deployment.
+- `k8s/base` and `k8s/overlays/{local,gke,scale}` are the Kustomize deployment. `local` and `gke` are the two deployable environments; `scale` layers a replicated MCP read plane on `local` for Chapter 6.9. All three are rendered, schema-validated, and linted by `mise run check:infra`.
 - `k8s/base/secrets/` holds SOPS-encrypted Secret manifests (age recipient in the root `.sops.yaml`). `scripts/secrets.sh` generates the gitignored age key under `infra/secrets/`, then encrypts, decrypts, or edits manifests; deploy one with `scripts/secrets.sh decrypt <file> | kubectl apply -f -`. Encrypted files stay out of the Kustomize overlays so rendering never needs the private key.
 - `kagent` contains the BYO `Agent`, gateway `ModelConfig`, MCP registration, and a slim stable-chart values file.
 - `observability` is the loopback-only host stack for running the agent outside Kubernetes.

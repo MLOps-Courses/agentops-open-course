@@ -126,18 +126,30 @@ func parseMiseOutdatedJSON(data []byte) (map[string]MiseUpdate, error) {
 }
 
 // MiseResult returns the displayed latest version and triage status.
+//
+// Absence is an answer, but only because miseOutdatedArgs carries --bump: mise
+// then lists every tool that has a newer version, so a pin it did not list and
+// did not warn about is a pin nothing is newer than. Without that flag mise
+// honors an exact request as a ceiling and lists nothing at all, which is what
+// made this table a guaranteed all-clear — 30 unasked questions rendering as 30
+// upstream confirmations. A row that arrives with no version is a gap rather
+// than an answer: runMiseOutdated records a tool mise warned it could not
+// resolve that way, because mise omits that row and still exits 0, and reading
+// that omission as "nothing newer" would restore the same rubber stamp.
 func MiseResult(pinned string, update *MiseUpdate, available bool) (string, string) {
 	if !available {
 		return "unavailable", "UNAVAILABLE"
 	}
-	latest := pinned
-	if update != nil {
-		latest = update.Latest
+	if update == nil {
+		return pinned, "CURRENT"
 	}
-	if latest == pinned {
-		return latest, "CURRENT"
+	if update.Latest == "" {
+		return "unchecked", "UNKNOWN"
 	}
-	return latest, "REVIEW"
+	if update.Latest == pinned {
+		return update.Latest, "CURRENT"
+	}
+	return update.Latest, "REVIEW"
 }
 
 // ParseHelmCharts extracts the reviewed version and immutable chart sources.

@@ -34,9 +34,14 @@ patches:
       kind: Deployment
       name: agentops-mcp
     patch: |-
-      - op: replace
+      # The floor is stated once, as `minReplicas` in autoscale.yaml. A
+      # `spec.replicas` in an applied manifest and an HPA on the same Deployment
+      # contend on every apply: the next `kubectl apply -k` would snap a read
+      # plane the autoscaler had taken to three or four back down to the pinned
+      # number. The accepted cost is a one-time single-pod window, because a
+      # Deployment with no `replicas` defaults to one until the HPA reconciles.
+      - op: remove
         path: /spec/replicas
-        value: 2
       # Preferred, never required. The state claim is ReadWriteOnce, and the
       # local-path provisioner pins its PersistentVolume to the node that holds
       # the directory — a hard filter the scheduler applies before it scores

@@ -206,7 +206,7 @@ func (r *agentRuntime) launcherConfig() (*launcher.Config, error) {
 		// ADK builds the tracer and logger providers from the standard
 		// OTEL_EXPORTER_OTLP_* variables; this pins what they are attributed to,
 		// so a span, a log record and a metric all name the same service and
-		// version. The meter provider is ours — ADK v2.2.0 builds none.
+		// version. The meter provider is ours — ADK v2.3.0 builds none.
 		TelemetryOptions: r.telemetryOptions,
 	}, nil
 }

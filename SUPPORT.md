@@ -65,12 +65,11 @@ Offline validation must never be presented as model-backed proof. A green `mise 
 
 Patch releases fix defects without intentionally breaking stable software contracts. Minor releases may add backward-compatible fields, tools, schema versions, or manifests and may restructure course pages.
 
-ADK Go v2.2.0 currently owns two supported dependency ceilings:
+One supported dependency ceiling remains, recorded as a `// compatibility hold:` comment in `tools/go.mod`: `cdproto` stays at the revision `chromedp` v0.16.0 was built against, and only a real Chrome accessibility acceptance run qualifies a newer one. A hold comment always names three things — the owner that decides the version, the constraint, and the validator — and `check:freshness` renders them as a table.
 
-- `openai-go/v3` v3.49.0 and `genai` v1.66.0 remain paired, because ADK's own module requires them together. Move them when ADK moves, not before.
-- OpenTelemetry stable 1.44 and log 0.20 remain paired. OTel 1.45 and log 0.21 remove log value APIs this ADK release uses internally.
+ADK Go v2.2.0 owned two more until v2.3.0 migrated its own logs to OpenTelemetry 1.45 and log 0.21 and `agents/go` moved with it. The OTel stable 1.44 with log 0.20 ceiling is therefore gone, and so is the pinned `openai-go/v3` and `genai` pair — though ADK still resolves both clients through its own module, so move that pair when ADK moves, not before.
 
-These are upstream compatibility constraints, not general bans on newer clients. A replacement ADK/client family becomes supported only when `cd agents/go && mise run check && mise run test` compiles and passes telemetry, command, and full race tests. Never override the ceiling by upgrading one transitive module alone.
+These are upstream compatibility constraints, not general bans on newer clients. A replacement ADK/client family becomes supported only when `cd agents/go && mise run check && mise run test` compiles and passes telemetry, command, and full race tests. Never override a ceiling by upgrading one transitive module alone.
 
 Two runtime pins remain explicit evidence holds:
 

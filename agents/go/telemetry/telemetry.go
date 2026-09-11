@@ -13,7 +13,7 @@
 //
 // # What ADK does not do, and this package therefore does
 //
-//  1. Metrics. ADK v2.2.0 constructs no MeterProvider at all — its own TODO
+//  1. Metrics. ADK v2.3.0 constructs no MeterProvider at all — its own TODO
 //     says so — so [InstallMeterProvider] builds the OTLP metric pipeline the
 //     four custom agentops.* counters need to reach Prometheus. See metrics.go.
 //  2. Trace-correlated logs. Go's log/slog knows nothing about OpenTelemetry,
@@ -103,7 +103,7 @@ const (
 // pinned ADK's unsafe spans unless the operator explicitly accepts their
 // content-bearing behavior.
 //
-// ADK Go v2.2.0 always serializes tool arguments and results onto execute_tool
+// ADK Go v2.3.0 always serializes tool arguments and results onto execute_tool
 // spans and records raw error text in exception events. Neither capture switch
 // controls those fields, and the ADK provider offers no stable field-filtering
 // seam. Therefore false, unset, or malformed
@@ -112,11 +112,13 @@ const (
 // return an error after the boundary is closed. Only the exact literal "true"
 // accepts that risk and preserves the operator's sampler choice.
 //
-// The GenAI switch remains an ordinary default because it controls log-event
-// bodies, which the repository sanitizes on both durable log paths. Call this
-// before the launcher builds telemetry providers. It is safe and intentional
-// to call it again at the provider boundary so direct runtime assembly cannot
-// bypass the fail-closed rule.
+// The GenAI switch remains an ordinary default: a truthy value means log-event
+// bodies, which the repository sanitizes on both durable log paths, and the
+// SPAN_ONLY and SPAN_AND_EVENT values v2.3.0 added reach only spans the gate
+// above already holds non-recording. Call this before the launcher builds
+// telemetry providers. It is safe and intentional to call it again at the
+// provider boundary so direct runtime assembly cannot bypass the fail-closed
+// rule.
 func SetContentCaptureDefaults() error {
 	var problems []error
 	pin := func(name, value string) {

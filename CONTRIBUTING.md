@@ -18,7 +18,7 @@ The maintainer tier installs the pinned Go, documentation, infrastructure, and s
 ## What should every contribution preserve?
 
 - Keep documentation synchronized with exact sources under `agents/go`, `evals`, `tools`, and `infra`.
-- Keep every `content/**/*.md` page in the FAQ frame documented in `AGENTS.md`.
+- Keep every `content/**/*.md` page in the documentation page frame documented in `AGENTS.md`; `mise run check:docs` enforces it. Headings name what their section proves, and only one H2 per page may ask a question.
 - Give every non-home content page one explicit lowercase kebab-case `slug`; never add a full front-matter `url` that shadows Hugo's reviewed permalink contract.
 - Give every new or changed Mermaid diagram adjacent prose describing the same actors, relationships, and sequence.
 - Keep the required path account-free and open source; describe hosted models and cloud services as optional proprietary substrates.

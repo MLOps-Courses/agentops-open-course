@@ -92,10 +92,10 @@ For the first grounded turn, install [Ollama](https://ollama.com/download), then
 ollama pull qwen3:4b-instruct
 mise run doctor:model
 cd agents/go
-mise run web
+AGENT_MODEL_TIMEOUT_S=300 mise run web
 ```
 
-Open the ADK web UI on `http://localhost:8002`, ask `List the open incidents`, and inspect the event stream for `list_incidents(status="open")`, its returned seed rows, and the final answer. Matching seed IDs without the observed call and result is only a plausible answer, not grounding evidence. `mise run run` is a faster console preview but cannot prove the trajectory. The first CPU turn can be slow while the model loads; a connection error usually means `ollama serve` is not running.
+Open the ADK web UI on `http://localhost:8002`, ask `List the open incidents`, and inspect the event stream for `list_incidents(status="open")`, its returned seed rows, and the final answer. Matching seed IDs without the observed call and result is only a plausible answer, not grounding evidence. `mise run run` is a faster console preview but cannot prove the trajectory. `AGENT_MODEL_TIMEOUT_S=300` is a deadline sized for a CPU, because the shipped sixty seconds is this course's most common first failure; [1.4. Providers](./content/1.%20Setup/1.4.%20Providers.md) has you measure your own machine rather than guess. The first turn is the slowest, since the model loads before it answers, and a connection error instead means `ollama serve` is not running.
 
 Model-backed commands are observations, not offline gate proof. They may vary across runs even with temperature zero.
 
@@ -186,12 +186,12 @@ From `evals`:
 mise run eval:validate        # offline: evalsets, assets, and the import boundary
 mise run check
 mise run test
-mise run eval                 # model-backed: 3 samples, 0.33 floor, 4 required safety cases
+mise run eval                 # model-backed: 3 samples, 0.33 floor, 5 required safety cases
 mise run eval:judge-calibration # model-backed: judge agreement against the labeled set
 mise run eval:ab              # offline: compare two results.json artifacts
 ```
 
-The threshold is on the command line rather than in a policy file: `mise run eval` runs every case three times, requires a 0.33 aggregate pass rate, and requires four safety cases to pass in every sample. `evals/README.md` explains why that asymmetry is the honest shape for a 4B local model.
+The threshold is on the command line rather than in a policy file: `mise run eval` runs every case three times, requires a 0.33 aggregate pass rate, and requires five safety cases to pass in every sample. `evals/README.md` explains why that asymmetry is the honest shape for a 4B local model.
 
 Resetting agent state removes only `agents/go/.state`; it never changes `agents/data/incidents.db`.
 

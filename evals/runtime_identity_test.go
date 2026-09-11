@@ -7,7 +7,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 )
 
 func TestRuntimeIdentityRejectsStaleBinary(t *testing.T) {
@@ -240,6 +242,67 @@ func TestExecuteRuntimeCommandKeepsTheChildDiagnosis(t *testing.T) {
 	}
 	if _, err := executeRuntimeCommand(t.Context(), filepath.Join(directory, "absent")); err == nil {
 		t.Fatal("executeRuntimeCommand(absent) error = nil, want a start failure")
+	}
+}
+
+// Linux refuses to exec a file another descriptor still holds open for writing,
+// and the harness execs the binary it has just snapshotted. This reproduces that
+// window deterministically — the writer is released well inside the retry budget —
+// so the retry in executeRuntimeCommand is proven rather than assumed.
+func TestExecuteRuntimeCommandWaitsOutABusyBinary(t *testing.T) {
+	t.Parallel()
+
+	binary := filepath.Join(t.TempDir(), "busy")
+	writer, err := os.OpenFile(binary, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o700)
+	if err != nil {
+		t.Fatalf("OpenFile(busy) error = %v", err)
+	}
+	if _, writeErr := writer.WriteString("#!/bin/sh\nprintf 'released'\n"); writeErr != nil {
+		t.Fatalf("WriteString(busy) error = %v", writeErr)
+	}
+
+	// Held open on purpose: every exec against it fails with ETXTBSY until Close.
+	if _, busyErr := executeRuntimeCommandOnce(t.Context(), binary); !errors.Is(busyErr, syscall.ETXTBSY) {
+		_ = writer.Close()
+		t.Fatalf("single attempt error = %v, want ETXTBSY while the writer is open", busyErr)
+	}
+
+	released := make(chan error, 1)
+	go func() {
+		time.Sleep(busyRetryDelay)
+		released <- writer.Close()
+	}()
+
+	output, err := executeRuntimeCommand(t.Context(), binary)
+	if err != nil || string(output) != "released" {
+		t.Fatalf("executeRuntimeCommand() = %q, %v, want the retry to outlast the writer", output, err)
+	}
+	if err := <-released; err != nil {
+		t.Fatalf("Close(busy) error = %v", err)
+	}
+}
+
+// A binary nothing ever releases must still fail, and fail inside the budget
+// rather than retrying forever.
+func TestExecuteRuntimeCommandGivesUpOnAPermanentlyBusyBinary(t *testing.T) {
+	t.Parallel()
+
+	binary := filepath.Join(t.TempDir(), "held")
+	writer, err := os.OpenFile(binary, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o700)
+	if err != nil {
+		t.Fatalf("OpenFile(held) error = %v", err)
+	}
+	t.Cleanup(func() { _ = writer.Close() })
+	if _, writeErr := writer.WriteString("#!/bin/sh\nexit 0\n"); writeErr != nil {
+		t.Fatalf("WriteString(held) error = %v", writeErr)
+	}
+
+	started := time.Now()
+	if _, err := executeRuntimeCommand(t.Context(), binary); !errors.Is(err, syscall.ETXTBSY) {
+		t.Fatalf("executeRuntimeCommand(held) error = %v, want the original ETXTBSY", err)
+	}
+	if elapsed := time.Since(started); elapsed > busyRetryLimit*busyRetryDelay*10 {
+		t.Fatalf("gave up after %v, want a bounded retry budget", elapsed)
 	}
 }
 

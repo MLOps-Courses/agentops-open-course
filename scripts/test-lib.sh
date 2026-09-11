@@ -1,5 +1,23 @@
 #!/usr/bin/env bash
 
+# Git exports GIT_DIR, GIT_INDEX_FILE, and friends to every hook it runs, and those
+# variables outrank `git -C`: with GIT_DIR set, `git -C "${tmp_dir}/plugin" commit`
+# creates the throwaway repository's commit in the *contributor's* checkout, from the
+# contributor's staged index. `check:shell` runs this file from lefthook's pre-commit,
+# so that is not a hypothetical — it hijacks the commit being made. Clearing the
+# inherited repository is the whole guard; the temp repositories below then discover
+# themselves from their own directories, exactly as they do outside a hook.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
+	GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_PREFIX GIT_CONFIG
+# Configuration is a separate inheritance, and it needs the opposite treatment:
+# *unsetting* GIT_CONFIG_GLOBAL/GIT_CONFIG_SYSTEM hands the throwaway repositories
+# the contributor's real ~/.gitconfig, which is precisely what a harness that sets
+# them to /dev/null was keeping out. Point them at an empty file instead. Without
+# this, a contributor with `commit.gpgsign = true` cannot commit at all: the commit
+# below fails to sign, `check:shell` fails, and lefthook's pre-commit refuses the
+# commit that started it.
+export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
+
 lib_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib.sh
 source "${lib_dir}/lib.sh"
@@ -66,6 +84,13 @@ grep -Fq "test artifact checksum mismatch" "${tmp_dir}/checksum"
 
 mkdir "${tmp_dir}/plugin"
 git -C "${tmp_dir}/plugin" init -q
+# The regression guard for the unset above, and for any GIT_* variable a future git
+# adds to it: `git init` succeeds under an inherited GIT_DIR without creating
+# anything here, and every command after it would then address the caller's
+# repository instead. Assert the throwaway repository is the one in play.
+plugin_git_dir="$(git -C "${tmp_dir}/plugin" rev-parse --absolute-git-dir)"
+[[ ${plugin_git_dir} == "${tmp_dir}/plugin/.git" ]] ||
+	fail "test plugin git dir is ${plugin_git_dir}, want ${tmp_dir}/plugin/.git; a git environment variable leaked in"
 printf 'reviewed executable' >"${tmp_dir}/plugin/tool"
 printf 'command: tool\n' >"${tmp_dir}/plugin/plugin.yaml"
 printf 'tool\n' >"${tmp_dir}/plugin/.gitignore"

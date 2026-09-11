@@ -51,7 +51,7 @@ spec:
           value: agentgateway
         - name: OTEL_EXPORTER_OTLP_ENDPOINT
           value: http://otel-collector:4318
-        # ADK v2.2.0 spans can carry model and tool content. Keep its tracing
+        # ADK v2.3.0 spans can carry model and tool content. Keep its tracing
         # pipeline disabled until an explicit, isolated risk-acceptance run.
         - name: ADK_CAPTURE_MESSAGE_CONTENT_IN_SPANS
           value: "false"

@@ -1,0 +1,53 @@
+{{- /*
+  Overrides Hextra's llms.txt for one reason: its entry line summarises each page with
+  `.Summary`, which on every page in this course is the `{{% admonition abstract %}}`
+  glance block. That published 74 entries that began "In one glance" and then broke the
+  one-line-per-entry format with the block's own newlines, carrying `&rsquo;` and friends
+  through to the consumer.
+
+  Every page carries a curated one-sentence `description` — the same string the HTML
+  `<meta name="description">` publishes — so that is what an agent fetching this index
+  should read. Collapsing whitespace and the first `htmlUnescape` only matter for the
+  `.Summary` fallback, which cannot fire while tools/internal/conventions requires a
+  description on every page; `truncate` bounds that fallback alone, since the longest
+  description in content/ is 222 characters — 7.3b. Cost Governance — and no curated
+  sentence is clipped. The second `htmlUnescape` is what reaches the file: `truncate`
+  re-escapes the text it emits, so without it every apostrophe ships as `&#39;`.
+
+  Kept verbatim from upstream otherwise, so the two stay comparable on a theme bump.
+*/ -}}
+# {{ .Site.Title }}
+
+> {{ .Site.Params.description | default "" }}
+
+{{ range where site.Sections "Params.llms" "ne" false }}
+{{- template "llms-section-tree" dict "context" . "level" 2 }}
+{{ end }}
+
+{{- $rootPages := where (where site.RegularPages "Section" "") "Params.llms" "ne" false }}
+{{- if $rootPages }}
+## Root Pages
+{{- range $rootPages }}
+- [{{ .Title }}]({{ .Permalink }}): {{ or .Description .Summary | plainify | htmlUnescape | replaceRE `\s+` " " | strings.TrimSpace | truncate 250 | htmlUnescape }}{{ if .Date }} - Published {{ .Date.Format "2006-01-02" }}{{ end }}
+{{- end }}
+{{- end }}
+
+---
+Generated on {{ now.Format "2006-01-02 15:04:05 UTC" }}
+Site: {{ .Site.BaseURL }}
+
+{{- define "llms-section-tree" -}}
+{{- $context := .context -}}
+{{- $level := .level | default 2 -}}
+{{- $headerHashes := strings.Repeat $level "#" -}}
+{{- "\n" -}}
+{{ $headerHashes }} {{ $context.Title }}
+
+{{- range where $context.RegularPages "Params.llms" "ne" false }}
+- [{{ .Title }}]({{ .Permalink }}): {{ or .Description .Summary | plainify | htmlUnescape | replaceRE `\s+` " " | strings.TrimSpace | truncate 250 | htmlUnescape }}{{ if .Date }} - Published {{ .Date.Format "2006-01-02" }}{{ end }}
+{{- end }}
+
+{{- range where $context.Sections "Params.llms" "ne" false }}
+{{ template "llms-section-tree" dict "context" . "level" (add $level 1) }}
+{{- end }}
+{{- end -}}

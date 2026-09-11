@@ -1,6 +1,6 @@
 {
   "format": 1,
-  "note": "Every URL the course has ever published, and the permalink that serves it today. Pages carry the historical ones as Hugo aliases; checkReleasedRoutes proves each one renders. A page born after v0.7.0 has no predecessor to alias, so it is recorded as its own successor — otherwise its slug could be renamed with nothing failing. Adding a page adds its permalink here.",
+  "note": "Every URL the course has ever published, and the permalink that serves it today. Pages carry the historical ones as Hugo aliases; checkReleasedRoutes proves each one renders and forwards the URL fragment. `redirects` records a rename that happened inside the pre-Hugo era, so both its sides were served and both are published routes. A page born after v0.7.0 has no predecessor to alias, so it is recorded as its own successor — otherwise its slug could be renamed with nothing failing. Adding a page adds its permalink here.",
   "releases": {
     "0.1.0": [
       "0. Overview/0.0. Course.html",
@@ -524,7 +524,7 @@
       "6. Platform/6.4. Platform Tools.html",
       "6. Platform/6.5. Platform Gateway.html",
       "6. Platform/6.6. Platform Delivery.html",
-      "6. Platform/6.7. Progressive Delivery.html",
+      "6. Platform/6.7. Promotion and Rollback.html",
       "6. Platform/index.html",
       "7. Observability/7.0. Reproducibility.html",
       "7. Observability/7.1. Tracing.html",
@@ -607,6 +607,7 @@
     "6. Platform/6.5. Platform Gateway.html": "/6-platform/6-5-platform-gateway/",
     "6. Platform/6.6. Platform Delivery.html": "/6-platform/6-6-platform-delivery/",
     "6. Platform/6.7. Progressive Delivery.html": "/6-platform/6-7-promotion-and-rollback/",
+    "6. Platform/6.7. Promotion and Rollback.html": "/6-platform/6-7-promotion-and-rollback/",
     "6. Platform/index.html": "/6-platform/",
     "7. Observability/7.0. Reproducibility.html": "/7-observability/7-0-reproducibility/",
     "7. Observability/7.1. Tracing.html": "/7-observability/7-1-tracing/",
