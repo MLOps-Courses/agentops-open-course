@@ -1,4 +1,0 @@
-User-agent: *
-Allow: /
-
-Sitemap: https://agentops-open-course.fmind.dev/sitemap.xml
