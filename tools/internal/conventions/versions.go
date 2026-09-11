@@ -133,7 +133,11 @@ func checkSourceVersions(root string, pages pageSet) []Problem {
 
 	goPin := toolVersion(root, "go")
 	goDirective := regexp.MustCompile(`(?m)^go (\d+\.\d+\.\d+)$`)
-	for _, where := range []string{"agents/go/go.mod", "evals/go.mod", "tools/go.mod"} {
+	// All four modules, including the root one. AGENTS.md calls the toolchain a
+	// coordinated pin across every Go module, the root mise.toml and the Dockerfile
+	// build stage; leaving the root go.mod out let a coordinated bump forget one of
+	// the five and stay green.
+	for _, where := range []string{"go.mod", "agents/go/go.mod", "evals/go.mod", "tools/go.mod"} {
 		module, err := readFile(filepath.Join(root, filepath.FromSlash(where)))
 		if err != nil {
 			problems = append(problems, problem(where, "could not read Go version authority: %v", err))

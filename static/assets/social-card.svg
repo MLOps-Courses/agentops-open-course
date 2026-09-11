@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title description">
   <title id="title">AgentOps Open Course</title>
   <desc id="description">An executable, local-first course for building, evaluating, securing, and operating one production-shaped AI agent.</desc>
-  <!-- Export from docs/assets: convert -background none social-card.svg -resize 1200x630 -depth 8 -strip social-card.png -->
+  <!-- Regenerate the sibling PNG from this directory (the fmind/ font and logo hrefs are relative): convert -background none social-card.svg -resize 1200x630 -depth 8 -strip social-card.png -->
   <defs>
     <style>
       @font-face {

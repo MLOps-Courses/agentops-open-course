@@ -75,7 +75,7 @@ printf '\n[3/3] Rendering the %q overlay...\n' "${overlay}"
 kubectl kustomize "infra/k8s/overlays/${overlay}" >/dev/null
 printf 'The %q overlay renders cleanly.\n' "${overlay}"
 
-if ((!with_model)); then
+if ((! with_model)); then
 	cat <<EOF
 
 Offline preflight passed, but no promotion command was emitted because candidate

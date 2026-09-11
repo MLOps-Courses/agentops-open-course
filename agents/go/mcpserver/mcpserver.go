@@ -20,7 +20,7 @@
 //  2. The client pins the same six names in its own tool filter
 //     (compose.MCPReadToolNames), so even a compromised server that advertised
 //     a new tool would never have it offered to the model.
-//  3. A tool that requires human confirmation cannot execute here at all. The
+//  3. A tool that requires human confirmation does not execute here. The
 //     context an MCP call runs under has no session, no event stream and no
 //     human attached, so the confirmation request fails and the call fails with
 //     it. See [ErrConfirmationUnavailable]. The two guarded writes stay in the
@@ -79,8 +79,15 @@ var ErrIncompleteConfig = errors.New("incomplete MCP server configuration")
 // It is the third of the three read-only enforcements, and the only one that
 // still holds if the other two are misconfigured: this process has no session
 // to pause, no event stream to publish a confirmation request on, and no human
-// listening. Failing here is the correct answer — an MCP server that could
-// execute an approval-gated action would have made approval optional.
+// listening.
+//
+// The refusal is a design decision, not a protocol limit. The pinned MCP SDK
+// can carry a multi round-trip request, so a server could ask its client to
+// elicit an approval — but the approver identity, the session, the invocation
+// id, and the audit row that commits in one transaction with the mutation all
+// live in the agent process. An approval negotiated over `tools/call` could be
+// neither attributed nor replayed, so this server declines to ask rather than
+// collecting a confirmation it cannot bind to anything.
 var ErrConfirmationUnavailable = errors.New(
 	"this tool requires human confirmation, which the MCP server cannot request: " +
 		"call it through the agent instead",

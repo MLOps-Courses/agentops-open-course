@@ -16,7 +16,7 @@ The course teaches the complete lifecycle of one Go AgentOps Agent with Google A
 - `clients/web/` is a minimal dependency-free A2A client.
 - `load/` contains k6 load tests and documented latency budgets.
 - `infra/agentgateway/{host,k3d,gke}/` contains data-plane profiles.
-- `infra/k8s/base` and `infra/k8s/overlays/{local,gke}` contain shared deployment resources.
+- `infra/k8s/base` and `infra/k8s/overlays/{local,gke,scale}` contain shared deployment resources; `scale` layers a replicated MCP read plane on `local` for Chapter 6.9, and `check:infra` renders, validates, and lints all three.
 - `infra/kagent/` declares the BYO Agent, ModelConfig, and governed RemoteMCPServer.
 - `infra/observability/` contains host and in-cluster OpenTelemetry backends.
 - `infra/gcp/` is a plan-first OpenTofu module for the optional GKE laboratory.
@@ -78,18 +78,20 @@ Use locks and manifests as authority, never a number copied into prose:
 - Go and cross-repository CLI tools: root `mise.toml` and `mise.lock`.
 - Agent build stage: `agents/go/Dockerfile`; its Go version must match every Go module and root mise.
 - Hextra: root `go.mod` and `go.sum`; Hugo: root `mise.toml`.
-- Self-hosted Mermaid and FlexSearch bundles: `assets/js/vendor/versions.json`.
+- Self-hosted Mermaid and FlexSearch bundles: `assets/js/vendor/versions.json`. That file is regenerated wholesale by `scripts/vendor-assets.sh`, so the held line and the reason it is held live in that script's header, not in the manifest.
 - kagent charts: `infra/helmfile.yaml`; API resources use the pinned version declared there.
 - Container images: digest-pinned at their use sites under `infra/` and the agent Dockerfile.
 - Workflow-only Buildx: explicit version inputs in the release workflow.
+- GKE module provider: `infra/gcp/versions.tf` and `infra/gcp/.terraform.lock.hcl`. No Dependabot ecosystem and no freshness row watch them, so they move only from the quarterly docs-freshness checklist.
 - Evaluation inputs: three `evals/*.evalset.json` files and `judge-calibration.json`; the run thresholds are the `eval` task command line in `evals/mise.toml`.
 
-Two transitive families are explicit ADK Go v2.2.0 compatibility ceilings, not stale pins:
+A `// compatibility hold:` comment records a pin that a newer version would break. It names the owner that decides the version, the constraint itself, and the validator that must pass before the pin moves; `check:freshness` walks every `go.mod` and renders the holds as a table, so a ceiling is reviewable rather than remembered.
 
-- ADK's own module pairs `github.com/openai/openai-go/v3` v3.49.0 with `google.golang.org/genai` v1.66.0, and minimal version selection resolves both from ADK itself. ADK owns this pair; do not bump either client independently. (openai-go v3.50.0 does compile and pass against ADK v2.2.0 — the union-struct breakage that justified the older v3.8.1 floor is fixed upstream — but the pair still moves with ADK, not ahead of it.)
-- ADK uses OpenTelemetry log `Value` and `KeyValue` APIs removed by the OTel 1.45 and log 0.21 family. OTel stable 1.44 with log 0.20 is the highest compiling family for this ADK release.
+One hold stands, in `tools/go.mod`: `github.com/chromedp/cdproto` is held at the revision `chromedp` v0.16.0 was built against, and only a real Chrome accessibility acceptance run qualifies a newer one, because nothing but driving a browser proves the CDP command set.
 
-The validator for either ceiling is `cd agents/go && mise run check && mise run test`; it must compile ADK and pass the focused telemetry, command, and full race suite before the constraint or prose changes. A newer resolved module is not supported evidence.
+`agents/go/go.mod` carries none. ADK Go v2.3.0 migrated its own logs to the OpenTelemetry 1.45 and log 0.21 family (google/adk-go#1335), which retired the four holds it carried through v2.2.0 — the `openai-go`/`genai` client pair and OTel stable 1.44 with log 0.20 — and `agents/go/telemetry/export.go` moved off the removed `log.Value` and `log.KeyValue` with it. ADK still resolves both clients through minimal version selection, so that pair moves with ADK and never ahead of it.
+
+The validator for an agent-module ceiling is `cd agents/go && mise run check && mise run test`; it must compile ADK and pass the focused telemetry, command, and full race suite before the constraint or prose changes. A newer resolved module is not supported evidence.
 
 Generated result files are transient handoffs. The organization caps artifact and log retention at **7 days**; durable release evidence belongs on an owner-approved immutable release and in OCI attestations.
 
@@ -205,7 +207,7 @@ Rules:
 - **A hands-on page reaches a runnable command within its first two H2 sections.**
 - **Use zero to three `{{% collapsible note "Deeper: …" %}}` blocks per page.** Never collapse definitions, commands, expected output, security bounds, cost, or destructive actions.
 - **Open each H2 with a concrete sentence of 25 words or fewer.** `checkHeadingOpeners` enforces it, counting what a reader actually reads — shortcodes stripped, links reduced to their label, up to the first full stop — and skipping sections that open on a list, table, fence, or shortcode. The habit that breaks it is systematic: the definition, its appositive gloss, and the enumerated consequences all stack before the first full stop. Split the sentence in two so the definition lands first; a dash or colon only helps when it becomes a full stop. Keep sentences readable and cross-links sparse.
-- **Every new or changed Mermaid diagram has adjacent `**Diagram in words:**` prose.**
+- **Every new or changed Mermaid diagram has adjacent `**Diagram in words:**` prose.** The Mermaid render hook derives each diagram's accessible name from that sentence, and `checkRenderedDiagramNames` fails a page whose diagrams end up sharing one. Override a derived name with a block attribute on the fence, `{ariaLabel="…"}` after the language token and separated from it by a space, rather than by rewriting the prose.
 - **Use descriptive full-page link labels and define unfamiliar terms at first use.**
 - **Include shortcodes stand alone outside code fences and quote the smallest stable source region.**
 - **Never add a front-matter `url` override.** Hugo gives it precedence, so it shadows the reviewed slug and permalink route. Home alone omits `slug`; chapter sections and regular pages require one.
@@ -287,8 +289,9 @@ The GKE path stops at `tofu plan` unless the user explicitly approves deployment
 - **Bump a coordinated pin:** update its authority, regenerate lock or digest evidence, search for compatibility copies, and run every affected profile.
 - **Change evaluation evidence:** coordinate harness schema, serialization tests, documentation, release qualifier, and workflow consumer in one change.
 - **Change state schema:** add forward migration, unknown-future rejection, backup/restore evidence, and rollback notes before changing prose.
+- **Cut a release:** bump `VERSION`, `CITATION.cff`, and the dated `CHANGELOG.md` heading together, then re-capture `mise run check:release-metadata` into `content/8. Community/8.2. Releases.md`, which quotes that line verbatim and which no checker derives.
 
-Release evidence is commit-scoped. Freeze the candidate, dispatch evaluation and platform evidence at that exact SHA, then dispatch release with the same SHA and fresh handoffs. Any push creates a new candidate.
+Release evidence is commit-scoped. Freeze the candidate, dispatch evaluation and platform evidence at that exact SHA, then dispatch release with the same SHA and fresh handoffs. The release workflow checks the version and the commit, never whether the hosted gates passed on them, so that wait is yours to hold. Any push creates a new candidate.
 
 ## Definition of done
 

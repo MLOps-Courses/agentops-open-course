@@ -98,12 +98,12 @@ mise run eval:validate
 `mise run test` ends by reading the coverage profile it just wrote. Here is the tail of a real run in this checkout, with fourteen of the twenty package lines cut for width:
 
 ```text
-DONE 1815 tests, 1 skipped in 1.964s
+DONE 1828 tests, 1 skipped in 1.807s
 [test] $ ../../scripts/check-coverage.sh coverage.out 80 agents/go
   ok      84.2%  agents/go/a2aserver
   ok      91.7%  agents/go/compose
   ok      88.6%  agents/go/mcpserver
-  ok      87.6%  agents/go/memory
+  ok      87.7%  agents/go/memory
   ok      90.9%  agents/go/policy
   ok      98.5%  agents/go/tools
 agents/go meets the 80% per-package coverage floor

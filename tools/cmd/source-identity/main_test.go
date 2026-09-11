@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/MLOps-Courses/agentops-open-course/tools/internal/gitenv"
 )
 
 func TestExecutePrintsDevelopmentDisplayAndReleaseFields(t *testing.T) {
@@ -47,7 +49,7 @@ func testRepository(t *testing.T) string {
 		{"add", "."},
 		{"commit", "-m", "test: seed"},
 	} {
-		command := exec.Command("git", arguments...)
+		command := gitenv.Detach(exec.Command("git", arguments...))
 		command.Dir = repository
 		if output, err := command.CombinedOutput(); err != nil {
 			t.Fatalf("git %v: %v\n%s", arguments, err, output)

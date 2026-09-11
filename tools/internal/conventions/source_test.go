@@ -32,6 +32,7 @@ run = "mise x k6@2.1.0 -- k6 run load/mcp-read.js"
 [tasks."load:a2a"]
 run = "mise x k6@2.1.0 -- k6 run load/a2a-send.js"
 `,
+		"go.mod":                       "module example.test\n\ngo 1.26.5\n",
 		"agents/go/go.mod":             "module example.test/agent\n\ngo 1.26.5\n",
 		"evals/go.mod":                 "module example.test/evals\n\ngo 1.26.5\n",
 		"tools/go.mod":                 "module example.test/tools\n\ngo 1.26.5\n",
@@ -71,6 +72,9 @@ func TestCheckSourceVersionsRequiresGoParityAcrossEveryExecutableModule(t *testi
 		where   string
 		content string
 	}{
+		// The root module is the one the Hextra theme is pinned in. It carries no
+		// Go source, so a coordinated toolchain bump is exactly where it gets missed.
+		{where: "go.mod", content: "module example.test\n\ngo 1.26.4\n"},
 		{where: "agents/go/go.mod", content: "module example.test/agent\n\ngo 1.26.4\n"},
 		{where: "evals/go.mod", content: "module example.test/evals\n\ngo 1.26.4\n"},
 		{where: "tools/go.mod", content: "module example.test/tools\n\ngo 1.26.4\n"},

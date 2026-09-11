@@ -141,7 +141,7 @@ func noopShutdown(context.Context) error { return nil }
 // InstallMeterProvider builds the OTLP metric pipeline and installs it as the
 // process's global meter provider, returning its shutdown function.
 //
-// ADK v2.2.0 builds a TracerProvider and a LoggerProvider but no MeterProvider
+// ADK v2.3.0 builds a TracerProvider and a LoggerProvider but no MeterProvider
 // — setup_otel.go carries the TODO — so without this call every instrument
 // above resolves to a no-op and nothing the agent measures about itself ever
 // reaches Prometheus, while traces and logs keep flowing. That failure is

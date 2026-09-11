@@ -3,6 +3,7 @@ package freshness
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -117,12 +118,12 @@ func TestRepositoryCompatibilityHoldsAreStructuredAndValidated(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// One hold remains. ADK Go v2.3.0 moved its own logs onto the OTel 1.45 / log
+	// 0.21 family, which retired the four holds agents/go carried through v2.2.0;
+	// chromedp still owns cdproto, and that one is validated by a real Chrome run
+	// rather than by a compiler, which is why it cannot lift on a version check.
 	wanted := map[string]bool{
-		"github.com/chromedp/cdproto":    false,
-		"github.com/openai/openai-go/v3": false,
-		"go.opentelemetry.io/otel":       false,
-		"go.opentelemetry.io/otel/log":   false,
-		"google.golang.org/genai":        false,
+		"github.com/chromedp/cdproto": false,
 	}
 	for _, hold := range holds {
 		if _, ok := wanted[hold.Module]; !ok {
@@ -137,5 +138,45 @@ func TestRepositoryCompatibilityHoldsAreStructuredAndValidated(t *testing.T) {
 		if !found {
 			t.Fatalf("repository compatibility holds omit %s", module)
 		}
+	}
+}
+
+// MiseResult reads an absent row as "nothing newer". That inference is sound
+// only while mise is asked for the newest version rather than for whether the
+// exact request is satisfied, so the flag that asks is a contract, not a detail.
+func TestMiseOutdatedAsksForTheNewestVersion(t *testing.T) {
+	if !slices.Contains(miseOutdatedArgs, "--bump") {
+		t.Fatalf("miseOutdatedArgs = %v, want --bump so exact pins are resolved rather than rubber-stamped", miseOutdatedArgs)
+	}
+	if !slices.Contains(miseOutdatedArgs, "--json") {
+		t.Fatalf("miseOutdatedArgs = %v, want --json for a parseable answer", miseOutdatedArgs)
+	}
+}
+
+// A tool mise cannot resolve is omitted from the JSON while mise still exits 0,
+// so the warning on stderr is the only evidence the question went unanswered.
+// The fixture is mise 2026.9.3's real wording, truncated after the cause.
+func TestUnresolvedMiseToolsNamesEveryPinMiseCouldNotAnswer(t *testing.T) {
+	const diagnostics = "mise WARN  Failed to resolve tool version list for github:agentgateway/agentgateway: " +
+		"[/repo/mise.toml] github:agentgateway/agentgateway@1.4.1: HTTP status client error (403 Forbidden)\n" +
+		"mise WARN  Failed to resolve tool version list for age: [/repo/mise.toml] age@1.3.2: rate limited\n" +
+		"mise WARN  something else entirely\n"
+	got := unresolvedMiseTools(diagnostics)
+	want := []string{"github:agentgateway/agentgateway", "age"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("unresolvedMiseTools() = %v, want %v", got, want)
+	}
+	if names := unresolvedMiseTools("mise WARN  nothing this parser recognizes\n"); len(names) != 0 {
+		t.Fatalf("unrecognized warning produced %v, want no names", names)
+	}
+}
+
+// The two halves have to meet: an unresolved tool is recorded with no version,
+// and MiseResult renders exactly that as the UNKNOWN gap rather than as CURRENT.
+func TestAnUnresolvedPinRendersAsAGapRatherThanCurrent(t *testing.T) {
+	update := MiseUpdate{}
+	latest, status := MiseResult("1.4.1", &update, true)
+	if latest != "unchecked" || status != "UNKNOWN" {
+		t.Fatalf("unresolved pin = %q, %q, want unchecked/UNKNOWN", latest, status)
 	}
 }

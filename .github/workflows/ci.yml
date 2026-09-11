@@ -9,7 +9,10 @@ on:
     branches: [main]
   pull_request:
   schedule:
-    - cron: "30 5 * * 0" # weekly, before the Monday model-backed evaluation
+    # Weekly, Sunday 05:30 UTC — a day ahead of the Monday 06:00 UTC scanners in
+    # scan.yml, so a dependency that stopped compiling is already known when they run.
+    # Eval is dispatch-only and is not what this cron is ahead of.
+    - cron: "30 5 * * 0"
   workflow_dispatch:
 
 permissions:

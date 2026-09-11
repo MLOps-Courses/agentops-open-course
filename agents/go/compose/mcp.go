@@ -78,8 +78,8 @@ type MCPConfig struct {
 //
 // The tool filter pins which tools may be offered, so a server cannot widen the
 // agent's surface — or reach the model with new description text — by adding
-// one. Filtering happens inside the toolset, before a tool joins the slice, so
-// a rejected tool's declaration never reaches a request.
+// one. The filter sits between the server's catalog and the caller, so a
+// rejected tool's declaration never reaches a model request.
 // --8<-- [start:ops-mcp-toolset]
 func NewMCPToolset(cfg MCPConfig) (tool.Toolset, error) {
 	transport, credentials, err := cfg.transport()
@@ -89,16 +89,19 @@ func NewMCPToolset(cfg MCPConfig) (tool.Toolset, error) {
 	built, err := mcptoolset.New(mcptoolset.Config{
 		Transport: transport,
 		Auth:      credentials,
-		// The in-Config filter rather than tool.FilterToolset. Both work here —
-		// unlike the skill toolset, this one has no catalog injection for an
-		// external wrapper to drop — and the in-Config one runs before the tool
-		// is wrapped, which is the earlier of the two boundaries.
-		ToolFilter: tool.AllowedToolsPredicate(MCPReadToolNames()),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrMCP, err)
 	}
-	return built, nil
+	// ADK v2.3.0 deprecated mcptoolset.Config.ToolFilter in favor of this
+	// wrapper, which moves the allowlist from inside the toolset's config to
+	// around the toolset. The guarantee is unchanged: the returned toolset
+	// applies the predicate inside Tools, so a tool the server advertises and
+	// this list does not name is dropped before the slice is returned and never
+	// becomes a declaration in a model request. Wrapping loses nothing here —
+	// unlike the skill toolset, this one injects no catalog of its own for an
+	// external wrapper to skip.
+	return tool.FilterToolset(built, tool.AllowedToolsPredicate(MCPReadToolNames())), nil
 }
 
 // --8<-- [end:ops-mcp-toolset]

@@ -62,7 +62,7 @@ func installTelemetry(
 		return noFlush, nil, err
 	}
 
-	// Metrics before providers and before the launcher: ADK v2.2.0 builds no
+	// Metrics before providers and before the launcher: ADK v2.3.0 builds no
 	// MeterProvider at all, so without this every instrument the agent records
 	// itself on resolves to a no-op and nothing reaches Prometheus.
 	flushMetrics, err := telemetry.InstallMeterProvider(ctx, signalResource)
@@ -106,7 +106,7 @@ func installLogging(console io.Writer, governance *policy.Policy) error {
 	if err != nil {
 		return fmt.Errorf("building the standard log writer: %w", err)
 	}
-	// ADK v2.2.0 still uses package log on several launcher and runner paths;
+	// ADK v2.3.0 still uses package log on several launcher and runner paths;
 	// route those records through the same durable-sink policy as slog.
 	log.SetOutput(standard)
 	return nil

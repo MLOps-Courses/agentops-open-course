@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/MLOps-Courses/agentops-open-course/tools/internal/gitenv"
 )
 
 func TestReleaseIdentityRequiresCleanSource(t *testing.T) {
@@ -140,7 +142,7 @@ func TestResolveRejectsHEADChangedWhileIdentityIsComputed(t *testing.T) {
 	runGit(t, repository, "checkout", "--quiet", firstRevision)
 
 	_, err := resolve(t.Context(), repository, Release, func(root string) error {
-		command := exec.Command("git", "checkout", "--quiet", secondRevision)
+		command := gitenv.Detach(exec.Command("git", "checkout", "--quiet", secondRevision))
 		command.Dir = root
 		return command.Run()
 	})
@@ -152,7 +154,7 @@ func TestResolveRejectsHEADChangedWhileIdentityIsComputed(t *testing.T) {
 func TestResolveSupportsShallowRepositories(t *testing.T) {
 	source := initializeRepository(t)
 	clone := filepath.Join(t.TempDir(), "clone")
-	command := exec.Command("git", "clone", "--depth=1", "file://"+source, clone)
+	command := gitenv.Detach(exec.Command("git", "clone", "--depth=1", "file://"+source, clone))
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("git clone: %v\n%s", err, output)
 	}
@@ -198,7 +200,7 @@ func initializeRepository(t *testing.T) string {
 
 func runGit(t *testing.T, directory string, arguments ...string) string {
 	t.Helper()
-	command := exec.Command("git", arguments...)
+	command := gitenv.Detach(exec.Command("git", arguments...))
 	command.Dir = directory
 	output, err := command.CombinedOutput()
 	if err != nil {

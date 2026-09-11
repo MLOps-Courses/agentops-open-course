@@ -9,9 +9,9 @@ Time-sensitive claims rot silently. Walk this checklist before each release: ope
 
 ## Automated snapshot
 
-The quarterly freshness jobs in `.github/workflows/scan.yml` append a read-only report to this issue. It inventories every `mise.toml` tool, filters stable k3s/Ollama/kagent/mise releases, checks Kubernetes skew and the Ollama asset checksum, resolves kagent charts and arbitrary image digests, checks Wolfi pins, and runs the copied-prose source gate. Every proposal names its upstream authority and required validation tier.
+The quarterly freshness jobs in `.github/workflows/scan.yml` append a read-only report to this issue. It inventories every `mise.toml` tool, filters stable k3s/Ollama/kagent/mise releases, checks Kubernetes skew and the Ollama asset checksum, resolves kagent charts and arbitrary image digests, checks Wolfi pins, and runs the copied-prose source gate. Every proposal names its upstream authority and required validation tier. It does **not** resolve Go module versions: it only re-reads the `// compatibility hold:` comments, so a newer ADK, a2a-go, or MCP SDK never appears in it and the boxes below are where those are re-checked.
 
-- [ ] Triage every `REVIEW`, `MISMATCH`, `MISSING`, or `UNAVAILABLE` row in the newest automated comment.
+- [ ] Triage every `REVIEW`, `MISMATCH`, `MISSING`, `UNKNOWN`, or `UNAVAILABLE` row in the newest automated comment.
 - [ ] Keep upgrades explicit: the reporter must never change a pin, branch, issue state, or pull request.
 
 ## Model & provider names
@@ -37,7 +37,11 @@ The quarterly freshness jobs in `.github/workflows/scan.yml` append a read-only 
 - [ ] The pinned `curlimages/curl` smoke image still resolves for every supported host architecture — `scripts/smoke-host.sh`.
 - [ ] Ollama evaluation release asset and SHA-256 still match the pinned version — `.github/workflows/eval.yml`.
 - [ ] Docker Buildx remains pinned to the current stable release — `.github/actions/setup-buildx/action.yml`.
-- [ ] GitHub Actions SHA pins current (Dependabot) — `.github/workflows/*.yml`.
+- [ ] GitHub Actions SHA pins current (Dependabot) — `.github/workflows/*.yml` and `.github/actions/*/action.yml`.
+- [ ] The direct Go module versions the course teaches are still the newest reviewed ones — `google.golang.org/adk/v2`, `github.com/a2aproject/a2a-go/v2`, and `github.com/modelcontextprotocol/go-sdk` in `agents/go/go.mod` and `evals/go.mod`. Dependabot ignores the ADK-owned family and the reporter resolves no module versions, so nothing else proposes these.
+- [ ] The vendored Mermaid and FlexSearch bundles are current within the lines they are held on; re-pin with `scripts/vendor-assets.sh <mermaid> <flexsearch>`, whose header carries the recorded reason — `assets/js/vendor/versions.json`.
+- [ ] The on-demand `mise x` pins are current — `watchexec` and `k6` in `mise.toml`; the `k6` version also appears four times in `content/7. Observability/7.2. Monitoring.md` and moving it is one coordinated change.
+- [ ] The GKE module's google provider constraint and its lock still match a supported upstream release — `infra/gcp/versions.tf` and `infra/gcp/.terraform.lock.hcl`. No ecosystem in `.github/dependabot.yml` watches them.
 
 ## Governance & foundation status
 

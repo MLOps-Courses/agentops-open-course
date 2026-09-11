@@ -163,7 +163,10 @@ func TestCheckProbeContractsRejectsProbeTableDrift(t *testing.T) {
 	if messages := problemMessages(checkProbeContracts(root, unwired)); !strings.Contains(messages, "must name `startupProbe` for agentops-mcp") {
 		t.Fatalf("unwired MCP row problems = %s", messages)
 	}
-	claimed := mutatePage(t, pages, probeTableWhere, "No — BYO `v1alpha2` exposes no probe fields", "Yes — `readinessProbe`")
+	// Mutate the shortest phrase that is load-bearing rather than the whole cell:
+	// the row's wording is prose and has already been rewritten once, while what
+	// the checker actually reads is whether the row names a probe field.
+	claimed := mutatePage(t, pages, probeTableWhere, "exposes no probe fields", "wires `readinessProbe`")
 	if messages := problemMessages(checkProbeContracts(root, claimed)); !strings.Contains(messages, "must keep the BYO A2A workload unwired") {
 		t.Fatalf("claimed BYO row problems = %s", messages)
 	}

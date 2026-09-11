@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/log"
 	"go.opentelemetry.io/otel/log/global"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
@@ -86,10 +87,10 @@ func exportSink(t *testing.T, redact telemetry.Redactor) (*telemetry.ExportHandl
 func passthrough(_ context.Context, value any) any { return value }
 
 // exportedAttributes flattens an exported record's attributes.
-func exportedAttributes(record sdklog.Record) map[string]log.Value {
-	found := map[string]log.Value{}
-	record.WalkAttributes(func(attr log.KeyValue) bool {
-		found[attr.Key] = attr.Value
+func exportedAttributes(record sdklog.Record) map[string]attribute.Value {
+	found := map[string]attribute.Value{}
+	record.WalkAttributes(func(attr attribute.KeyValue) bool {
+		found[string(attr.Key)] = attr.Value
 		return true
 	})
 	return found
@@ -130,9 +131,9 @@ func TestExportBoundingRecursesThroughStructuredValues(t *testing.T) {
 	if !found {
 		t.Fatal("the structured attribute was not exported")
 	}
-	members := map[string]log.Value{}
+	members := map[string]attribute.Value{}
 	for _, member := range evidence.AsMap() {
-		members[member.Key] = member.Value
+		members[string(member.Key)] = member.Value
 	}
 	items := members["items"].AsSlice()
 	if len(items) != 2 {
@@ -388,40 +389,40 @@ func TestExportNormalizesTheValueTypesTheAgentLogs(t *testing.T) {
 	}
 
 	attributes := exportedAttributes(exporter.only(t))
-	for key, want := range map[string]log.Value{
+	for key, want := range map[string]attribute.Value{
 		"missing":  {},
-		"attempts": log.Int64Value(3),
-		"ratio":    log.Float64Value(0.5),
-		"observed": log.StringValue(moment.Format(time.RFC3339Nano)),
-		"elapsed":  log.StringValue("1.5s"),
-		"body":     log.StringValue("runbook body"),
-		"services": log.SliceValue(log.StringValue("shipping"), log.StringValue("billing")),
-		"labels":   log.MapValue(log.KeyValue{Key: "env", Value: log.StringValue("local")}),
-		"build":    log.StringValue("{agentops}"),
+		"attempts": attribute.Int64Value(3),
+		"ratio":    attribute.Float64Value(0.5),
+		"observed": attribute.StringValue(moment.Format(time.RFC3339Nano)),
+		"elapsed":  attribute.StringValue("1.5s"),
+		"body":     attribute.StringValue("runbook body"),
+		"services": attribute.SliceValue(attribute.StringValue("shipping"), attribute.StringValue("billing")),
+		"labels":   attribute.MapValue(attribute.KeyValue{Key: "env", Value: attribute.StringValue("local")}),
+		"build":    attribute.StringValue("{agentops}"),
 	} {
 		got, found := attributes[key]
 		if !found {
 			t.Errorf("%s was not exported at all", key)
 			continue
 		}
-		if !got.Equal(want) {
-			t.Errorf("%s = %v (%v), want %v (%v)", key, got, got.Kind(), want, want.Kind())
+		if got != want {
+			t.Errorf("%s = %v (%v), want %v (%v)", key, got, got.Type(), want, want.Type())
 		}
 	}
 
-	nested := map[string]log.Value{}
+	nested := map[string]attribute.Value{}
 	for _, member := range attributes["nested"].AsMap() {
-		nested[member.Key] = member.Value
+		nested[string(member.Key)] = member.Value
 	}
-	for key, want := range map[string]log.Value{
-		"int": log.Int64Value(1), "int8": log.Int64Value(2), "int16": log.Int64Value(3),
-		"int32": log.Int64Value(4), "uint": log.Int64Value(5), "uint8": log.Int64Value(6),
-		"uint16": log.Int64Value(7), "uint32": log.Int64Value(8), "uint64": log.Int64Value(9),
-		"float32": log.Float64Value(0.25),
-		"items":   log.SliceValue(log.StringValue("text"), log.Int64Value(10)),
+	for key, want := range map[string]attribute.Value{
+		"int": attribute.Int64Value(1), "int8": attribute.Int64Value(2), "int16": attribute.Int64Value(3),
+		"int32": attribute.Int64Value(4), "uint": attribute.Int64Value(5), "uint8": attribute.Int64Value(6),
+		"uint16": attribute.Int64Value(7), "uint32": attribute.Int64Value(8), "uint64": attribute.Int64Value(9),
+		"float32": attribute.Float64Value(0.25),
+		"items":   attribute.SliceValue(attribute.StringValue("text"), attribute.Int64Value(10)),
 	} {
-		if got := nested[key]; !got.Equal(want) {
-			t.Errorf("nested.%s = %v (%v), want %v (%v)", key, got, got.Kind(), want, want.Kind())
+		if got := nested[key]; got != want {
+			t.Errorf("nested.%s = %v (%v), want %v (%v)", key, got, got.Type(), want, want.Type())
 		}
 	}
 }
@@ -564,8 +565,8 @@ func TestExportStringifiesAnUnexpectedRedactorResult(t *testing.T) {
 	}
 
 	evidence := exportedAttributes(exporter.only(t))["evidence"]
-	if evidence.Kind() != log.KindString {
-		t.Fatalf("evidence exported as %v, want text", evidence.Kind())
+	if evidence.Type() != attribute.STRING {
+		t.Fatalf("evidence exported as %v, want text", evidence.Type())
 	}
 	if got := len([]rune(evidence.AsString())); got != telemetry.MaxExportedChars {
 		t.Errorf("the stringified value is %d characters, want exactly %d", got, telemetry.MaxExportedChars)

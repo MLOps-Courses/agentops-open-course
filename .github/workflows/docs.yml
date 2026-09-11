@@ -2,7 +2,7 @@
 #
 # `check:docs` is the gate and the build in one step: it runs the conventions checker
 # over content/, builds the site with --panicOnWarning, and then re-reads the rendered
-# output — including the 76 alias routes the course published before the Hugo permalink
+# output — including the 77 alias routes the course published before the Hugo permalink
 # scheme. Whatever this job uploads has already passed that contract.
 #
 # The `build` and `deploy` job names are load-bearing: `build` is one of the required

@@ -6,6 +6,18 @@
 # versions.json, which the native conventions source check verifies on every run.
 #
 # Usage: scripts/vendor-assets.sh [mermaid-version] [flexsearch-version]
+#
+# Nothing watches these two versions: they are not mise pins, so the freshness report
+# never sees them, and they are not npm dependencies, so Dependabot never sees them
+# either. Re-check them here, by hand, when the quarterly freshness issue is triaged:
+#
+#     curl -fsSL https://registry.npmjs.org/mermaid/latest    | jq -r .version
+#     curl -fsSL https://registry.npmjs.org/flexsearch/latest | jq -r .version
+#
+# Checked on 11 September 2026: flexsearch 0.8.212 is current. Mermaid 12.0.0 is
+# available and deliberately not taken — a major that changes diagram rendering would
+# have to be read against all 55 diagrams and the accessibility acceptance run, which
+# is a reviewed change rather than a re-pin.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

@@ -380,7 +380,7 @@ func TestContentCaptureIsPinnedBeforeAnythingElse(t *testing.T) {
 }
 
 // TestUnsafeADKTraceSamplingIsForcedOffBeforeAnythingElse is the fail-closed
-// boundary for the pinned ADK. ADK v2.2.0 records serialized tool arguments,
+// boundary for the pinned ADK. ADK v2.3.0 records serialized tool arguments,
 // tool results, and raw exception text even when both content-capture switches
 // are false, so an operator's sampler choice cannot safely re-enable spans.
 func TestUnsafeADKTraceSamplingIsForcedOffBeforeAnythingElse(t *testing.T) {
@@ -1121,7 +1121,7 @@ func TestSessionsSurviveARestart(t *testing.T) {
 }
 
 // TestSessionStoreOwnsARealCloseablePool prevents a lifecycle promise from
-// depending on ADK's concrete database service. ADK v2.2.0 exposes no Close;
+// depending on ADK's concrete database service. ADK v2.3.0 exposes no Close;
 // the repository wrapper must therefore own and close the sql.DB it supplied.
 func TestSessionStoreOwnsARealCloseablePool(t *testing.T) {
 	t.Parallel()

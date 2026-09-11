@@ -140,7 +140,11 @@ if rg -n '/env/[0-9]+/value' infra/k8s/overlays/*/kustomization.yaml; then
 	fail "overlay environment patches must select entries by name"
 fi
 
-for overlay in local gke; do
+# `scale` is validated alongside the two deployable overlays because 6.9 states
+# its rendering, schema validation, and lint as proved. It layers on `../local`,
+# so every local expectation below holds for it except the two figures it
+# deliberately changes: the MCP replica count and the pod quota.
+for overlay in local gke scale; do
 	rendered="${tmp_dir}/${overlay}.yaml"
 	if [[ ${overlay} == gke ]]; then
 		GCP_PROJECT_ID=agentops-course-check \
@@ -244,12 +248,12 @@ for overlay in local gke; do
 
 	metrics_ingress='.kind == "NetworkPolicy" and .metadata.name == "otel-collector-metrics-ingress"'
 	metrics_ingress_count="$(yq -r "select(${metrics_ingress}) | .metadata.name" "${rendered}" | awk 'NF { count++ } END { print count + 0 }')"
-	if [[ "${overlay}" == "local" ]]; then
+	if [[ "${overlay}" != "gke" ]]; then
 		metrics_source="$(yq -r "select(${metrics_ingress}) | .spec.ingress[0].from[0].podSelector.matchLabels.\"app.kubernetes.io/name\"" "${rendered}")"
 		metrics_port="$(yq -r "select(${metrics_ingress}) | .spec.ingress[0].ports[0].port" "${rendered}")"
-		assert_eq "local collector metrics policy count" "${metrics_ingress_count}" "1"
-		assert_eq "local collector metrics source" "${metrics_source}" "prometheus"
-		assert_eq "local collector metrics port" "${metrics_port}" "8889"
+		assert_eq "${overlay} collector metrics policy count" "${metrics_ingress_count}" "1"
+		assert_eq "${overlay} collector metrics source" "${metrics_source}" "prometheus"
+		assert_eq "${overlay} collector metrics port" "${metrics_port}" "8889"
 	else
 		assert_eq "GKE collector metrics policy count" "${metrics_ingress_count}" "0"
 	fi
@@ -264,7 +268,12 @@ for overlay in local gke; do
 	retired_gateway_flag="$(yq -r 'select(.kind == "Agent" and .metadata.name == "agentops-agent") | .spec.byo.deployment.env | map(select(.name == "AGENT_GATEWAY_ENABLED")) | length' "${rendered}")"
 	model_config="$(yq -r 'select(.kind == "ModelConfig" and .metadata.name == "agentgateway") | .spec.model' "${rendered}")"
 	pod_quota="$(yq -r 'select(.kind == "ResourceQuota" and .metadata.name == "agentops-compute") | .spec.hard.pods' "${rendered}")"
-	assert_eq "${overlay} pod quota" "${pod_quota}" "13"
+	# The scale overlay raises the budget by the autoscaler's three extra MCP
+	# pods plus the 6.9 PostgreSQL fixture; that arithmetic is spelled out in
+	# infra/k8s/overlays/scale/kustomization.yaml and pinned here.
+	expected_pod_quota=13
+	[[ ${overlay} != scale ]] || expected_pod_quota=17
+	assert_eq "${overlay} pod quota" "${pod_quota}" "${expected_pod_quota}"
 	assert_eq "${overlay} agent model provider" "${agent_provider}" "openai-compatible"
 	assert_eq "${overlay} A2A bind host" "${agent_bind_host}" "0.0.0.0"
 	assert_eq "${overlay} A2A model-call cap" "${agent_a2a_max_llm_calls}" "4"
@@ -284,16 +293,16 @@ for overlay in local gke; do
 		fail "backup CronJob must use the shared state-directory lock"
 	fi
 
-	if [[ "${overlay}" == "local" ]]; then
-		assert_eq "local agent model" "${agent_model}" "qwen3:4b-instruct"
-		assert_eq "local ModelConfig model" "${model_config}" "qwen3:4b-instruct"
+	if [[ "${overlay}" != "gke" ]]; then
+		assert_eq "${overlay} agent model" "${agent_model}" "qwen3:4b-instruct"
+		assert_eq "${overlay} ModelConfig model" "${model_config}" "qwen3:4b-instruct"
 		agent_pii_base_url="$(yq -r 'select(.kind == "Agent" and .metadata.name == "agentops-agent") | .spec.byo.deployment.env[] | select(.name == "AGENT_PII_MODEL_BASE_URL") | .value' "${rendered}")"
 		pii_egress_rule='select(.kind == "NetworkPolicy" and .metadata.name == "agent-egress") | .spec.egress[] | select(.ports[]?.port == 11434)'
 		pii_egress_count="$(yq -r "${pii_egress_rule} | .ports[0].port" "${rendered}" | awk 'NF { count++ } END { print count + 0 }')"
 		pii_egress_cidr="$(yq -r "${pii_egress_rule} | .to[0].ipBlock.cidr" "${rendered}")"
-		assert_eq "local PII model URL" "${agent_pii_base_url}" "http://host.k3d.internal:11434/v1"
-		assert_eq "local PII model egress rule count" "${pii_egress_count}" "1"
-		assert_eq "local PII model egress CIDR" "${pii_egress_cidr}" "0.0.0.0/0"
+		assert_eq "${overlay} PII model URL" "${agent_pii_base_url}" "http://host.k3d.internal:11434/v1"
+		assert_eq "${overlay} PII model egress rule count" "${pii_egress_count}" "1"
+		assert_eq "${overlay} PII model egress CIDR" "${pii_egress_cidr}" "0.0.0.0/0"
 	else
 		assert_eq "GKE agent model" "${agent_model}" "gemini-3.5-flash"
 		assert_eq "GKE ModelConfig model" "${model_config}" "gemini-3.5-flash"
@@ -346,6 +355,24 @@ for overlay in local gke; do
 		assert_eq "${wif_policy} WIF ports" "${wif_ports}" "987,988"
 		assert_eq "${wif_policy} WIF protocols" "${wif_protocols}" "TCP,TCP"
 		assert_eq "GKE WIF CIDR occurrence count" "${wif_cidr_count}" "1"
+	fi
+
+	# kustomize silently ignores a patch whose target matches nothing, so a
+	# renamed base resource would leave this overlay unscaled with every check
+	# above still green. Pin the figures 6.9 quotes against the actual render.
+	if [[ "${overlay}" == "scale" ]]; then
+		mcp_replicas="$(yq -r 'select(.kind == "Deployment" and .metadata.name == "agentops-mcp") | .spec.replicas' "${rendered}")"
+		mcp_autoscaler='select(.kind == "HorizontalPodAutoscaler" and .metadata.name == "agentops-mcp")'
+		mcp_autoscaler_target="$(yq -r "${mcp_autoscaler} | .spec.scaleTargetRef.kind + \"/\" + .spec.scaleTargetRef.name" "${rendered}")"
+		mcp_autoscaler_floor="$(yq -r "${mcp_autoscaler} | .spec.minReplicas" "${rendered}")"
+		mcp_autoscaler_ceiling="$(yq -r "${mcp_autoscaler} | .spec.maxReplicas" "${rendered}")"
+		# The absence of a replica count is the assertion: the autoscaler owns the
+		# floor alone, because a pinned `spec.replicas` and an HPA on the same
+		# Deployment contend on every apply.
+		assert_eq "scale MCP replica count" "${mcp_replicas}" "null"
+		assert_eq "scale MCP autoscaler target" "${mcp_autoscaler_target}" "Deployment/agentops-mcp"
+		assert_eq "scale MCP autoscaler floor" "${mcp_autoscaler_floor}" "2"
+		assert_eq "scale MCP autoscaler ceiling" "${mcp_autoscaler_ceiling}" "4"
 	fi
 done
 
@@ -429,7 +456,7 @@ exercise_ports="$(yq -r '.spec.ingress[0].ports[].port' infra/k8s/exercises/otel
 # expected outcome here, and `-e` reports that absence as a scary `Error: no
 # matches found` line in an otherwise passing gate. A malformed rendered file
 # still exits non-zero and fails the script under `set -e`.
-for rendered in "${tmp_dir}/local.yaml" "${tmp_dir}/gke.yaml"; do
+for rendered in "${tmp_dir}/local.yaml" "${tmp_dir}/gke.yaml" "${tmp_dir}/scale.yaml"; do
 	leaked_exercise_policy="$(yq -r '
 	  select(.kind == "NetworkPolicy" and .metadata.name == "exercise-broad-otel-ingress")
 	  | .metadata.name
@@ -466,10 +493,26 @@ yq -e '
   (.spec.declarative.deployment.env | length) == 1 and
   .spec.declarative.deployment.env[0].name == "OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT" and
   .spec.declarative.deployment.env[0].value == "false" and
+  .spec.declarative.deployment.podSecurityContext.runAsNonRoot == true and
+  .spec.declarative.deployment.podSecurityContext.seccompProfile.type == "RuntimeDefault" and
+  .spec.declarative.deployment.securityContext.allowPrivilegeEscalation == false and
+  (.spec.declarative.deployment.securityContext.capabilities.drop | contains(["ALL"])) and
   .spec.declarative.memory == null and
   .spec.skills == null and
   .spec.sandbox == null
 ' "${kagent_interop_exercise}" >/dev/null
+# The namespace enforces restricted Pod Security and kagent copies these blocks
+# into the generated pod with no default of its own, so both Agent shapes must
+# declare them or their pods are rejected at admission. This yq assertion is the
+# only gate that can hold it: kubeconform checks the custom resource against the
+# CRD schema, and kube-linter finds no PodSpec inside a custom resource to lint.
+yq -e '
+  select(.kind == "Agent" and .metadata.name == "agentops-agent") |
+  .spec.byo.deployment.podSecurityContext.runAsNonRoot == true and
+  .spec.byo.deployment.podSecurityContext.seccompProfile.type == "RuntimeDefault" and
+  .spec.byo.deployment.securityContext.allowPrivilegeEscalation == false and
+  (.spec.byo.deployment.securityContext.capabilities.drop | contains(["ALL"]))
+' infra/kagent/agent.yaml >/dev/null
 interop_resource_count="$(yq -r -N 'select(.metadata.labels."agentops.course/exercise" == "kagent-interop") | .kind' "${kagent_interop_exercise}" | wc -l)"
 interop_policy_count="$(yq -r -N 'select(.kind == "NetworkPolicy" and .metadata.labels."agentops.course/exercise" == "kagent-interop") | .metadata.name' "${kagent_interop_exercise}" | wc -l)"
 assert_eq "kagent interop removable resource count" "${interop_resource_count}" "4"
@@ -495,7 +538,7 @@ yq -e '
     .to[0].podSelector.matchLabels."app.kubernetes.io/component"
   ] | join(",") | . == "kagent,kagent,controller"
 ' "${kagent_interop_exercise}" >/dev/null
-for rendered in "${tmp_dir}/local.yaml" "${tmp_dir}/gke.yaml"; do
+for rendered in "${tmp_dir}/local.yaml" "${tmp_dir}/gke.yaml" "${tmp_dir}/scale.yaml"; do
 	if yq -e 'select(
       (.kind == "Agent" and .metadata.name == "incident-reader") or
       .metadata.labels."agentops.course/exercise" == "kagent-interop"

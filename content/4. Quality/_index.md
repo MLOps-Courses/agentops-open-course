@@ -49,19 +49,19 @@ mise run eval:validate
 `mise run test` is the widest: it fans out to all three Go modules — the agent in `agents/go`, the harness in `evals`, the maintainer tooling in `tools` — and two of them end by enforcing a coverage floor. `mise run redteam` runs the deterministic adversarial regressions in the agent's `policy` package; `mise run eval:validate` proves the committed evalsets against the seed, the committed incident dataset.
 
 ```text
-[test:tools] DONE 309 tests in 24.858s
-[test:go] DONE 1815 tests, 1 skipped in 21.280s
-[test:go] agents/go meets the 80% per-package coverage floor
-[test:evals] DONE 395 tests in 27.561s
+[test:tools] DONE 394 tests in 15.819s
+[test:evals] DONE 425 tests in 8.458s
 [test:evals] evals meets the 80% per-package coverage floor
-Finished in 40.52s
+[test:go] DONE 1828 tests, 1 skipped in 20.274s
+[test:go] agents/go meets the 80% per-package coverage floor
+Finished in 29.59s
 ```
 
 Six lines from that run, in the order they arrived. The three suites run concurrently, so the full log interleaves them and prints a coverage line per package; `tools` deliberately sits outside the floor.
 
 ## What this chapter proved
 
-- Just over twenty-five hundred tests decide the agent, the evaluator, and the repository tooling under the race detector in well under a minute, with no service to start and nothing spending a token.
+- Just over twenty-six hundred tests decide the agent, the evaluator, and the repository tooling under the race detector in well under a minute, with no service to start and nothing spending a token.
 - `mise run redteam` settles the adversarial policy cases and `mise run eval:validate` proves the evalsets against the seed, both offline.
 - By the end you can take any green result in this chapter and say whether it is a gate or an observation — and name the command behind it.
 

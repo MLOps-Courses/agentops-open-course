@@ -27,8 +27,8 @@ func TestPinnedADKTelemetrySpanMetricsContract(t *testing.T) {
 		t.Fatalf("locate installed ADK without network access: %v", err)
 	}
 	selected := strings.SplitN(strings.TrimSpace(string(output)), "\n", 2)
-	if len(selected) != 2 || selected[0] != "v2.2.0" {
-		t.Fatalf("selected ADK = %q; review the telemetry compatibility contract before changing v2.2.0", strings.TrimSpace(string(output)))
+	if len(selected) != 2 || selected[0] != "v2.3.0" {
+		t.Fatalf("selected ADK = %q; review the telemetry compatibility contract before changing v2.3.0", strings.TrimSpace(string(output)))
 	}
 	implementation, err := os.ReadFile(filepath.Join(selected[1], "internal", "telemetry", "telemetry.go"))
 	if err != nil {

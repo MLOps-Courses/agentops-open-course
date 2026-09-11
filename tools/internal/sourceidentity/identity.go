@@ -19,6 +19,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/MLOps-Courses/agentops-open-course/tools/internal/gitenv"
 )
 
 type Mode string
@@ -266,7 +268,11 @@ func splitNUL(content []byte) []string {
 }
 
 func gitOutput(ctx context.Context, directory string, arguments ...string) ([]byte, error) {
-	command := exec.CommandContext(ctx, "git", append([]string{"-C", directory}, arguments...)...)
+	// Detached, because `-C` alone does not win. An inherited GIT_DIR — which every
+	// git hook exports, and `mise run test` is a pre-push command — would make this
+	// resolver answer for the caller's repository while reporting the directory it
+	// was given, so a release could be stamped with a tree nobody asked about.
+	command := gitenv.Detach(exec.CommandContext(ctx, "git", append([]string{"-C", directory}, arguments...)...))
 	output, err := command.Output()
 	if err != nil {
 		var exitError *exec.ExitError

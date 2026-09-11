@@ -29,6 +29,12 @@ func (fakeFetcher) JSON(_ context.Context, endpoint string, _ http.Header) (any,
 		}
 		return []any{map[string]any{"tag_name": tag, "html_url": "https://example.test/release", "assets": []any{}}}, nil
 	}
+	// The Go module proxy answers every hand-moved module with a version the
+	// manifests cannot be requiring, so the fixture asserts a REVIEW row rather
+	// than whatever this repository happens to pin today.
+	if strings.Contains(endpoint, "proxy.golang.org") {
+		return map[string]any{"Version": "v99.0.0"}, nil
+	}
 	return map[string]any{"token": "fake"}, nil
 }
 
@@ -43,11 +49,25 @@ func TestReportIsDeterministicAndReadOnlyOffline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Stub one real pin as behind, reading its version from mise.toml rather than
+	// naming one: an empty map here used to render all 30 rows CURRENT, so this
+	// fixture certified the bug it was supposed to catch, and a hard-coded version
+	// would only re-break the fixture on the next pin bump.
+	pins, err := misePins(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const behind = "hugo-extended"
+	pinned, ok := pins[behind]
+	if !ok {
+		t.Fatalf("mise.toml no longer pins %s; point this fixture at a tool it does pin", behind)
+	}
+	newer := pinned + "-newer"
 	document, err := Report(context.Background(), Options{
 		Root: root, RunID: "fixture-42", GeneratedAt: time.Date(2026, 8, 8, 0, 0, 0, 0, time.UTC),
 		Fetcher: fakeFetcher{},
 		MiseOutdated: func(context.Context, string) (map[string]MiseUpdate, error) {
-			return map[string]MiseUpdate{}, nil
+			return map[string]MiseUpdate{behind: {Requested: pinned, Latest: newer}}, nil
 		},
 	})
 	if err != nil {
@@ -59,12 +79,13 @@ func TestReportIsDeterministicAndReadOnlyOffline(t *testing.T) {
 		"### Go module authorities",
 		"### Go module compatibility holds",
 		"chromedp/cdproto",
-		"agents/go/go.mod",
-		"openai/openai-go/v3",
-		"google.golang.org/genai",
-		"go.opentelemetry.io/otel/log",
+		"tools/go.mod",
 		"HELD",
+		"### Hand-moved Go modules",
+		"| `agents/go/go.mod` | `google.golang.org/adk/v2` | `" + requiredModuleVersion(root, "agents/go/go.mod", "google.golang.org/adk/v2") + "` | `v99.0.0` |",
+		"REVIEW",
 		"### Static external image pins",
+		"| `" + behind + "` | `" + pinned + "` | `" + newer + "` | [mise registry](https://mise.jdx.dev/registry.html) |",
 		"This reporter never updates a pin or opens a pull request.",
 	} {
 		if !strings.Contains(document, wanted) {

@@ -26,7 +26,7 @@ import (
 // registers. pgx exports no constant for it, so it is spelled once here.
 const postgresDriverName = "pgx"
 
-// sessionStore makes database ownership explicit around ADK v2.2.0's session
+// sessionStore makes database ownership explicit around ADK v2.3.0's session
 // service. The upstream concrete service owns a GORM handle but exposes no
 // Close, so the repository supplies and retains the database/sql pool itself.
 //

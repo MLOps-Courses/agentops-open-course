@@ -30,7 +30,7 @@ depends = ["format:go"]
 
 [tasks."format:go"]
 description = "Sort imports and format with goimports and gofumpt"
-# Flags mirror .golangci.yml: local-prefixes and extra-rules are format policy,
+# Flags mirror .golangci.yml: local-prefixes and the extra gofumpt rules are format policy,
 # so without them `format` writes a style that `check` then rejects.
 run = [
   "go tool goimports -local github.com/MLOps-Courses/agentops-open-course/agents/go -w .",

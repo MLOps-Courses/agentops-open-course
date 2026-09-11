@@ -120,6 +120,20 @@ verify_sha256() {
 		fail "${label} checksum mismatch (expected ${wanted_digest}, got ${actual})"
 }
 
+# git_in <dir> <args...> — run git against exactly <dir>'s repository.
+#
+# `git -C` sets the working directory but loses to an inherited GIT_DIR, and git
+# exports GIT_DIR to every hook it runs. A caller reached from a hook would
+# otherwise inspect — or write to — the contributor's repository while believing
+# it addressed the directory it named.
+git_in() {
+	local directory="$1"
+	shift
+	env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE -u GIT_OBJECT_DIRECTORY \
+		-u GIT_ALTERNATE_OBJECT_DIRECTORIES -u GIT_COMMON_DIR -u GIT_PREFIX \
+		git -C "${directory}" "$@"
+}
+
 # verify_git_binary_install <dir> <commit> <binary> <sha256> <label> — bind
 # repeat installs to a clean reviewed checkout and the exact bytes Helm executes.
 verify_git_binary_install() {
@@ -132,11 +146,14 @@ verify_git_binary_install() {
 	local worktree_status
 
 	[[ -d ${directory} && ! -L ${directory} ]] || fail "${label} directory is missing or is a link"
-	actual_commit="$(git -C "${directory}" rev-parse HEAD 2>/dev/null)" ||
+	# git_in, not `git -C`: an inherited GIT_DIR would make both checks below
+	# report on the caller's repository, and a clean course checkout would then
+	# certify a plugin checkout nobody looked at.
+	actual_commit="$(git_in "${directory}" rev-parse HEAD 2>/dev/null)" ||
 		fail "${label} source commit is unavailable"
 	[[ ${actual_commit} == "${wanted_commit}" ]] ||
 		fail "${label} source commit mismatch (expected ${wanted_commit}, got ${actual_commit})"
-	worktree_status="$(git -C "${directory}" status --porcelain=v1 --untracked-files=all 2>/dev/null)" ||
+	worktree_status="$(git_in "${directory}" status --porcelain=v1 --untracked-files=all 2>/dev/null)" ||
 		fail "${label} source checkout status is unavailable"
 	[[ -z ${worktree_status} ]] || fail "${label} source checkout is dirty"
 	[[ -f ${directory}/${binary} && ! -L ${directory}/${binary} ]] ||

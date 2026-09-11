@@ -178,7 +178,7 @@ func (g *sessionGate) tracked() int {
 // # Why this is hand-built
 //
 // ADK Python bounds a run with RunConfig.max_llm_calls, which the Python A2A
-// request converter set to AGENT_A2A_MAX_LLM_CALLS. ADK Go v2.2.0 has no such
+// request converter set to AGENT_A2A_MAX_LLM_CALLS. ADK Go v2.3.0 has no such
 // field: agent.RunConfig carries only StreamingMode and
 // SaveInputBlobsAsArtifacts, and MaxLLMCalls exists solely on
 // agent.LiveRunConfig, which is the bidirectional websocket path the A2A server

@@ -4,40 +4,57 @@
 # Git hooks (lefthook.yml) and CI (.github/workflows) call these same tasks.
 
 [tools]
-hugo-extended = "0.164.0"
+hugo-extended = "0.166.0"
 # The Go toolchain is pinned here rather than in agents/go/mise.toml so one table stays the
 # authority: Hugo Modules need `go` for the Hextra module, agents/go needs it for the taught
 # runtime, evaluation harness, and repository maintenance commands.
 # mise merges parent configs, so `cd agents/go && mise run check` resolves these same pins.
 # Keep `go` equal to the `go` directive in agents/go/go.mod.
-go = "1.26.6"
-golangci-lint = "2.12.2"
+# Held on the 1.26 line while 1.27 is available: a minor toolchain move is a coordinated
+# change across four go.mod files and the Dockerfile build stage, and ADK Go v2.3.0 still
+# declares `go 1.26.6`. The freshness report is expected to show REVIEW here until that
+# move is made deliberately; the patch level tracks 1.26 releases in the meantime.
+go = "1.26.8"
+golangci-lint = "2.13.2"
 gotestsum = "1.13.0"
-dprint = "0.55.2"
-lefthook = "2.1.10"
+dprint = "0.57.4"
+lefthook = "2.1.12"
 gitleaks = "8.30.1"
 actionlint = "1.7.12"
 k3d = "5.9.0"
+# Held one minor behind upstream on purpose: it must stay aligned with the k3s node image
+# in infra/k3d.yaml, which SUPPORT.md holds at v1.36.2-k3s1 pending a real cluster run.
+# Moving kubectl alone would open client/server skew the freshness report then reports.
 kubectl = "1.36.3"
-helm = "4.2.3"
-helmfile = "1.7.3"
+helm = "4.3.0"
+helmfile = "1.7.4"
 skaffold = "2.24.0"
 kubeconform = "0.8.0"
 kube-linter = "0.8.3"
-opentofu = "1.12.5"
+opentofu = "1.12.6"
 tflint = "0.64.0"
-trivy = "0.73.0"
-"aqua:prometheus/prometheus" = "3.13.2" # ships promtool for the Chapter 7 alert-rule drill
+trivy = "0.74.0"
+"aqua:prometheus/prometheus" = "3.14.0" # ships promtool for the Chapter 7 alert-rule drill
 shellcheck = "0.11.0"
-shfmt = "3.13.1"
+shfmt = "3.14.1"
 sops = "3.13.3" # SOPS-encrypted secrets in git (Chapter 6); only needed to run infra/scripts/secrets.sh
-age = "1.3.1" # age recipients/keys for SOPS; ships age-keygen
+age = "1.3.2" # age recipients/keys for SOPS; ships age-keygen
 ripgrep = "15.2.0"
 lychee = "0.24.2"
 jq = "1.8.2"
-gh = "2.97.0"
-zizmor = "1.29.0"
-"github:mikefarah/yq" = "4.53.3"
+gh = "2.100.0"
+zizmor = "1.30.1"
+"github:mikefarah/yq" = "4.53.6"
+# Held at 1.4.1 while 1.5.0 is available. v1.5.0 redefines `llm.inputTokens` to include
+# cache-read and cache-creation tokens, which changes access logs, spans, metrics,
+# token-based rate limits, and CEL expressions — and with them the captured usage blocks
+# and metric lines in Chapters 5 and 7. Moving it means recapturing those pages against a
+# running gateway, so it is a reviewed change rather than a pin bump.
+# The hold also declines one published advisory, so it is recorded rather than inherited:
+# GHSA-g7j8-wp7h-wmgr (medium, `< v1.5.0`) lets an orphan cross-namespace HTTPRoute be
+# adopted without a ReferenceGrant. It reaches no profile here — every profile runs the
+# gateway standalone from a config file (`-f`), and the repository declares no Gateway API
+# resource — but re-check that, and the advisory list, before renewing this hold.
 "github:agentgateway/agentgateway" = "1.4.1"
 
 [settings]
@@ -677,7 +694,7 @@ description = "Rebuild the agent binary so its stamped identity matches the work
 run = "mise run -C agents/go build"
 
 [tasks."eval:offline"]
-description = "Run the four required evaluation cases against the scripted fixture: no model, no weights, no wait"
+description = "Run the five required evaluation cases against the scripted fixture: no model, no weights, no wait"
 depends = ["tools:built", "agent:built"]
 # The scripted fixture walks each required case's exact trajectory, so the harness,
 # the transports, and the trajectory assertions are all exercised — and nothing about
@@ -686,7 +703,7 @@ depends = ["tools:built", "agent:built"]
 # assertions with no model, and it says nothing about the agent's judgement.
 # Port 11435 keeps it clear of a real Ollama on :11434.
 #
-# The transport is A2A because two of the four required cases propose a guarded
+# The transport is A2A because three of the five required cases propose a guarded
 # write, and `agent web` — the REST surface — freezes writes by construction: its
 # caller-supplied user id is not authentication, so an approval taken there would
 # name an approver nobody verified. A2A is the write-owning boundary, so it is the

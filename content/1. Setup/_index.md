@@ -32,7 +32,7 @@ env        optional .env is absent
 
 Two lines of verdict follow the command mise echoes, and neither is a blessing. The first says the pinned tools this repository shells out to are all on your `PATH` — presence, not proof that anything works. The second says no `.env` file exists, which is not a warning: the deterministic checks never read that file even when it exists. Their verdicts describe the committed source rather than your shell, and a check that read your shell could go green on a wrong commit.
 
-**By the end of [1.4. Providers]({{< relref "/1. Setup/1.4. Providers.md" >}}) a language model will be answering on your own hardware — and by the end of [1.1. Go]({{< relref "/1. Setup/1.1. Go.md" >}}) you will have watched a suite of 1,815 tests report 1,814 passed and one skipped, without a model anywhere near it.**
+**By the end of [1.4. Providers]({{< relref "/1. Setup/1.4. Providers.md" >}}) a language model will be answering on your own hardware — and by the end of [1.1. Go]({{< relref "/1. Setup/1.1. Go.md" >}}) you will have watched a suite of 1,828 tests report 1,827 passed and one skipped, without a model anywhere near it.**
 
 ## Which pages reach your first turn, and which wait until you change something
 

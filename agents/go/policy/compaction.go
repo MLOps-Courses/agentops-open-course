@@ -26,7 +26,9 @@ import (
 // Summarizing the elided span with the model is the natural extension, traded
 // against determinism and one extra model call per compaction.
 //
-// ADK has no equivalent; this is the course's own rule.
+// ADK v2.3.0 ships that extension as session compaction: a summarizer call whose
+// result is appended to the session as a compaction event. This guard stays,
+// because it rewrites only the outgoing request and never the stored history.
 
 // minHistoryMessages is the smallest window that can hold a tool call and its
 // result. Anything less would elide one half of a pair on every turn.

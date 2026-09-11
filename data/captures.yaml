@@ -6,13 +6,13 @@
 # until the manifest and the pages it backs are regenerated together.
 suites:
   "agents/go":
-    tests: 1815
+    tests: 1828
     skipped: 1
   "evals":
-    tests: 395
+    tests: 425
     skipped: 0
   "tools":
-    tests: 309
+    tests: 394
     skipped: 0
 coverage:
   "agents/go/a2aserver": 84.2
@@ -25,7 +25,7 @@ coverage:
   "agents/go/internal/safefile": 100.0
   "agents/go/kagentinterop": 86.6
   "agents/go/mcpserver": 88.6
-  "agents/go/memory": 87.6
+  "agents/go/memory": 87.7
   "agents/go/model": 100.0
   "agents/go/piiwebhook": 98.0
   "agents/go/platformdrill": 88.3
