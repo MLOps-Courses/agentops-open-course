@@ -24,7 +24,7 @@ require (
 	// state that moves here — the incident, task, memory, and vector databases
 	// remain SQLite files owned by one writer (Ch. 6.9).
 	github.com/jackc/pgx/v5 v5.10.0
-	github.com/modelcontextprotocol/go-sdk v1.7.0
+	github.com/modelcontextprotocol/go-sdk v1.8.0
 	// ADK Go owns this generated-client pair: minimal version selection resolves
 	// openai-go from ADK itself, so bump it only with ADK and the adapter and the
 	// generated client stay in step.
