@@ -12,26 +12,26 @@ mise run check
 mise run test
 ```
 
-The test suite is deterministic, network-independent after installation, and enforces at least 95% branch coverage.
+The test suite is deterministic, network-independent after installation, and enforces at least 95% combined line-and-branch coverage.
 
-The defaults are enough for the account-free Qwen3 path. With Ollama running:
+The defaults select Gemini. Configure `GOOGLE_API_KEY` in the repository-root `.env` from `.env.example`, then run:
 
 ```bash
-ollama pull qwen3:4b-instruct
+mise run config:check
 mise run run
 ```
 
-When Chapter 5 introduces agentgateway, change only the endpoint:
+When Chapter 5 introduces agentgateway, select its OpenAI-compatible transport and endpoint. Keep the real Gemini key in the host gateway configuration:
 
 ```bash
 AGENT_MODEL_PROVIDER=openai-compatible
-AGENT_MODEL=qwen3:4b-instruct
+AGENT_MODEL=gemini-3.5-flash
 OPENAI_BASE_URL=http://127.0.0.1:4000/v1
-OPENAI_API_KEY=local-ollama
+OPENAI_API_KEY=local-gateway
 AGENT_MCP_URL=http://127.0.0.1:3000/mcp
 ```
 
-Native Gemini remains an optional provider path with `AGENT_MODEL_PROVIDER=gemini` plus AI Studio credentials or Vertex ADC.
+Ollama is an explicit alternative: select `AGENT_MODEL_PROVIDER=openai-compatible`, model `qwen3:4b-instruct`, URL `http://127.0.0.1:11434/v1`, and marker `local-ollama`. Native Vertex ADC is a separate optional provider path.
 
 ## Runtime contracts
 
@@ -45,8 +45,8 @@ Native Gemini remains an optional provider path with `AGENT_MODEL_PROVIDER=gemin
 - `python -m agent.server` binds A2A to `127.0.0.1:8080` by default and advertises `localhost:8080`; deployments can configure those addresses independently.
 - Sessions and A2A tasks use persistent SQLite services under `.state/`.
 - `AGENT_DATA_DIR` points to immutable seed data; `AGENT_STATE_DIR` holds its writable runtime copy.
-- `AGENT_MODEL_PROVIDER=openai-compatible` is the account-free default; `OPENAI_BASE_URL` chooses direct Ollama or agentgateway.
-- `AGENT_MODEL_PROVIDER=gemini` selects the optional native Gemini/Vertex integration.
+- `AGENT_MODEL_PROVIDER=gemini` is the laptop default; `GOOGLE_API_KEY` provides hosted API access.
+- `AGENT_MODEL_PROVIDER=gemini` selects the native Gemini/Vertex integration.
 - `AGENT_MCP_URL` routes the six read/runbook tools over streamable HTTP, pinned by `tool_filter=MCP_READ_TOOL_NAMES` so a server cannot widen the surface; without it, the composition registers their local in-process implementations. `mise run mcp` starts the standalone server.
 - HTTP MCP keeps DNS-rebinding protection enabled; `MCP_ALLOWED_HOSTS` can narrow its explicit authority allowlist.
 - message content capture in telemetry is disabled by default.
@@ -61,7 +61,7 @@ src/
     budget.py       Token accounting and per-session budget
     config.py       Typed environment settings
     config_check.py Masked effective-configuration diagnostic
-    model.py        OpenAI-compatible local/gateway or optional Gemini model
+    model.py        Native Gemini or OpenAI-compatible local/gateway model
     models.py       Trusted domain and tool boundary types
     data.py         Seed-to-runtime state and data access
     tools.py        Read-only incident, service, and log tools
@@ -141,3 +141,9 @@ mise run clean
 ## License
 
 The code is [MIT licensed](../LICENSE). The bundled course content and external model/provider services have separate licenses and terms.
+
+## Cumulative workshop
+
+From the repository root, use `mise run install:learner`, then `mise run lab -- start 1` and `mise run lab -- check 1`. Continue through the six steps in `labs/`; each start carries the preceding learner file forward and refuses to overwrite existing work. `mise run check:labs` validates the separate worked solutions offline. `mise run lab -- run N` is the explicit model-backed ADK Web command.
+
+The optional `mise run check:comparison` validates the LangGraph A2A elective. Part II deploys the completed ADK reference, not these smaller teaching checkpoints.

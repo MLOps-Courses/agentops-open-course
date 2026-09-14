@@ -1,5 +1,5 @@
 ---
-description: Run and understand the completed Google ADK 2.x reference agent end to end on local Qwen3.
+description: Run and understand the completed Google ADK 2.x reference agent end to end with the configured model.
 ---
 
 # 2. Agents
@@ -7,8 +7,10 @@ description: Run and understand the completed Google ADK 2.x reference agent end
 !!! abstract "In one glance"
 
     - **You will:** See how the whole chapter fits together, then prove the agent assembles correctly without starting a model.
-    - **You need:** Chapter 1 finished, with `mise run doctor` and `mise run doctor:model` passing.
+    - **You need:** Chapter 1 finished, with the learner runtime installed and Gemini configuration validated.
     - **Time:** about 8 minutes, orientation.
+
+**Part I — Agent development.** Work through [2.6. Workshop](../2.%20Agents/2.6.%20Workshop.md) and consult this chapter when the exercise introduces its subject. Python fundamentals are assumed; no Kubernetes knowledge is needed here.
 
 ## What will you understand in this chapter?
 
@@ -25,8 +27,8 @@ That object is the **AgentOps Agent**, the single reference agent carried throug
 Read the sections by their kind, not just their order. **2.0 is conceptual**: the mental model you need before code makes sense. **2.1 and 2.5 are hands-on**: you run commands and see output. **2.2, 2.3, and 2.4 are reference**: the model, instruction, and runtime pieces you consult as you build.
 
 - **[2.0. Concepts](./2.0. Concepts.md)** _(concept)_: The ADK 2.x building blocks — Agent, Runner, Session, Events, Tools, and the graph Workflow.
-- **[2.1. First Agent](./2.1. First Agent.md)** _(hands-on)_: Inspect and run the AgentOps Agent end to end on local Qwen3.
-- **[2.2. Models](./2.2. Models.md)** _(reference)_: The default Ollama contract and the optional native Gemini branch.
+- **[2.1. First Agent](./2.1. First Agent.md)** _(hands-on)_: Inspect and run the AgentOps Agent end to end with the configured model.
+- **[2.2. Models](./2.2. Models.md)** _(reference)_: The optional Ollama contract and the default native Gemini branch.
 - **[2.3. Instructions](./2.3. Instructions.md)** _(hands-on)_: The system instruction, its enforcement map, and a deterministic red/green trajectory contract.
 - **[2.4. Sessions](./2.4. Sessions.md)** _(reference)_: Persistent ADK sessions, **A2A** tasks (units of work exchanged between agents across process boundaries), lifecycle ownership, and resettable runtime state.
 - **[2.5. Dev Loop](./2.5. Dev Loop.md)** _(hands-on)_: Offline gates, interactive modes, model-backed evaluations, and failure diagnosis.
@@ -73,6 +75,8 @@ Tools and policy hooks are named here, not taught here. Owned by [Chapter 3](../
 
     The `tools=` list and app plugin belong to later chapters: 2.1 shows the wiring, [Chapter 3](../3. Capabilities/) owns each tool, and [4.5. Guardrails](../4.%20Quality/4.5.%20Guardrails.md) owns policy. This page only names the seams.
 
+- **[2.6. Workshop](./2.6. Workshop.md)** _(hands-on)_: Build six cumulative Python checkpoints with offline checks and worked solutions.
+
 ## What proves this chapter worked?
 
 Two things prove the chapter. The first is one command, and it never starts a model:
@@ -96,7 +100,7 @@ A green run proves the agent is assembled correctly, not that it reasons well. M
     uv run pytest tests/test_model.py tests/test_config.py
     ```
 
-    That focused subset exits cleanly and gives fast feedback. The repository-wide 95% branch-coverage gate belongs to `mise run test`, which adds the coverage flags around the complete suite.
+    That focused subset exits cleanly and gives fast feedback. The repository-wide 95% combined line-and-branch coverage gate belongs to `mise run test`, which adds the coverage flags around the complete suite.
 
     Those cover provider resolution and the fail-fast cross-field checks in `config.py` — a bad `AGENT_MODEL_PROVIDER` combination fails at construction with a message that names the fix, not deep inside a turn. Model-backed behavior stays a separate evidence path ([2.5. Dev Loop](./2.5. Dev Loop.md)'s `mise run eval`), because a green offline suite proves the agent is assembled correctly, not that it reasons well.
 

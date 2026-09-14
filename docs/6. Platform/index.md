@@ -10,6 +10,8 @@ description: Run the same private AgentOps data plane on local k3d and an option
     - **You need:** Chapter 5 finished and `mise run doctor:platform` passing.
     - **Time:** about 12 minutes, orientation.
 
+**Part II — Platform engineering.** This part is more demanding and assumes container and Kubernetes knowledge. Complete [4.8. Developer Handoff](../4.%20Quality/4.8.%20Developer%20Handoff.md) or begin from its tested reference checkpoint. Prepare with [Kubernetes Basics](https://kubernetes.io/docs/tutorials/kubernetes-basics/) if needed.
+
 ## Where will you run the agent?
 
 Until now you started the agent yourself and restarted it when it died. From here the cluster does that.

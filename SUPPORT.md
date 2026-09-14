@@ -4,10 +4,12 @@ This policy says which surfaces are stable, where the complete path is verified,
 
 ## What does the course support?
 
-The supported outcome is the account-free OSS path from a clean checkout to:
+The course has a Python developer part and a more demanding Kubernetes platform engineering part. Python knowledge is assumed in Part I; container and Kubernetes knowledge is assumed in Part II. Preparation links live in Chapter 0.
+
+The default model path is hosted Gemini with conditional free-tier access. The software stack is open source; the Gemini service is proprietary. Ollama/Qwen3 is an optional local alternative, and offline workshop checks require no model. The supported outcomes from a clean checkout are:
 
 - the offline course, agent, security, and infrastructure gates;
-- the conversational agent, bounded workflow, and coordinator on Qwen3 through Ollama;
+- the conversational agent, bounded workflow, and coordinator with configured Gemini or explicitly selected Qwen3/Ollama;
 - the six read tools, repository Agent Skills, MCP, guarded writes, memory, and A2A;
 - the host agentgateway path and the local k3d platform;
 - self-hosted MLflow, OpenTelemetry, Prometheus, Grafana, and Loki;
@@ -19,14 +21,14 @@ This table is the course's single capacity-planning authority. **Total RAM** is 
 
 <!-- local-platform-capacity: total-ram-gib=14 free-disk-gib=15 -->
 
-| Work tier               | Install/profile                                   | Capacity contract                                                                                                                                                     |
-| ----------------------- | ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Read the course         | No install                                        | No measured minimum beyond a browser or Markdown reader.                                                                                                              |
-| Offline engineering     | `install`; `doctor`; `check:core`; `test`         | No measured RAM or disk minimum. The two locked Python environments and repository checkout must fit; the gates are authoritative.                                    |
-| Local model             | Offline tier plus `doctor:model`                  | No measured host minimum. The Qwen3 download and runtime consume additional disk and available RAM; model speed is hardware-dependent.                                |
-| Host gateway            | Local-model tier plus `doctor:gateway`            | No separate measured minimum. A working container engine and enough available RAM for Ollama, the agent, and the gateway are required.                                |
-| Complete local platform | `install:platform`; `doctor:platform`             | Conservative planning value: **14 GiB total RAM** and **15 GiB free disk** for the model, images, one k3d cluster, and observability running at once.                 |
-| Optional GKE laboratory | `install:gcp`; `doctor:gcp`; reviewed `tofu plan` | Local capacity is not the cloud quota. The canonical billable resource shape and dated estimate live only in [7.3. Costs](./docs/7.%20Observability/7.3.%20Costs.md). |
+| Work tier               | Install/profile                                   | Capacity contract                                                                                                                                                                                                                                   |
+| ----------------------- | ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Read the course         | No install                                        | No measured minimum beyond a browser or Markdown reader.                                                                                                                                                                                            |
+| Offline engineering     | `install`; `doctor`; `check:core`; `test`         | No measured RAM or disk minimum. The two locked Python environments and repository checkout must fit; the gates are authoritative.                                                                                                                  |
+| Local model             | Offline tier plus `doctor:model`                  | No measured host minimum. The Qwen3 download and runtime consume additional disk and available RAM; model speed is hardware-dependent.                                                                                                              |
+| Host gateway            | Contributor tier plus `doctor:gateway`            | No separate measured minimum. A working container engine and enough available RAM for the agent and gateway are required; optional Ollama adds its own model footprint.                                                                             |
+| Complete local platform | `install:platform`; `doctor:platform`             | Conservative planning value: **14 GiB total RAM** and **15 GiB free disk** for the optional Ollama profile, images, one k3d cluster, and observability running at once. The Gemini profile has no local model footprint; its minimum is unmeasured. |
+| Optional GKE laboratory | `install:gcp`; `doctor:gcp`; reviewed `tofu plan` | Local capacity is not the cloud quota. The canonical billable resource shape and dated estimate live only in [7.3. Costs](./docs/7.%20Observability/7.3.%20Costs.md).                                                                               |
 
 The local-platform numbers are conservative planning values, not measured minima or performance guarantees. `doctor:*` can verify tools, services, credentials, cgroup mode, and some free-disk boundaries; portable measurement of “enough available RAM” is not reliable across supported systems, so it does not pretend to certify that property.
 
@@ -106,3 +108,23 @@ The latest release and `main` receive security and correctness fixes. Older rele
 Dependency updates and security triage are best effort from a single maintainer — typically within a week, faster for an exploitable finding with a published fix. The maintainer targets small patch releases as fixes accumulate and a reviewed minor release when a capability is ready. If the project cannot be maintained safely for six months, the maintainer will announce archival, disable unsupported publication workflows, and seek a successor under `GOVERNANCE.md`.
 
 Use [SECURITY.md](./SECURITY.md) for vulnerabilities, [ACCESSIBILITY.md](./ACCESSIBILITY.md) for accessibility barriers, and a public issue for other support requests.
+
+## Learner and reference boundaries
+
+`install:learner` installs the locked runtime for cumulative exercises; contributor and maintainer gates use their own larger tiers. `learning/` holds learner-owned files, is ignored by Git, and is never removed by the runtime reset task. Learners should back it up or version it in their own repository.
+
+The small workshop demonstrates patterns. The full reference owns persistent A2A state, audit, privacy, and recovery; the platform manifests deploy that reference. The LangGraph comparison is an optional, read-only A2A exercise and is not a second supported production implementation.
+
+`local-gemini` is the main learner platform profile. The original `local` profile remains the Ollama/fake path used by account-free platform CI. Static validation covers both; a successful fake-backed run does not qualify Gemini model behavior. A2A responses expose trace identifiers only when telemetry creates a valid trace context; absence means there is no response trace to score.
+
+## Migrating to the Python developer and platform course
+
+This unreleased redesign changes the default provider from local Ollama to native Gemini. Existing Ollama users should keep `AGENT_MODEL_PROVIDER=openai-compatible`, `AGENT_MODEL=qwen3:4b-instruct`, `OPENAI_BASE_URL=http://127.0.0.1:11434/v1`, and the non-secret `OPENAI_API_KEY=local-ollama` explicit in their configuration.
+
+Use `gateway:host:ollama` and `platform:dev:ollama` for the existing local-model profiles. The default host and platform tasks now select Gemini and need its separately configured credential. The Python state schema and seed are unchanged; learner files under `learning/` are independent of runtime state. Do not infer a qualified live Gemini deployment from the offline migration checks.
+
+## Current unreleased qualification limit
+
+The development, evaluation, and framework-comparison dependency profiles include `rouge-score`, because the locked ADK evaluator imports it even when the configured metric is tool trajectory. It brings `nltk==3.10.3`, which the package audit rejects for `PYSEC-2026-3740`. The [upstream advisory](https://github.com/nltk/nltk/security/advisories/GHSA-8mgp-746c-j5xp) lists no patched version as checked on 2026-09-12.
+
+The runtime-only learner/agent and MLflow server profiles exclude NLTK and pass the package advisory audit. The full `mise run check` remains blocked until the dependency can be removed without breaking evaluation or an upstream fix is qualified. No advisory exception or scorer bypass is applied.

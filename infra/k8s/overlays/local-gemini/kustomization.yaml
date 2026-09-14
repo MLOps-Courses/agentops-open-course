@@ -1,0 +1,64 @@
+# https://kubectl.docs.kubernetes.io/references/kustomize/kustomization/
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../local
+configMapGenerator:
+  - name: agentgateway-config
+    namespace: agentops
+    behavior: replace
+    files:
+      - config.yaml
+patches:
+  - target:
+      kind: ModelConfig
+      name: agentgateway
+    patch: |-
+      - op: replace
+        path: /spec/model
+        value: gemini-3.5-flash
+  - target:
+      kind: Deployment
+      name: agentgateway
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: agentgateway
+      spec:
+        template:
+          spec:
+            containers:
+              - name: agentgateway
+                volumeMounts:
+                  - name: gemini-key
+                    mountPath: /etc/agentgateway/gemini-key
+                    subPath: GOOGLE_API_KEY
+                    readOnly: true
+            volumes:
+              - name: gemini-key
+                secret:
+                  secretName: gemini-provider
+                  defaultMode: 0444
+  - target:
+      kind: NetworkPolicy
+      name: agentgateway-egress
+    patch: |-
+      - op: replace
+        path: /spec/egress/3/ports/0/port
+        value: 443
+replacements:
+  - source:
+      group: kagent.dev
+      version: v1alpha2
+      kind: ModelConfig
+      name: agentgateway
+      fieldPath: spec.model
+    targets:
+      - select:
+          group: kagent.dev
+          version: v1alpha2
+          kind: Agent
+          name: agentops-agent
+        fieldPaths:
+          - spec.byo.deployment.env.[name=^AGENT_MODEL$].value

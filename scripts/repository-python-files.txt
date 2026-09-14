@@ -10,6 +10,7 @@ scripts/check_conventions.py
 scripts/course_evidence.py
 scripts/docs_routes.py
 scripts/freshness_report.py
+scripts/platform_credentials.py
 scripts/release_attestation.py
 scripts/release_evidence.py
 scripts/release_freshness.py
@@ -18,6 +19,7 @@ scripts/test_check_conventions.py
 scripts/test_freshness_report.py
 scripts/test_release_attestation.py
 scripts/test_release_evidence.py
-scripts/test_release_promote.py
 scripts/test_release_freshness.py
+scripts/test_release_promote.py
 scripts/test_release_reconcile.py
+scripts/test_platform_credentials.py

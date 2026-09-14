@@ -80,6 +80,7 @@
       activeTaskId: null,
       lastAgentText: "",
       lastTaskState: null,
+      lastTraceId: null,
     };
     const $ = (id) => document.getElementById(id);
 
@@ -218,6 +219,11 @@
     // ----------------------- 3. Rendering results -------------------------
     function handleResult(result) {
       if (!result) return;
+      const traceId = result.metadata && result.metadata.mlflow_trace_id;
+      if (typeof traceId === "string" && /^tr-[0-9a-f]{32}$/.test(traceId) && traceId !== state.lastTraceId) {
+        state.lastTraceId = traceId;
+        addBubble("system", `Trace for this response: ${traceId}`);
+      }
       if (result.kind === "task") {
         // Initial Task snapshot: remember ids, then render its current state.
         state.contextId = result.contextId;

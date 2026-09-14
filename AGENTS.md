@@ -4,7 +4,7 @@ Guidance for coding agents working in the AgentOps Open Course. Humans should st
 
 ## Repository purpose
 
-The course teaches the complete lifecycle of one **AgentOps Agent** with Google ADK, agentgateway, kagent, MLflow, and OpenTelemetry. `main` is a completed, executable reference that learners inspect and extend; it must not drift into a collection of illustrative snippets. Chapter 8.7 turns that reference into a capstone contract for a learner-owned domain.
+The course teaches the complete lifecycle of one **AgentOps Agent** with Google ADK, agentgateway, kagent, MLflow, and OpenTelemetry. The completed executable reference accompanies cumulative learner-owned Python exercises; it must not drift into a collection of illustrative snippets. Chapter 8.7 turns that reference into a capstone contract for a learner-owned domain.
 
 - `docs/` contains FAQ-based course pages published by Zensical.
 - `agents/python/` is the locked Python reference agent, offline tests, and model-backed evaluations.
@@ -13,7 +13,7 @@ The course teaches the complete lifecycle of one **AgentOps Agent** with Google 
 - `clients/web/` is a minimal, offline, dependency-free A2A web client for the AgentOps Agent.
 - `load/` holds k6 load tests and the documented latency budgets for the platform.
 - `infra/agentgateway/{host,k3d,gke}/` contains the three data-plane profiles.
-- `infra/k8s/base` plus `infra/k8s/overlays/{local,gke}` contains the shared Kubernetes deployment.
+- `infra/k8s/base` plus `infra/k8s/overlays/{local,local-gemini,gke}` contains the shared Kubernetes deployment.
 - `infra/kagent/` declares the BYO Agent, gateway ModelConfig, and governed RemoteMCPServer.
 - `infra/mlflow/` builds the locked non-root MLflow server.
 - `infra/observability/` contains host Compose and in-cluster OTel/Prometheus/Grafana resources.
@@ -30,15 +30,19 @@ The course teaches the complete lifecycle of one **AgentOps Agent** with Google 
 - **Skills and retrieved data have different trust.** The carve-out is keyed on the ADK `LoadSkillTool` **type**, which only the locally built `skill_toolset()` constructs — not on the tool's name, which any MCP server could claim. That result is reviewed repository instruction, so it bypasses injection neutralization and spotlighting while retaining recursive PII/credential redaction. Every other tool result stays data-hardened by default.
 - **Audit is append-only, not immutable.** Every row carries its audit schema version. SQLite triggers block row update/delete through the schema; administrators can still alter the file/schema. Do not overclaim.
 - **Telemetry content stays private by default.** Both ADK/GenAI content-capture variables default to literal `false`. PII callbacks cover outbound model requests, inbound model responses, and tool output, but raw session ingestion occurs earlier.
-- **No LiteLLM or garak contract.** Runtime/evaluation uses ADK's OpenAI-compatible client for Ollama/agentgateway or native Gemini when selected explicitly. `mise run redteam` is deterministic offline adversarial regression, not live-model penetration testing.
+- **No LiteLLM or garak contract.** Runtime/evaluation uses ADK's OpenAI-compatible client for Ollama/agentgateway or native Gemini by default. `mise run redteam` is deterministic offline adversarial regression, not live-model penetration testing.
 - **Planning is bounded.** `root_agent` plans only multi-step investigations and verifies approved actions afterward. `triage_workflow` is the runnable, read-only plan → investigate → evidence review → recommend path; do not replace it with an unbounded reflection loop.
 - **Cost-efficient by default.** Prefer deterministic offline tests and fakes, the smallest model that can validate the behavior, and single-replica resource-bounded local services. Measure before increasing model size, context, RAM, CPU, storage, replicas, or load-test concurrency. Do not start a cluster, observability stack, model server, paid API, or cloud resource unless it materially validates the current boundary; stop temporary processes and tear down disposable resources when the check is complete.
 
 ## Open-source boundary
 
-The required software path is OSS: ADK, agentgateway, kagent, MLflow, OpenTelemetry, Prometheus, Grafana, Ollama, the Apache-2.0 open-weight Qwen3 model, and repository code. It requires no account, no mandatory SaaS, and no usage fee. Gemini, Vertex AI, GKE, GCS, Artifact Registry, and GitHub hosting are optional proprietary services. Never blur that distinction or call an optional cloud environment fully OSS.
+The course is free and openly licensed: CC BY 4.0 text and MIT repository software. Its application/platform stack is OSS. The default Gemini API is a proprietary hosted service requiring an account, API key, and available quota. Free-tier access is conditional; never promise universal zero-cost inference. Ollama with Apache-2.0 open-weight Qwen3 is the optional local alternative. Offline exercise checks and recorded-answer calibration need neither model access nor provider credentials.
 
-Local Qwen3/Ollama is the default model path from the first Chapter 2 interaction. `AGENT_MODEL_PROVIDER=openai-compatible`, `AGENT_MODEL=qwen3:4b-instruct`, `OPENAI_BASE_URL=http://127.0.0.1:11434/v1`, and the non-secret `local-ollama` marker are the stable defaults. Chapter 5 changes only `OPENAI_BASE_URL` to the agentgateway listener. Native Gemini and the GKE/Vertex path are optional comparisons; the GKE overlay uses Workload Identity Federation and mounts no cloud key.
+Part I (Chapters 1–4) assumes working Python knowledge, including venv and pip; link to preparation resources instead of teaching Python fundamentals. Part II (Chapters 5–7) assumes containers and Kubernetes and must be advertised as more demanding. ADK is the main framework; the LangGraph/A2A comparison is optional. agentgateway and kagent are central to Part II.
+
+`AGENT_MODEL_PROVIDER=gemini` and `AGENT_MODEL=gemini-3.5-flash` are the laptop defaults. `.env.example` owns the onboarding configuration. `install:learner` installs only uv and the locked runtime. The cumulative `lab` command preserves work under root `learning/`; it must never overwrite existing steps or let runtime-state reset delete learner work. The complete reference remains the platform handoff.
+
+The main host task selects `infra/agentgateway/host/config-gemini.yaml`. `platform:dev` selects `local-gemini`, with the real provider key mounted only into agentgateway from `gemini-provider`. The original `config.yaml` and `local` overlay remain the explicit Ollama/fake profiles, including offline platform CI. Use `gateway:host:ollama` and `platform:dev:ollama` for that alternative. Native Gemini → gateway is a transport change requiring new model evidence, not merely a URL substitution.
 
 The optional GKE path compatibility-pins `gemini-3.5-flash`. Do not move that pin because a newer model exists: the pinned agentgateway release's Vertex conversion adds a blank text part beside a function response, which Gemini 3.6 rejects. A replacement model and stable gateway pair is supported only after `mise run gke:smoke` completes both its synthetic tool-result turn and its stable-seed, read-only A2A retrieval.
 
@@ -107,7 +111,7 @@ mise run promote
 mise run gke:smoke
 ```
 
-`mise run install` bootstraps the learner-facing core tools and environments. The platform and maintainer tiers are explicit so a first checkout does not install Kubernetes, cloud, and security tooling it does not yet need.
+`mise run install:learner` bootstraps the learner runtime; `mise run install` installs contributor tools and environments. The platform and maintainer tiers are explicit so a first learner checkout does not install Kubernetes, cloud, and maintainer tooling it does not yet need.
 
 Aggregate tasks run their children: `install`, `format`, `check`, and `build` each fan out, so `mise run build` builds the site **and** both container images and therefore needs Docker. Use `mise run build:docs` for the container-free documentation build. `install:core`, `doctor:base`, `watch`, and `scan` are aliases of `install`, `doctor`, `serve`, and `secure`; `install:tools:*` are hidden implementation details.
 
@@ -131,7 +135,7 @@ The `eval:*` tasks (`eval`, `eval:workflow`, `eval:report`, `eval:mlflow`, `eval
 
 ## Local and cloud safety
 
-The host gateway is `infra/agentgateway/host/config.yaml`. Host quickstarts use the digest-pinned container wrapper exposed by the `gateway:host*` tasks; every published listener binds to `127.0.0.1`. On native Linux, the wrapper owns a bridge-address-only relay so its container can reach MCP, A2A, and Ollama while those upstream processes remain bound to host loopback. The raw agentgateway binary currently listens on all interfaces and is an advanced/manual path, not a learner quickstart.
+The main host gateway is `infra/agentgateway/host/config-gemini.yaml`; `config.yaml` is the optional Ollama/fake profile. Host quickstarts use the digest-pinned container wrapper exposed by the `gateway:host*` tasks; every published listener binds to `127.0.0.1`. On native Linux, the wrapper owns a bridge-address-only relay so its container can reach MCP, A2A, and Ollama while those upstream processes remain bound to host loopback. The raw agentgateway binary currently listens on all interfaces and is an advanced/manual path, not a learner quickstart.
 
 Kubernetes begins in Chapter 6. Local Kubernetes is created only from `infra/k3d.yaml`, uses `registry.localhost:5050`, and is deployed from the repository root with:
 
@@ -205,4 +209,4 @@ mise run test
 mise run scan
 ```
 
-The Python suite enforces at least 95% branch coverage. The complete gate renders both overlays and scans the repository; no model, cluster, or cloud call is part of it. Never suppress a real failure to force green. Do not call a live model, deploy Kubernetes/cloud resources, or commit unless the user explicitly asks.
+The Python suite enforces at least 95% combined line-and-branch coverage. The complete gate renders all three overlays and scans the repository; no model, cluster, or cloud call is part of it. Never suppress a real failure to force green. Do not call a live model, deploy Kubernetes/cloud resources, or commit unless the user explicitly asks.

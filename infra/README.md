@@ -116,3 +116,7 @@ The task rejects the wrong context, source image, or live model configuration. I
 ## Teardown
 
 `(cd infra && skaffold delete --filename skaffold.yaml --profile local)` or the same command with `--profile gke` also deletes the course PVCs and their data. `mise run observability:down` preserves named volumes; adding Compose `-v` deletes them. Stop a detached host gateway with `mise run gateway:host:stop`. The `local` cluster and kagent control plane can be shared by other projects, so `helmfile destroy` and `k3d cluster delete local` are dedicated-lab operations, not routine course cleanup. GCP destruction is likewise separate and must be confirmed from a reviewed plan.
+
+## Main Gemini learner profile
+
+Part II assumes Kubernetes fundamentals. `mise run platform:credentials` provisions the explicit local provider Secret, then `mise run platform:dev` selects `local-gemini`. The original `local` overlay remains the optional Ollama/fake path used by platform CI; choose `platform:dev:ollama` explicitly for it. Host `gateway:host` selects `config-gemini.yaml`, while `gateway:host:ollama` selects the original local profile. No configuration-render check proves a live Gemini turn.

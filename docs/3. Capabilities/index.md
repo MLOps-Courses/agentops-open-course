@@ -10,6 +10,8 @@ description: Give the agent real powers — tools, skills, MCP, memory, workflow
     - **You need:** Chapter 2 finished, with `mise run test` green in `agents/python`.
     - **Time:** about 8 minutes, orientation.
 
+**Part I — Agent development.** Work through [2.6. Workshop](../2.%20Agents/2.6.%20Workshop.md) and consult this chapter when the exercise introduces its subject. Python fundamentals are assumed; no Kubernetes knowledge is needed here.
+
 ## Which capabilities will you add?
 
 Your agent can now hold a conversation ([Chapter 2](../2. Agents/)). This chapter gives it things it can do — one capability per page, in reading order:
@@ -124,6 +126,8 @@ The task aliases set the composition selector. Every capability switch defaults 
     | `AGENT_MCP_URL`            | unset   | `_read_tools()` swaps the local read tools for the governed MCP toolset           | 3.3       |
     | `AGENT_SEMANTIC_RETRIEVAL` | `false` | Runbook search uses local-embedding vector retrieval, falling back to keywords    | 3.4       |
     | `AGENT_A2A_STREAMING`      | `false` | The A2A server emits partial per-token events, at the redaction cost 3.6 explains | 3.6       |
+
+- **[3.8. Framework Comparison](./3.8. Framework Comparison.md)** _(hands-on)_: Optional ADK/LangGraph comparison with executable A2A interoperability.
 
 ## What proves this chapter worked?
 

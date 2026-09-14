@@ -55,7 +55,7 @@ if rg -n '/env/[0-9]+/value' infra/k8s/overlays/*/kustomization.yaml; then
 	fail "overlay environment patches must select entries by name"
 fi
 
-for overlay in local gke; do
+for overlay in local local-gemini gke; do
 	rendered="${tmp_dir}/${overlay}.yaml"
 	if [[ ${overlay} == gke ]]; then
 		GCP_PROJECT_ID=agentops-course-check \
@@ -160,7 +160,7 @@ for overlay in local gke; do
 
 	metrics_ingress='.kind == "NetworkPolicy" and .metadata.name == "otel-collector-metrics-ingress"'
 	metrics_ingress_count="$(yq -r "select(${metrics_ingress}) | .metadata.name" "${rendered}" | awk 'NF { count++ } END { print count + 0 }')"
-	if [[ "${overlay}" == "local" ]]; then
+	if [[ "${overlay}" != "gke" ]]; then
 		metrics_source="$(yq -r "select(${metrics_ingress}) | .spec.ingress[0].from[0].podSelector.matchLabels.\"app.kubernetes.io/name\"" "${rendered}")"
 		metrics_port="$(yq -r "select(${metrics_ingress}) | .spec.ingress[0].ports[0].port" "${rendered}")"
 		assert_eq "local collector metrics policy count" "${metrics_ingress_count}" "1"
@@ -192,7 +192,10 @@ for overlay in local gke; do
 		fail "backup CronJob must use the shared state-directory lock"
 	fi
 
-	if [[ "${overlay}" == "local" ]]; then
+	if [[ "${overlay}" == "local-gemini" ]]; then
+		assert_eq "Gemini agent model" "${agent_model}" "gemini-3.5-flash"
+		assert_eq "Gemini ModelConfig model" "${model_config}" "gemini-3.5-flash"
+	elif [[ "${overlay}" == "local" ]]; then
 		assert_eq "local agent model" "${agent_model}" "qwen3:4b-instruct"
 		assert_eq "local ModelConfig model" "${model_config}" "qwen3:4b-instruct"
 	else
@@ -284,7 +287,7 @@ fi
 grep -Fq "additional properties 'provder' not allowed" "${tmp_dir}/invalid-kagent.log"
 
 # The broad ingress shown in Chapter 6 is an explicit, temporary fixture, not a
-# resource included by either completed overlay. Keep its unsafe shape stable so
+# resource included by any completed overlay. Keep its unsafe shape stable so
 # the exercise remains reproducible and easy to delete.
 kubeconform -strict -summary infra/k8s/exercises/otel-ingress-broad.yaml
 exercise_policy_name="$(yq -r '.metadata.name' infra/k8s/exercises/otel-ingress-broad.yaml)"
@@ -293,8 +296,9 @@ exercise_ports="$(yq -r '.spec.ingress[0].ports[].port' infra/k8s/exercises/otel
 [[ "${exercise_policy_name}" == "exercise-broad-otel-ingress" ]]
 [[ "${exercise_sources}" == "agentops,kagent" ]]
 [[ "${exercise_ports}" == "4317,4318,8889" ]]
-for rendered in "${tmp_dir}/local.yaml" "${tmp_dir}/gke.yaml"; do
-	if yq -e 'select(.kind == "NetworkPolicy" and .metadata.name == "exercise-broad-otel-ingress")' "${rendered}" >/dev/null; then
+for rendered in "${tmp_dir}/local.yaml" "${tmp_dir}/local-gemini.yaml" "${tmp_dir}/gke.yaml"; do
+	broad_policy="$(yq -r 'select(.kind == "NetworkPolicy" and .metadata.name == "exercise-broad-otel-ingress") | .metadata.name' "${rendered}")"
+	if [[ -n "${broad_policy}" ]]; then
 		fail "${rendered}: temporary broad-ingress exercise leaked into a deployable overlay"
 	fi
 done
@@ -475,7 +479,7 @@ gateway_prompt_guard="$(
 )"
 [[ -n "${gateway_prompt_guard}" ]]
 
-for gateway_config in infra/agentgateway/host/config.yaml infra/agentgateway/k3d/config.yaml infra/agentgateway/gke/config.yaml; do
+for gateway_config in infra/agentgateway/host/config.yaml infra/agentgateway/host/config-gemini.yaml infra/k8s/overlays/local-gemini/config.yaml infra/agentgateway/k3d/config.yaml infra/agentgateway/gke/config.yaml; do
 	gateway_ports="$(yq -r '.binds[].port' "${gateway_config}" | sort -n | paste -sd, -)"
 	[[ "${gateway_ports}" == "3000,3001,4000" ]]
 
@@ -614,3 +618,21 @@ tofu -chdir=infra/gcp fmt -check -recursive
 tofu -chdir=infra/gcp init -backend=false -input=false -lockfile=readonly
 tofu -chdir=infra/gcp validate
 tflint --chdir=infra/gcp --minimum-failure-severity=warning
+
+# Validate both Gemini configurations with synthetic credentials, without sending
+# a model request or materializing a real key. Keep this check on the pinned binary.
+printf '%s' 'offline-profile-validation' >"${tmp_dir}/gemini-key"
+for gemini_config in infra/agentgateway/host/config-gemini.yaml infra/k8s/overlays/local-gemini/config.yaml; do
+	GEMINI_VALIDATION_KEY="${tmp_dir}/gemini-key" yq '
+		(.binds[] | select(.port == 4000) | .listeners[].routes[].backends[].ai.policies.backendAuth.key.file) = strenv(GEMINI_VALIDATION_KEY)
+	' "${gemini_config}" >"${tmp_dir}/gemini-config.yaml"
+	agentgateway --validate-only -f "${tmp_dir}/gemini-config.yaml"
+done
+
+# Missing credentials must fail before Docker is contacted or resources are created.
+for gateway_command in run start args; do
+	if AGENTOPS_GATEWAY_CONFIG=config-gemini.yaml GOOGLE_API_KEY=' ' infra/scripts/gateway-host.sh "${gateway_command}" >"${tmp_dir}/missing-key.txt" 2>&1; then
+		fail "Gemini gateway accepted a missing provider key"
+	fi
+	rg -q 'Gemini gateway requires GOOGLE_API_KEY' "${tmp_dir}/missing-key.txt"
+done

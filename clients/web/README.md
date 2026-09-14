@@ -46,3 +46,5 @@ The gateway answers the preflight itself (`200` with `access-control-allow-*` he
 1. One conversation per page load; reconnecting without a reload preserves it, but a reload does not list or resume tasks from `.state/runtime.db`.
 1. Text parts only (the card advertises `text/plain`); file parts are not rendered.
 1. Token-level streaming appears only when the server runs with `AGENT_A2A_STREAMING=true`; by default SSE carries whole events.
+
+When telemetry produces a valid context, terminal A2A metadata includes `otel_trace_id` and `mlflow_trace_id`. The client displays the exact response's MLflow trace ID for manual feedback. Copy that ID; never select the latest trace by timestamp. No feedback-writing endpoint is exposed by this client.

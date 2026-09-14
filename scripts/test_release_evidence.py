@@ -12,7 +12,7 @@ import tempfile
 import unittest
 from typing import cast
 
-from scripts import release_evidence  # ty: ignore[unresolved-import]
+from scripts import release_evidence
 
 _REPOSITORY = "MLOps-Courses/agentops-open-course"
 _SHA = "a" * 40

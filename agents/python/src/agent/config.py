@@ -49,12 +49,13 @@ class Settings(BaseSettings):
 
     # --8<-- [start:settings-provider-fields]
     entrypoint: AgentEntrypoint = AgentEntrypoint.AGENT
-    model_provider: ModelProvider = ModelProvider.OPENAI_COMPATIBLE
-    model: str = Field(default="qwen3:4b-instruct", min_length=1)
+    model_provider: ModelProvider = ModelProvider.GEMINI
+    # Keep the learner and gateway model aligned with the qualified platform pair.
+    model: str = Field(default="gemini-3.5-flash", min_length=1)
 
     # ``openai-compatible`` describes the ADK client contract, not the
-    # deployment topology. Point this URL directly at Ollama for the account-free
-    # first run, or at agentgateway when the governed data plane is introduced.
+    # deployment topology. These defaults support the optional Ollama path;
+    # Part II instead points the adapter at agentgateway.
     openai_base_url: str | None = Field(
         default="http://127.0.0.1:11434/v1",
         validation_alias=AliasChoices("OPENAI_BASE_URL"),
@@ -64,7 +65,7 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("OPENAI_API_KEY"),
     )
 
-    # Optional Gemini paths: an AI Studio API key, or Enterprise/Vertex via ADC
+    # Default Gemini path: an AI Studio API key; optional Enterprise/Vertex via ADC
     # with an explicit project and location.
     google_api_key: SecretStr | None = Field(
         default=None,
@@ -179,7 +180,7 @@ class Settings(BaseSettings):
     max_history_messages: int | None = Field(default=None, ge=2)
 
     # Token budgeting and cost attribution (Chapter 7.3). ``None`` disables the
-    # budget; prices default to 0 because the reference path is local Ollama.
+    # budget; zero prices mean unconfigured attribution, never proof of free usage.
     max_tokens_per_session: int | None = Field(default=None, ge=1)
     input_price_per_1k: float = Field(default=0.0, ge=0)
     output_price_per_1k: float = Field(default=0.0, ge=0)
@@ -231,12 +232,6 @@ class Settings(BaseSettings):
                         + " and ".join(missing_enterprise)
                         + " for the ADC-backed course path."
                     )
-            elif not google_api_key:
-                provider_problems.append(
-                    "AGENT_MODEL_PROVIDER=gemini requires either GOOGLE_API_KEY for AI Studio, or "
-                    "GOOGLE_GENAI_USE_ENTERPRISE=true with GOOGLE_CLOUD_PROJECT and "
-                    "GOOGLE_CLOUD_LOCATION for ADC."
-                )
         if provider_problems:
             raise ValueError("\n".join(provider_problems))
         # --8<-- [end:settings-provider-validation]
@@ -259,6 +254,20 @@ class Settings(BaseSettings):
         if problems:
             raise ValueError("\n".join(problems))
         return self
+
+    def require_model_credentials(self) -> None:
+        """Require auth at model/config preflight, without blocking offline read tools."""
+        if (
+            self.model_provider is ModelProvider.GEMINI
+            and not self.google_genai_use_enterprise
+            and (not self.google_api_key or not self.google_api_key.get_secret_value().strip())
+        ):
+            raise ValueError(
+                "AGENT_MODEL_PROVIDER=gemini requires either GOOGLE_API_KEY for AI Studio, or "
+                "GOOGLE_GENAI_USE_ENTERPRISE=true with GOOGLE_CLOUD_PROJECT and GOOGLE_CLOUD_LOCATION for ADC. "
+                "Create the repository-root .env from .env.example and run `mise run config:check`. "
+                "Offline tests and read tools need no API key."
+            )
 
 
 settings = Settings()

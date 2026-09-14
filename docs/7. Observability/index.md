@@ -10,6 +10,8 @@ description: "Gain insight into the agent in production: reproducibility, tracin
     - **You need:** Chapter 5 finished and Docker running. Only [7.6. Governance](./7.6. Governance.md) also needs the Chapter 6 cluster.
     - **Time:** about 6 minutes, orientation.
 
+**Part II — Platform engineering.** This part is more demanding and assumes container and Kubernetes knowledge. Complete [4.8. Developer Handoff](../4.%20Quality/4.8.%20Developer%20Handoff.md) or begin from its tested reference checkpoint. Prepare with [Kubernetes Basics](https://kubernetes.io/docs/tutorials/kubernetes-basics/) if needed.
+
 ## How will you operate the agent after deployment?
 
 Your AgentOps Agent runs behind agentgateway ([Chapter 5](../5. Gateway/)), and optionally as a Kubernetes workload ([Chapter 6](../6. Platform/)). This chapter closes the [AgentOps loop](../0. Overview/0.2. AgentOps.md) with evidence: seeing what the agent does, proving what it did, and reacting when it breaks.

@@ -34,10 +34,12 @@ from google.adk.events import Event
 from google.adk.runners import Runner
 from google.adk.sessions import DatabaseSessionService, Session
 from google.genai import types
+from opentelemetry import trace
 from sqlalchemy.ext.asyncio import AsyncEngine
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from .composition import root_agent
 from .config import settings
@@ -51,6 +53,29 @@ from .state import recover_interrupted_restore
 # executor, so the value is visible when the request converter runs); it is unset
 # outside a request, where the synthetic A2A id remains the identity.
 _VERIFIED_SUBJECT: contextvars.ContextVar[str | None] = contextvars.ContextVar("verified_subject", default=None)
+_REQUEST_TRACE_ID: contextvars.ContextVar[str | None] = contextvars.ContextVar("request_trace_id", default=None)
+
+
+class RequestTraceMiddleware:
+    """Keep one trace identity around the complete streamed A2A request."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+        self.tracer = trace.get_tracer("agent.a2a")
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http" or scope.get("method") != "POST":
+            await self.app(scope, receive, send)
+            return
+        with self.tracer.start_as_current_span("a2a.request") as span:
+            context = span.get_span_context()
+            token = _REQUEST_TRACE_ID.set(f"{context.trace_id:032x}" if context.is_valid else None)
+            try:
+                await self.app(scope, receive, send)
+            finally:
+                _REQUEST_TRACE_ID.reset(token)
+
+
 _RUNTIME_REQUIRED_COLUMNS = {
     "adk_internal_metadata": frozenset({"key", "value"}),
     "app_states": frozenset({"app_name", "state", "update_time"}),
@@ -372,6 +397,11 @@ def _error_code_interceptor() -> ExecuteInterceptor:
             # a2a-sdk 1.x models ``metadata`` as a protobuf Struct: mutate the
             # entry in place rather than reassigning the whole submessage.
             final_event.metadata["adk_error_code"] = error_code
+        if trace_id := _REQUEST_TRACE_ID.get():
+            final_event.metadata["otel_trace_id"] = trace_id
+            # The locked OSS MLflow OTLP receiver derives its v3 ID this way.
+            # Keep MLflow out of the runtime image; an offline test pins the mapping.
+            final_event.metadata["mlflow_trace_id"] = f"tr-{trace_id}"
         return final_event
 
     return ExecuteInterceptor(before_agent=clear, after_event=remember, after_agent=restore)
@@ -580,6 +610,7 @@ def create_app(agent: BaseAgent | None = None) -> Starlette:
     # Bind the gateway-verified identity (when configured) for each request before
     # the A2A executor converts it, so a guarded write audits the real approver.
     app.add_middleware(VerifiedIdentityMiddleware)
+    app.add_middleware(RequestTraceMiddleware)
     # Kubernetes-facing health endpoints (Ch. 6): registered before startup so
     # they coexist with the A2A routes the lifespan adds.
     healthz, livez = _health_routes()

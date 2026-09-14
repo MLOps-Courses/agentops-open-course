@@ -25,7 +25,7 @@ format)
 check)
 	uv run ruff format --check "${files[@]}"
 	uv run ruff check "${files[@]}"
-	uv run ty check "${files[@]}"
+	uv run ty check --extra-search-path ../.. "${files[@]}"
 	;;
 *)
 	fail "usage: repository-python.sh <format|check>"

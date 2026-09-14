@@ -28,3 +28,7 @@ There is deliberately no ROUGE-style overlap scorer, because valid generative wo
 ## Add a regression case
 
 Add regression cases to `ops.evalset.json`; the report and workflow files each keep a small specialized positive, negative, and adversarial set. Check one behavior per case — a case that checks lookup, diagnosis, and approval at once cannot tell you which behavior regressed. Use a stable incident from the committed seed, record the minimum necessary expected trajectory, and avoid credentials or real operational data. Run `eval:validate` first, then `eval` and `eval:mlflow` with an explicit model.
+
+The primary learner provider is now native Gemini; scheduled account-free platform evidence still names its Ollama/fake profile explicitly. The main reference acceptance target is 80% aggregate success plus all named critical cases. Historical 33% baselines are not completion evidence. Begin with the smaller recorded-answer calibration in the workshop before using these advanced runners.
+
+The locked ADK evaluator still imports `rouge-score` even though the course does not select its overlap metric. Its NLTK dependency currently blocks the full advisory gate; see [the unreleased qualification limit](../../../SUPPORT.md#current-unreleased-qualification-limit).

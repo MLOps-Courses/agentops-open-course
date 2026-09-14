@@ -1,91 +1,65 @@
 ---
-description: Set up a professional local environment and toolchain for building and operating agents.
+description: Prepare a small Python environment and choose model access before building your first agent.
 ---
 
 # 1. Setup
 
 !!! abstract "In one glance"
 
-    - **You will:** Prepare the smallest local environment needed for the first agent conversation in Chapter 2.
-    - **You need:** A terminal and an internet connection; everything else is installed here.
-    - **Time:** about 8 minutes, orientation.
+    - **You will:** Prepare the laptop environment for Part I.
+    - **You need:** Working Python knowledge, a terminal, and internet access for installation.
+    - **Time:** about 5 minutes, orientation.
+
+<!-- Section aliases retained for existing bookmarks. -->
+
+<span id="what-is-deliberately-not-part-of-this-chapter"></span>
+<span id="what-will-you-set-up-in-this-chapter"></span>
+<span id="which-tier-does-each-chapter-actually-require"></span>
+<span id="why-are-the-prerequisites-staged-instead-of-installed-up-front"></span>
 
 ## Which pages do you need now?
 
-Follow four pages now, then defer the infrastructure-specific pages until the course needs them:
+Start with Python runtime installation and model configuration; the workshop introduces everything else when needed.
 
-- **1.0. System:** clone the repository and install the staged learner toolchain.
-- **1.1. Python:** inspect the locked Python project and prove it offline.
-- **1.4. Providers:** install Ollama, pull local Qwen3, and pass `doctor:model`.
-- **1.5. Workspace:** learn the repository contract and run the core gates.
+1. Follow [1.0. System](./1.0.%20System.md) and run `mise run install:learner`.
+1. Follow [1.4. Providers](./1.4.%20Providers.md) for a Gemini key, optional Ollama, or offline practice.
+1. Continue to [2.1. First Agent](../2.%20Agents/2.1.%20First%20Agent.md).
 
-Skip **1.2. Containers** until Chapter 5 and **1.3. Kubernetes** until Chapter 6. Chapter 2 owns the first live conversation, after this setup is green.
+Python functions, typing, imports, exceptions, virtual environments, and package installation are prerequisites. Prepare with the [Python tutorial](https://docs.python.org/3/tutorial/) if needed. This course teaches agent development, not Python fundamentals.
 
-## What will you set up in this chapter?
+## Which pages can wait?
 
-You install one staged CLI toolchain, two locked Python environments, and the local model used by Chapters 2-4. Docker, Kubernetes, and a cloud account wait until later chapters. Plan about two hours for the four required pages, much of it spent waiting on downloads.
+Use the other pages as references when the corresponding boundary appears.
 
-The base agent venv contains runtime plus development/offline-test packages. Chapter 4 adds the heavier full-MLflow profile to that same locked environment with `cd agents/python && mise run install:eval`; the separate MLflow server environment and platform/cloud CLIs wait for `mise run install:platform`. The runtime image stays lean by installing with `--no-dev`.
+- **[1.0. System](./1.0. System.md)** _(hands-on)_: install the small learner runtime; add contributor tools later.
+- **[1.1. Python](./1.1. Python.md)** _(reference)_: understand the locked Python project and preparation resources.
+- **[1.2. Containers](./1.2. Containers.md)** _(hands-on)_: verify the container engine before Chapter 5.
+- **[1.3. Kubernetes](./1.3. Kubernetes.md)** _(reference)_: verify platform prerequisites before Chapter 6.
+- **[1.4. Providers](./1.4. Providers.md)** _(hands-on)_: configure Gemini, or choose the explicit Ollama alternative.
+- **[1.5. Workspace](./1.5. Workspace.md)** _(hands-on)_: inspect the completed reference and contributor gates after the workshop.
 
-When a command in this chapter fails, match the symptom in [0.6. Troubleshooting](../0. Overview/0.6. Troubleshooting.md) or re-run the `doctor` for your tier. New to a term along the way? The [0.7. Glossary](../0. Overview/0.7. Glossary.md) defines every course term and links each back to where it is introduced.
+`install:learner` installs one locked Python runtime. It does not install the documentation environment, development tools, MLflow evaluation extras, container images, or Kubernetes tools. Chapter 4 introduces `cd agents/python && mise run install:eval` only when recording evaluations. The first offline exercise checks need no provider key. An interactive Gemini conversation uses a proprietary service and consumes its quota; a free allocation is not guaranteed.
 
-The six pages and the stage that owns each one:
+## When does the harder platform part begin?
 
-- **[1.0. System](./1.0. System.md)** _(hands-on)_: supported systems, hardware, network needs, and the pinned mise toolchain.
-- **[1.1. Python](./1.1. Python.md)** _(hands-on)_: the pinned Python and uv environment, runtime dependencies, and the model-free quality checkpoint.
-- **[1.2. Containers](./1.2. Containers.md)** _(hands-on)_: the Docker-compatible runtime the Chapter 5 gateway wrapper needs, and the five engine capabilities it depends on — skip until Chapter 5.
-- **[1.3. Kubernetes](./1.3. Kubernetes.md)** _(reference)_: the Chapter 6 platform tools, validated without creating a cluster yet — skip until Chapter 6.
-- **[1.4. Providers](./1.4. Providers.md)** _(hands-on)_: local Qwen3 through Ollama by default, or optional native Gemini, configured without leaking credentials.
-- **[1.5. Workspace](./1.5. Workspace.md)** _(hands-on)_: the repository, editor-neutral workflow, `AGENTS.md` guidance, git hooks, and your first full validation gate.
+Part II begins in Chapter 5 and assumes container and Kubernetes foundations.
 
-## Why are the prerequisites staged instead of installed up front?
+The gateway first runs on the laptop. Chapter 6 moves it onto local Kubernetes with kagent. Prepare with [Kubernetes Basics](https://kubernetes.io/docs/tutorials/kubernetes-basics/) before that transition if you cannot inspect Deployments, Services, Secrets, PVCs, probes, and NetworkPolicies.
 
-An agent platform pulls in heavy, stateful dependencies — a running model server, a container engine, a Kubernetes cluster, a cloud project. Installing and starting all of them before the first lesson wastes time and money and makes failures hard to localize.
-
-Staging keeps the base learning path account-free and free of containers, clusters, and cloud resources. You can finish Chapter 1 and read or build the whole course without Docker, a GPU, a provider key, or k3d.
-
-??? note "Deeper: how the ladder is defined and pinned"
-
-    `scripts/doctor.sh` defines small, scoped profiles, so you pay for a dependency only at the boundary it validates. `mise.toml` still pins every tool for reproducibility, and `run_auto_install = false` makes a missing tool fail fast rather than silently installing it.
-
-## Which tier does each chapter actually require?
-
-[1.0. System](./1.0.%20System.md) owns the exact profile-to-chapter map, independence rule, probes, and matching install tiers. Run the doctor named by the chapter you are entering; later pages repeat only the command they ask you to use.
-
-[1.5. Workspace](./1.5.%20Workspace.md) owns the offline learner gate and the broader maintainer boundary. Chapter 1 uses `mise run check:core`; the closing checkpoint below is its canonical command list.
-
-## What is deliberately not part of this chapter?
-
-Setup installs and probes local Qwen3, but it does not ask the agent a question. Each heavier runtime action arrives at the chapter that teaches it:
-
-- the first local Qwen3 conversation in Chapter 2;
-- the Docker-backed gateway in Chapter 5;
-- k3d and kagent in Chapter 6;
-- the optional GKE lab only if you explicitly choose it.
-
-Even then, `mise run doctor:gcp` and every cloud task stop short of creating a billable resource; the GKE path halts at `tofu plan` unless you later approve it.
+[4.8. Developer Handoff](../4.%20Quality/4.8.%20Developer%20Handoff.md) defines an independent completion point for Part I and the reference checkpoint for platform learners. You can finish the developer course without Kubernetes.
 
 ## What proves this chapter worked?
 
-You are ready for Chapter 2 when the core environment and local model checks pass. These commands do not start a container or cluster, create cloud resources, or send a prompt:
+Verify the worked checkpoints before making any model request.
 
 ```bash
-mise run doctor         # base prerequisites and learner environments
-mise run doctor:model   # Ollama serves qwen3:4b-instruct
-mise run format:core    # early source formatting
-mise run check:core     # model/container/cluster/cloud-free validation
-mise run test           # the Python agent's offline suite
-mise run build:docs     # the static site renders from docs/
+mise run check:labs
 ```
-
-When they are green, [2.1. First Agent](../2.%20Agents/2.1.%20First%20Agent.md) runs the AgentOps Agent on local Qwen3.
 
 **You are done when:**
 
-- `mise run doctor` prints `base       ready`, followed by an `env` line; both `.env available to explicit live/config tasks` and `optional .env is absent` are passes.
-- `mise run doctor:model` confirms `qwen3:4b-instruct` is served locally.
-- `mise run format:core`, `mise run check:core`, `mise run test`, and `mise run build:docs` each finish without reporting an error.
-- You can say which pages you skipped and what brings you back: 1.2. Containers at Chapter 5, 1.3. Kubernetes at Chapter 6.
-- Without reopening Chapter 0: you can name the model path you chose in [0.4. Providers](../0.%20Overview/0.4.%20Providers.md) and say why it needs no account, and you can name the one variable to raise when a local turn is slower than the agent's 60-second model deadline.
+- The offline worked checkpoints pass in the locked Python runtime.
+- You know whether your interactive path uses Gemini quota or optional local inference.
+- You know which preparation pages to revisit before Part II.
 
-Continue to [1.0. System](./1.0.%20System.md) when you are ready to install the learner toolchain.
+Continue to [2.1. First Agent](../2.%20Agents/2.1.%20First%20Agent.md) when installation and provider configuration are complete.

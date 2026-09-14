@@ -1342,7 +1342,7 @@ def check_outcome_evidence_contracts(
 ) -> list[Problem]:
     """The outcome matrix cannot promise assessment actions absent from the exercise."""
     overview_relative = "docs/0. Overview/0.0. Course.md"
-    evaluation_relative = "docs/4. Quality/4.4. Evaluations.md"
+    evaluation_relative = "docs/4. Quality/4.7. Evaluation Reference.md"
     overview = contract_page(pages, root, overview_relative)
     evaluation = contract_page(pages, root, evaluation_relative)
     matrix_row = next(

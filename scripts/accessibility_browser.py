@@ -32,6 +32,9 @@ SITE = ROOT / "site"
 CLIENT = ROOT / "clients/web"
 DOCUMENT_SURFACES = (
     ("index.html", "homepage"),
+    ("2. Agents/2.1. First Agent.html", "first Python exercise"),
+    ("2. Agents/2.6. Workshop.html", "cumulative workshop"),
+    ("4. Quality/4.8. Developer Handoff.html", "developer to platform handoff"),
     ("0. Overview/0.3. Ecosystem.html", "dense diagram page"),
     ("3. Capabilities/3.6. A2A.html", "A2A page"),
     ("4. Quality/4.6. Security.html", "security page"),

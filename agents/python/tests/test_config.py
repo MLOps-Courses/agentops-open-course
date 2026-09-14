@@ -37,8 +37,8 @@ def clean_environment(monkeypatch, tmp_path):
 def test_default_settings_are_valid() -> None:
     settings = Settings()
     assert settings.entrypoint is AgentEntrypoint.AGENT
-    assert settings.model_provider is ModelProvider.OPENAI_COMPATIBLE
-    assert settings.model == "qwen3:4b-instruct"
+    assert settings.model_provider is ModelProvider.GEMINI
+    assert settings.model == "gemini-3.5-flash"
     assert settings.model_temperature is None
     assert settings.openai_base_url == "http://127.0.0.1:11434/v1"
     assert settings.openai_api_key is not None
@@ -60,7 +60,7 @@ def test_entrypoint_is_a_validated_choice(monkeypatch) -> None:
 
 def test_settings_ignore_local_dotenv(tmp_path) -> None:
     (tmp_path / ".env").write_text("AGENT_MODEL=dotenv-must-not-load\n", encoding="utf-8")
-    assert Settings().model == "qwen3:4b-instruct"
+    assert Settings().model == "gemini-3.5-flash"
 
 
 def test_removed_gateway_flag_fails_with_migration_guidance(monkeypatch) -> None:
@@ -150,8 +150,8 @@ def test_gemini_api_key_provider_does_not_require_openai_configuration() -> None
 
 
 def test_gemini_provider_requires_an_explicit_auth_path() -> None:
-    with pytest.raises(ValidationError, match="requires either GOOGLE_API_KEY"):
-        Settings(model_provider=ModelProvider.GEMINI)
+    with pytest.raises(ValueError, match="requires either GOOGLE_API_KEY"):
+        Settings(model_provider=ModelProvider.GEMINI).require_model_credentials()
 
 
 def test_gemini_enterprise_provider_accepts_the_adc_course_path() -> None:
@@ -203,11 +203,12 @@ def test_gemini_environment_aliases_are_parsed_and_key_is_masked(monkeypatch) ->
     assert "gemini-sensitive" not in repr(settings)
 
 
-def test_config_check_reports_valid_configuration(capsys) -> None:
+def test_config_check_reports_valid_configuration(monkeypatch, capsys) -> None:
+    monkeypatch.setenv("GOOGLE_API_KEY", "synthetic-test-key")
     assert config_check.main() == 0
     out = capsys.readouterr().out
     assert "Agent configuration is valid" in out
-    assert "- model_provider = openai-compatible" in out
+    assert "- model_provider = gemini" in out
 
 
 def test_config_check_masks_secrets(monkeypatch, capsys) -> None:
@@ -264,3 +265,8 @@ def test_repository_env_example_documents_every_active_settings_variable() -> No
         else:
             expected.add(f"AGENT_{name.upper()}")
     assert expected <= documented
+
+
+def test_config_check_rejects_missing_default_api_key(capsys) -> None:
+    assert config_check.main() == 1
+    assert "GOOGLE_API_KEY" in capsys.readouterr().err

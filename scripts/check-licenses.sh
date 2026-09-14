@@ -16,6 +16,8 @@ core | full) ;;
 *) fail "unknown license profile '${profile}'; expected core or full" ;;
 esac
 
+# The comparison wheels add exact combinations of already accepted licenses:
+# ormsgpack Apache-2.0 OR MIT; orjson also includes its MPL-2.0 notice.
 readonly allowed_licenses_json='[
   "3-Clause BSD License",
   "Apache 2.0",
@@ -29,6 +31,7 @@ readonly allowed_licenses_json='[
   "Apache-2.0 AND MIT",
   "Apache-2.0 OR BSD-2-Clause",
   "Apache-2.0 OR BSD-3-Clause",
+  "Apache-2.0 OR MIT",
   "BSD License",
   "BSD-2-Clause",
   "BSD-3-Clause",
@@ -41,6 +44,7 @@ readonly allowed_licenses_json='[
   "MIT-0",
   "MIT-CMU",
   "MPL-2.0",
+  "MPL-2.0 AND (Apache-2.0 OR MIT)",
   "MPL-2.0 AND MIT",
   "MPL-2.0 and MIT and BSD-3-Clause",
   "Mozilla Public License 2.0 (MPL 2.0)",
@@ -109,6 +113,7 @@ sync_inventory() {
 	runtime) groups=(--no-default-groups) ;;
 	development) ;;
 	evaluation) groups=(--group eval) ;;
+	comparison) groups=(--group comparison) ;;
 	*) fail "unknown dependency profile '${dependency_profile}'" ;;
 	esac
 
@@ -159,6 +164,9 @@ sync_inventory() {
 	fi
 	printf '%s dependencies: clean and pre-populated inventory verdicts are identical\n' "${label}"
 
+	# The three JSON inventories retain the proof; release package files before
+	# creating another profile so validation has bounded temporary disk usage.
+	rm -rf -- "${environment}"
 	inventory_digest=$(sha256sum "${output}")
 	inventory_digest=${inventory_digest%% *}
 	printf '%s dependencies: lock-synchronized %s profile (%s)\n' \
@@ -225,26 +233,15 @@ check_embedded_license() {
 }
 
 check_repository_licenses
-pids=()
-sync_inventory "documentation" documentation . development "${inventory_dir}/documentation.json" &
-pids+=("$!")
-sync_inventory "agent runtime" agent-runtime agents/python runtime "${inventory_dir}/agent-runtime.json" &
-pids+=("$!")
-sync_inventory "agent development" agent-development agents/python development "${inventory_dir}/agent-development.json" &
-pids+=("$!")
+# Sequential ownership also makes the EXIT trap sufficient: no background
+# synchronizer can recreate its directory after an interrupted parent cleans up.
+sync_inventory "documentation" documentation . development "${inventory_dir}/documentation.json"
+sync_inventory "agent runtime" agent-runtime agents/python runtime "${inventory_dir}/agent-runtime.json"
+sync_inventory "agent development" agent-development agents/python development "${inventory_dir}/agent-development.json"
 if [[ ${profile} == full ]]; then
-	sync_inventory "agent evaluation" agent-evaluation agents/python evaluation "${inventory_dir}/agent-evaluation.json" &
-	pids+=("$!")
-	sync_inventory "MLflow runtime" mlflow-runtime infra/mlflow runtime "${inventory_dir}/mlflow.json" &
-	pids+=("$!")
-fi
-
-inventory_failed=0
-for pid in "${pids[@]}"; do
-	wait "${pid}" || inventory_failed=1
-done
-if ((inventory_failed)); then
-	exit 1
+	sync_inventory "framework comparison" agent-comparison agents/python comparison "${inventory_dir}/agent-comparison.json"
+	sync_inventory "agent evaluation" agent-evaluation agents/python evaluation "${inventory_dir}/agent-evaluation.json"
+	sync_inventory "MLflow runtime" mlflow-runtime infra/mlflow runtime "${inventory_dir}/mlflow.json"
 fi
 
 check_python_environment "documentation" "${inventory_dir}/documentation.json"
@@ -252,6 +249,8 @@ check_python_environment "agent runtime" "${inventory_dir}/agent-runtime.json"
 check_python_environment "agent development" "${inventory_dir}/agent-development.json" google-crc32c
 check_embedded_license "agent development" "${inventory_dir}/agent-development.json" google-crc32c 'Apache License'
 if [[ ${profile} == full ]]; then
+	check_python_environment "framework comparison" "${inventory_dir}/agent-comparison.json" google-crc32c
+	check_embedded_license "framework comparison" "${inventory_dir}/agent-comparison.json" google-crc32c 'Apache License'
 	check_python_environment "agent evaluation" "${inventory_dir}/agent-evaluation.json" google-crc32c huey skops
 	check_embedded_license "agent evaluation" "${inventory_dir}/agent-evaluation.json" google-crc32c 'Apache License'
 	check_embedded_license "agent evaluation" "${inventory_dir}/agent-evaluation.json" huey 'Permission is hereby granted'

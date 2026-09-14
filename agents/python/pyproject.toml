@@ -33,6 +33,9 @@ dependencies = [
 ]
 # --8<-- [end:runtime-dependencies]
 
+[project.optional-dependencies]
+lint = []
+
 [dependency-groups]
 # Everything the offline gates need: format, lint, types, and the whole test suite.
 # `mise run install` installs this group and nothing else.
@@ -52,24 +55,27 @@ dev = [
   # mlflow-skinny, not mlflow: the offline suite only imports the tracing, entity,
   # and scorer types. The tracking server, model flavors, and the numeric stack they
   # drag in (pyarrow, scipy, scikit-learn, matplotlib) live in the `eval` group.
-  "mlflow-skinny>=3.15,<3.16",
+  "mlflow-skinny>=3.16,<3.17",
   "pandas>=2.2.3,<3", # `mlflow.genai` imports it eagerly; MLflow 3.15 excludes pandas 3
   "pip-audit>=2.7.3",
   "pytest>=9.1.1",
   "pytest-cov>=7.1.0",
+  "rouge-score>=0.1.2",
   "ruff>=0.16.1",
   "ty>=0.0.65,<0.1", # pre-1.0: pin a compatible range until it stabilizes
   "validate-pyproject>=0.25",
 ]
-# The MLflow/rouge evaluation chain (Ch. 4.4, 7.0), opt-in via `mise run install:eval`.
+# The MLflow evaluation chain (Ch. 4.4, 7.0), opt-in via `mise run install:eval`.
 # Roughly 350 MB of wheels that Chapters 2-3 never touch, on top of the 2.5 GB model
 # pull — the difference between a laptop that can start the course and one that cannot.
 eval = [
-  "mlflow>=3.15,<3.16", # GenAI eval (LLM judges) + prompt registry + tracking server
+  "mlflow>=3.16,<3.17", # GenAI eval (LLM judges) + prompt registry + tracking server
   "pyarrow>=25.0.0,<26", # current MLflow-compatible line for the evaluation data path
-  "rouge-score>=0.1.2",
   "tabulate>=0.9",
 ]
+
+# Optional framework comparison only; the main course remains ADK.
+comparison = ["langgraph==1.2.11"]
 
 [tool.uv]
 # `uv sync` must not pull the eval chain; `mise run install:eval` adds it explicitly.
@@ -160,6 +166,12 @@ select = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
+# Root gate tests use stdlib unittest; the docs environment intentionally has no pytest.
+"../../scripts/test_platform_credentials.py" = ["PT009", "PT027"]
+"../../scripts/platform_credentials.py" = ["T201"] # CLI success message contains no provider content
+# The workshop deliberately uses stdlib unittest so the learner runtime needs no pytest.
+"labs/course_lab.py" = ["PT009", "T201"]
+"labs/test_langgraph_a2a.py" = ["PT009"]
 "../../scripts/test_*.py" = [
   "S101", # repository unittest fixtures use concise assertions
 ]
@@ -181,7 +193,7 @@ addopts = [
   "--strict-config",
   "--strict-markers",
 ]
-pythonpath = ["src"]
+pythonpath = ["src", "."]
 xfail_strict = true
 filterwarnings = [
   "error",

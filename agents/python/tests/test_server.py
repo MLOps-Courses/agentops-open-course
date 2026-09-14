@@ -949,3 +949,48 @@ def test_middleware_rejects_duplicate_trusted_identity_headers() -> None:
 
     assert not called
     assert messages[0]["status"] == 400
+
+
+def test_response_trace_ids_follow_each_request_and_match_mlflow(monkeypatch) -> None:
+    from mlflow.tracing.utils import generate_mlflow_trace_id_from_otel_trace_id
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+    monkeypatch.setenv("OTEL_SDK_DISABLED", "false")
+    provider = TracerProvider(shutdown_on_exit=False)
+    exporter = InMemorySpanExporter()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    monkeypatch.setattr(server.trace, "get_tracer", lambda *_args, **_kwargs: provider.get_tracer("test"))
+    monkeypatch.setattr(settings, "a2a_streaming", True)
+    agent = Agent(name="trace_test", model=_StreamingLlm(model="fake"), instruction="Reply.")
+    identifiers = []
+    try:
+        with TestClient(server.create_app(agent)) as client:
+            for index in range(2):
+                events = _stream_rpc_results(
+                    client,
+                    {
+                        "jsonrpc": "2.0",
+                        "id": f"trace-{index}",
+                        "method": "message/stream",
+                        "params": {
+                            "message": {
+                                "role": "user",
+                                "messageId": f"trace-message-{index}",
+                                "parts": [{"kind": "text", "text": "hello"}],
+                            }
+                        },
+                    },
+                )
+                metadata = [event["metadata"] for event in events if event.get("metadata", {}).get("otel_trace_id")][-1]
+                trace_id = int(metadata["otel_trace_id"], 16)
+                assert metadata["mlflow_trace_id"] == generate_mlflow_trace_id_from_otel_trace_id(trace_id)
+                identifiers.append(trace_id)
+        assert identifiers[0] != identifiers[1]
+        assert {span.context.trace_id for span in exporter.get_finished_spans() if span.name == "a2a.request"} == set(
+            identifiers
+        )
+        assert server._REQUEST_TRACE_ID.get() is None  # noqa: SLF001 - request isolation
+    finally:
+        provider.shutdown()

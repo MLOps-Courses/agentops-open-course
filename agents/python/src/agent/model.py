@@ -1,4 +1,4 @@
-"""Select direct Ollama, agentgateway, or optional Gemini without adding LiteLLM."""
+"""Select native Gemini, agentgateway, or optional Ollama without adding LiteLLM."""
 
 from __future__ import annotations
 
@@ -114,10 +114,10 @@ class FallbackLlm(BaseLlm):
             if yielded:
                 raise
             logger.warning(
-                "Primary model %s failed before responding, falling back to %s: %s",
+                "Primary model %s failed before responding, falling back to %s (%s)",
                 self.primary.model,
                 self.fallback.model,
-                error,
+                type(error).__name__,
             )
         async for response in self.fallback.generate_content_async(llm_request, stream=stream):
             yield response
@@ -176,12 +176,13 @@ def _build_single(model: str) -> BaseLlm:
 def build_model() -> str | BaseLlm:
     """Return the configured ADK model implementation.
 
-    Gemini mode uses ADK's native integration. The default account-free mode
+    The default Gemini mode uses ADK's native integration. The alternate mode
     uses ADK's OSS OpenAI-compatible client; ``OPENAI_BASE_URL`` chooses direct
     Ollama or an agentgateway route without changing application code. When
     ``AGENT_MODEL_FALLBACK`` names a second model, the primary is wrapped so a
     dead primary fails over to it on the same provider (Chapter 5.4).
     """
+    settings.require_model_credentials()
     primary = _build_single(settings.model)
     if settings.model_fallback is None:
         return primary

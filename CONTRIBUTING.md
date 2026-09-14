@@ -39,7 +39,7 @@ mise run scan
 
 `format` updates Python, Markdown, shell, and configuration files. `check` validates/builds docs, Python, infrastructure, shell, workflows, and dependency licenses. `test` is offline and must not call a model or cloud service. `scan` runs full-history gitleaks plus Trivy vulnerability, secret, license, and misconfiguration checks.
 
-Live-model evaluations are optional and require a configured model. The default local Ollama path uses the non-secret `local-ollama` marker and needs no provider credential; Gemini and other hosted paths require their documented authentication:
+Live-model evaluations are optional and require a configured model. The optional local Ollama path uses the non-secret `local-ollama` marker and needs no provider credential; default Gemini and other hosted paths require their documented authentication:
 
 ```bash
 cd agents/python

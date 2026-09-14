@@ -22,6 +22,7 @@ def main() -> int:
         from .config import Settings
 
         resolved = Settings()
+        resolved.require_model_credentials()
     except ValidationError as error:
         print("Agent configuration is invalid:", file=sys.stderr)
         for issue in error.errors():
@@ -30,6 +31,9 @@ def main() -> int:
             location = ".".join(str(part) for part in issue["loc"])
             prefix = f"{location}: " if location else ""
             print(f"- {prefix}{issue['msg']}", file=sys.stderr)
+        return 1
+    except ValueError as error:
+        print(f"Agent configuration is invalid: {error}", file=sys.stderr)
         return 1
     print("Agent configuration is valid. Resolved settings (secrets masked):")
     for name, value in sorted(resolved.model_dump().items()):

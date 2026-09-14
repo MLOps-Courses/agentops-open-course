@@ -30,7 +30,7 @@ depends = ["check:format", "check:lint", "check:types"]
 [tasks."config:check"]
 description = "Validate the resolved agent configuration and print it with secrets masked"
 env = { _.file = { path = "../../.env", redact = true } }
-run = "uv run python -m agent.config_check"
+run = "uv run --locked --no-default-groups python -m agent.config_check"
 
 [tasks."check:format"]
 alias = "cf"
@@ -49,7 +49,7 @@ run = "uv run ruff check --force-exclude ."
 [tasks."check:types"]
 alias = "ct"
 description = "Run the ty type checker"
-run = "uv run ty check"
+run = "uv run ty check src tests evals labs/course_lab.py labs/solutions"
 
 [tasks."check:vuln"]
 alias = "ca"
@@ -83,7 +83,7 @@ description = "Run strict ADK cases and enforce the aggregate plus critical-case
 env = { AGENT_ENTRYPOINT = "agent", _.file = { path = "../../.env", redact = true } }
 run = """
 uv run python evals/run_adk_eval.py evals/ops.evalset.json \
-  --min-pass-rate 0.33 \
+  --min-pass-rate 0.80 \
   --required-case investigation-recalls-context \
   --required-case remediation-loads-skill \
   --required-case restart-needs-approval \
@@ -98,7 +98,7 @@ run = "uv run python -m evals.report_eval"
 [tasks."eval:workflow"]
 description = "Evaluate three samples of the bounded plan and evidence-review workflow"
 env = { AGENT_ENTRYPOINT = "workflow", _.file = { path = "../../.env", redact = true } }
-run = "uv run python evals/run_adk_eval.py evals/workflow.evalset.json --repeat 3 --min-pass-rate 0.33 --print-detailed-results"
+run = "uv run python evals/run_adk_eval.py evals/workflow.evalset.json --repeat 3 --min-pass-rate 0.80 --print-detailed-results"
 
 [tasks."eval:mlflow"]
 description = "Run full-conversation MLflow evals + prompt registry (run install:eval first)"
@@ -140,40 +140,40 @@ run = "uv run pytest --no-cov tests/test_security.py"
 
 [tasks.mcp]
 description = "Run the AgentOps Agent MCP server over stdio (Ch. 3.3)"
-run = "uv run python -m agent.mcp_server"
+run = "uv run --locked --no-default-groups python -m agent.mcp_server"
 
 [tasks."mcp:http"]
 description = "Run the AgentOps Agent MCP server over streamable HTTP on :8000"
 env = { MCP_HOST = "127.0.0.1", MCP_PORT = "8000", MCP_TRANSPORT = "streamable-http" }
-run = "uv run python -m agent.mcp_server"
+run = "uv run --locked --no-default-groups python -m agent.mcp_server"
 
 [tasks.web]
 description = "Run the ADK developer web UI with the configured model on :8002"
 # Not ADK's default :8000: the raw MCP server owns that port in the stable network
 # contract, so the two would collide whenever Chapter 3.3 is running.
 env = { AGENT_ENTRYPOINT = "agent", _.file = { path = "../../.env", redact = true } }
-run = "uv run adk web src --port 8002"
+run = "uv run --locked --no-default-groups adk web src --port 8002"
 
 [tasks.run]
 alias = "r"
 description = "Run the agent in the terminal with the configured model"
 env = { AGENT_ENTRYPOINT = "agent", _.file = { path = "../../.env", redact = true } }
-run = "uv run adk run src/agent"
+run = "uv run --locked --no-default-groups adk run src/agent"
 
 [tasks.workflow]
 description = "Run the bounded read-only planning workflow in the terminal"
 env = { AGENT_ENTRYPOINT = "workflow", _.file = { path = "../../.env", redact = true } }
-run = "uv run adk run src/agent"
+run = "uv run --locked --no-default-groups adk run src/agent"
 
 [tasks.coordinator]
 description = "Run the least-privilege multi-agent coordinator in the terminal"
 env = { AGENT_ENTRYPOINT = "coordinator", _.file = { path = "../../.env", redact = true } }
-run = "uv run adk run src/agent"
+run = "uv run --locked --no-default-groups adk run src/agent"
 
 [tasks.a2a]
 description = "Run the persistent A2A server on :8080"
 env = { AGENT_ENTRYPOINT = "agent", _.file = { path = "../../.env", redact = true } }
-run = "uv run python -m agent.server"
+run = "uv run --locked --no-default-groups python -m agent.server"
 
 [tasks."data:reset"]
 description = "Reset the disposable runtime database from the committed seed"

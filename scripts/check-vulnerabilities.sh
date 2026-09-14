@@ -54,6 +54,7 @@ audit_profile() {
 	runtime) groups=(--no-default-groups) ;;
 	development) ;;
 	evaluation) groups=(--group eval) ;;
+	comparison) groups=(--group comparison) ;;
 	*) fail "unknown dependency profile '${dependency_profile}'" ;;
 	esac
 
@@ -116,6 +117,7 @@ audit_profile() {
 		--require-hashes \
 		--disable-pip \
 		--progress-spinner off \
+		--cache-dir "${audit_dir}/http-cache" \
 		--strict
 }
 
@@ -124,3 +126,5 @@ audit_profile "agent runtime" agent-runtime agents/python runtime
 audit_profile "agent development" agent-development agents/python development
 audit_profile "agent evaluation" agent-evaluation agents/python evaluation
 audit_profile "MLflow runtime" mlflow-runtime infra/mlflow runtime
+
+audit_profile "framework comparison" agent-comparison agents/python comparison

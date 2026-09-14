@@ -55,70 +55,76 @@ nav:
       - 0.5. Resources: 0. Overview/0.5. Resources.md
       - 0.6. Troubleshooting: 0. Overview/0.6. Troubleshooting.md
       - 0.7. Glossary: 0. Overview/0.7. Glossary.md
-  - 1. Setup:
-      - Setup: 1. Setup/index.md
-      - 1.0. System: 1. Setup/1.0. System.md
-      - 1.1. Python: 1. Setup/1.1. Python.md
-      - 1.4. Providers: 1. Setup/1.4. Providers.md
-      - 1.5. Workspace: 1. Setup/1.5. Workspace.md
-  - 2. Agents:
-      - Agents: 2. Agents/index.md
-      - 2.0. Concepts: 2. Agents/2.0. Concepts.md
-      - 2.1. First Agent: 2. Agents/2.1. First Agent.md
-      - 2.2. Models: 2. Agents/2.2. Models.md
-      - 2.3. Instructions: 2. Agents/2.3. Instructions.md
-      - 2.4. Sessions: 2. Agents/2.4. Sessions.md
-      - 2.5. Dev Loop: 2. Agents/2.5. Dev Loop.md
-  - 3. Capabilities:
-      - Capabilities: 3. Capabilities/index.md
-      - 3.0. Packaging: 3. Capabilities/3.0. Packaging.md
-      - 3.1. Tools: 3. Capabilities/3.1. Tools.md
-      - 3.2. Skills: 3. Capabilities/3.2. Skills.md
-      - 3.3. MCP: 3. Capabilities/3.3. MCP.md
-      - 3.4. Memory: 3. Capabilities/3.4. Memory.md
-      - 3.5. Workflows: 3. Capabilities/3.5. Workflows.md
-      - 3.6. A2A: 3. Capabilities/3.6. A2A.md
-      - 3.7. Multi-Agent: 3. Capabilities/3.7. Multi-Agent.md
-  - 4. Quality:
-      - Quality: 4. Quality/index.md
-      - 4.0. Typing: 4. Quality/4.0. Typing.md
-      - 4.1. Linting: 4. Quality/4.1. Linting.md
-      - 4.2. Testing: 4. Quality/4.2. Testing.md
-      - 4.3. Metrics: 4. Quality/4.3. Metrics.md
-      - 4.4. Evaluations: 4. Quality/4.4. Evaluations.md
-      - 4.5. Guardrails: 4. Quality/4.5. Guardrails.md
-      - 4.6. Security: 4. Quality/4.6. Security.md
-  - 5. Gateway:
-      - Gateway: 5. Gateway/index.md
-      - 5.0. Gateway: 5. Gateway/5.0. Gateway.md
-      - Prerequisite — 1.2. Containers: 1. Setup/1.2. Containers.md
-      - 5.1. Gateway Setup: 5. Gateway/5.1. Gateway Setup.md
-      - 5.2. MCP Gateway: 5. Gateway/5.2. MCP Gateway.md
-      - 5.3. A2A Gateway: 5. Gateway/5.3. A2A Gateway.md
-      - 5.4. Model Gateway: 5. Gateway/5.4. Model Gateway.md
-      - 5.5. Gateway Security: 5. Gateway/5.5. Gateway Security.md
-      - 5.6. Gateway Observability: 5. Gateway/5.6. Gateway Observability.md
-  - 6. Platform:
-      - Platform: 6. Platform/index.md
-      - 6.0. Platform: 6. Platform/6.0. Platform.md
-      - Prerequisite — 1.3. Kubernetes: 1. Setup/1.3. Kubernetes.md
-      - 6.1. Containers: 6. Platform/6.1. Containers.md
-      - 6.2. Platform Install: 6. Platform/6.2. Platform Install.md
-      - 6.3. Platform Agents: 6. Platform/6.3. Platform Agents.md
-      - 6.4. Platform Tools: 6. Platform/6.4. Platform Tools.md
-      - 6.5. Platform Gateway: 6. Platform/6.5. Platform Gateway.md
-      - 6.6. Platform Delivery: 6. Platform/6.6. Platform Delivery.md
-      - 6.7. Promotion and Rollback: 6. Platform/6.7. Promotion and Rollback.md
-  - 7. Observability:
-      - Observability: 7. Observability/index.md
-      - 7.0. Reproducibility: 7. Observability/7.0. Reproducibility.md
-      - 7.1. Tracing: 7. Observability/7.1. Tracing.md
-      - 7.2. Monitoring: 7. Observability/7.2. Monitoring.md
-      - 7.3. Costs: 7. Observability/7.3. Costs.md
-      - 7.4. Feedback: 7. Observability/7.4. Feedback.md
-      - 7.5. Online Evaluation: 7. Observability/7.5. Online Evaluation.md
-      - 7.6. Governance: 7. Observability/7.6. Governance.md
-      - 7.7. Incident Response: 7. Observability/7.7. Incident Response.md
+  - Part I — Agent development:
+      - 1. Setup:
+          - Setup: 1. Setup/index.md
+          - 1.0. System: 1. Setup/1.0. System.md
+          - 1.1. Python: 1. Setup/1.1. Python.md
+          - 1.4. Providers: 1. Setup/1.4. Providers.md
+          - 1.5. Workspace: 1. Setup/1.5. Workspace.md
+      - 2. Agents:
+          - Agents: 2. Agents/index.md
+          - 2.0. Concepts: 2. Agents/2.0. Concepts.md
+          - 2.1. First Agent: 2. Agents/2.1. First Agent.md
+          - 2.2. Models: 2. Agents/2.2. Models.md
+          - 2.3. Instructions: 2. Agents/2.3. Instructions.md
+          - 2.4. Sessions: 2. Agents/2.4. Sessions.md
+          - 2.5. Dev Loop: 2. Agents/2.5. Dev Loop.md
+          - 2.6. Workshop: 2. Agents/2.6. Workshop.md
+      - 3. Capabilities:
+          - Capabilities: 3. Capabilities/index.md
+          - 3.0. Packaging: 3. Capabilities/3.0. Packaging.md
+          - 3.1. Tools: 3. Capabilities/3.1. Tools.md
+          - 3.2. Skills: 3. Capabilities/3.2. Skills.md
+          - 3.3. MCP: 3. Capabilities/3.3. MCP.md
+          - 3.4. Memory: 3. Capabilities/3.4. Memory.md
+          - 3.5. Workflows: 3. Capabilities/3.5. Workflows.md
+          - 3.6. A2A: 3. Capabilities/3.6. A2A.md
+          - 3.7. Multi-Agent: 3. Capabilities/3.7. Multi-Agent.md
+          - Optional — 3.8. Framework Comparison: 3. Capabilities/3.8. Framework Comparison.md
+      - 4. Quality:
+          - Quality: 4. Quality/index.md
+          - 4.0. Typing: 4. Quality/4.0. Typing.md
+          - 4.1. Linting: 4. Quality/4.1. Linting.md
+          - 4.2. Testing: 4. Quality/4.2. Testing.md
+          - 4.3. Metrics: 4. Quality/4.3. Metrics.md
+          - 4.4. Evaluations: 4. Quality/4.4. Evaluations.md
+          - 4.5. Guardrails: 4. Quality/4.5. Guardrails.md
+          - 4.6. Security: 4. Quality/4.6. Security.md
+          - Optional — 4.7. Evaluation Reference: 4. Quality/4.7. Evaluation Reference.md
+          - 4.8. Developer Handoff: 4. Quality/4.8. Developer Handoff.md
+  - Part II — Platform engineering:
+      - 5. Gateway:
+          - Gateway: 5. Gateway/index.md
+          - 5.0. Gateway: 5. Gateway/5.0. Gateway.md
+          - Prerequisite — 1.2. Containers: 1. Setup/1.2. Containers.md
+          - 5.1. Gateway Setup: 5. Gateway/5.1. Gateway Setup.md
+          - 5.2. MCP Gateway: 5. Gateway/5.2. MCP Gateway.md
+          - 5.3. A2A Gateway: 5. Gateway/5.3. A2A Gateway.md
+          - 5.4. Model Gateway: 5. Gateway/5.4. Model Gateway.md
+          - 5.5. Gateway Security: 5. Gateway/5.5. Gateway Security.md
+          - 5.6. Gateway Observability: 5. Gateway/5.6. Gateway Observability.md
+      - 6. Platform:
+          - Platform: 6. Platform/index.md
+          - 6.0. Platform: 6. Platform/6.0. Platform.md
+          - Prerequisite — 1.3. Kubernetes: 1. Setup/1.3. Kubernetes.md
+          - 6.1. Containers: 6. Platform/6.1. Containers.md
+          - 6.2. Platform Install: 6. Platform/6.2. Platform Install.md
+          - 6.3. Platform Agents: 6. Platform/6.3. Platform Agents.md
+          - 6.4. Platform Tools: 6. Platform/6.4. Platform Tools.md
+          - 6.5. Platform Gateway: 6. Platform/6.5. Platform Gateway.md
+          - 6.6. Platform Delivery: 6. Platform/6.6. Platform Delivery.md
+          - 6.7. Promotion and Rollback: 6. Platform/6.7. Promotion and Rollback.md
+      - 7. Observability:
+          - Observability: 7. Observability/index.md
+          - 7.0. Reproducibility: 7. Observability/7.0. Reproducibility.md
+          - 7.1. Tracing: 7. Observability/7.1. Tracing.md
+          - 7.2. Monitoring: 7. Observability/7.2. Monitoring.md
+          - 7.3. Costs: 7. Observability/7.3. Costs.md
+          - 7.4. Feedback: 7. Observability/7.4. Feedback.md
+          - 7.5. Online Evaluation: 7. Observability/7.5. Online Evaluation.md
+          - 7.6. Governance: 7. Observability/7.6. Governance.md
+          - 7.7. Incident Response: 7. Observability/7.7. Incident Response.md
   - 8. Community:
       - Community: 8. Community/index.md
       - 8.7. Capstone: 8. Community/8.7. Capstone.md
@@ -131,7 +137,7 @@ nav:
           - 8.5. Contributions: 8. Community/8.5. Contributions.md
           - 8.6. AAIF: 8. Community/8.6. AAIF.md
 
-# Extra
+  # Extra
 extra:
   social:
     - icon: fontawesome/solid/paper-plane

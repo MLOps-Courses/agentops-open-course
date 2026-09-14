@@ -36,6 +36,11 @@ resourceSelector:
       labels: [.metadata.labels]
 profiles:
   - name: local
+  - name: local-gemini
+    patches:
+      - op: replace
+        path: /manifests/kustomize/paths/0
+        value: k8s/overlays/local-gemini
   - name: gke
     patches:
       - op: replace

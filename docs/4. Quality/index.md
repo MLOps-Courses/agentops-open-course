@@ -10,6 +10,8 @@ description: "Make the agent correct and trustworthy: typing, linting, testing, 
     - **You need:** Chapter 3 finished and `mise run test` passing.
     - **Time:** about 5 minutes, orientation.
 
+**Part I — Agent development.** Work through [2.6. Workshop](../2.%20Agents/2.6.%20Workshop.md) and consult this chapter when the exercise introduces its subject. Python fundamentals are assumed; no Kubernetes knowledge is needed here.
+
 ## How will you make the agent trustworthy?
 
 Trust comes in layers. Each page below adds one, and each layer catches a class of failure the cheaper layers below it cannot.
@@ -30,7 +32,11 @@ Expect to write code, not just read. [4.5. Guardrails](./4.5. Guardrails.md) car
 
 ## Where is gate versus evidence explained?
 
-[4.4. Evaluations](./4.4.%20Evaluations.md#which-evaluation-task-should-you-run-and-when) owns the definition, workflow map, and task-by-task decision. This index only marks each page's prerequisites so you can enter the chapter without learning the same policy twice.
+[4.7. Evaluation Reference](./4.7.%20Evaluation%20Reference.md#which-evaluation-task-should-you-run-and-when) owns the definition, workflow map, and task-by-task decision. This index only marks each page's prerequisites so you can enter the chapter without learning the same policy twice.
+
+- **[4.7. Evaluation Reference](./4.7. Evaluation Reference.md)** _(reference)_: Advanced evaluation, model judges, prompt registries, and measurement details.
+
+- **[4.8. Developer Handoff](./4.8. Developer Handoff.md)** _(hands-on)_: Complete Part I and check readiness for Kubernetes platform engineering.
 
 ## What proves this chapter worked?
 
@@ -46,11 +52,11 @@ Neither needs a model, a provider key, or a network.
 
 **You are done when:**
 
-- `mise run test` passes, including the enforced 95% branch-coverage floor.
+- `mise run test` passes, including the enforced 95% combined line-and-branch coverage floor.
 - `mise run redteam` passes every adversarial case in `tests/test_security.py`.
 - The chapter's required drill is done: the `## Your turn` in [4.5. Guardrails](./4.5.%20Guardrails.md#your-turn-how-do-you-turn-a-guardrail-into-a-regression) added a regression you watched fail against a deliberately weakened guard, then restored.
 - You can use the page markers above to say which checkpoints need a configured model and which run offline.
-- You can point to [4.4. Evaluations](./4.4.%20Evaluations.md#which-evaluation-task-should-you-run-and-when) for the chapter's gate-versus-evidence policy.
+- You can point to [4.7. Evaluation Reference](./4.7.%20Evaluation%20Reference.md#which-evaluation-task-should-you-run-and-when) for the chapter's gate-versus-evidence policy.
 - Without reopening Chapter 3: you can name which of the six memory stores a value belongs in when it must survive the next turn but not the next session.
 
 Continue to [4.0. Typing](./4.0.%20Typing.md) when you know the first three pages need no model or provider account.

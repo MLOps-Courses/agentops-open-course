@@ -48,11 +48,23 @@ lockfile_platforms = [
 [settings.task]
 run_auto_install = false # fail fast in hooks instead of silently installing a missing tool
 
+[tasks."install:learner"]
+description = "Install only uv and the locked Python runtime for laptop labs"
+run = ["mise install uv", "uv sync --directory agents/python --locked --no-default-groups"]
+
+[tasks.lab]
+description = "Progress through Python labs: list, start N, check N, run N, solution N, verify, record 6"
+run = "uv run --project agents/python --locked --no-default-groups python agents/python/labs/course_lab.py"
+
+[tasks."check:labs"]
+description = "Verify every worked Python checkpoint without a model or API key"
+run = "uv run --project agents/python --locked --no-default-groups python agents/python/labs/course_lab.py verify"
+
 [tasks.install]
 # `install:core` is kept as an alias, not a second task: scripts/check-licenses.sh and older
 # course text name it, and two tasks with the same description made `mise tasks` unreadable.
 alias = ["i", "install:core"]
-description = "Install the learner-facing docs, agent, and git-hook dependencies"
+description = "Install contributor docs, agent tests, and git-hook dependencies"
 run = [
   "mise run install:tools:core",
   "uv sync --locked",
@@ -107,6 +119,7 @@ run = [
   "mise run install",
   "cd agents/python && mise run install:eval",
   "mise run install:platform",
+  "uv sync --directory agents/python --locked --group eval --group comparison",
 ]
 
 [tasks."install:accessibility"]
@@ -249,7 +262,7 @@ run = "tofu -chdir=infra/gcp fmt -recursive"
 [tasks.check]
 alias = "c"
 description = "Run the complete maintainer validation, including infrastructure and all licenses"
-depends = ["check:infra", "check:licenses", "check:source", "check:vuln"]
+depends = ["check:comparison", "check:infra", "check:licenses", "check:source", "check:vuln"]
 
 [tasks."check:vuln"]
 # Deliberately out of check:core and off the per-commit hook: a dependency audit is a function of
@@ -270,6 +283,7 @@ depends = [
   "check:freshness",
   "check:format",
   "check:links",
+  "check:labs",
   "check:python",
   "check:release-metadata",
   "check:shell",
@@ -285,6 +299,7 @@ run = "cd agents/data && mise run check"
 description = "Test authoring contracts, build the course site, and validate rendered routes"
 run = [
   "uv run python -m unittest scripts/test_check_conventions.py",
+  "uv run python -m unittest scripts/test_platform_credentials.py",
   "uv run python -m unittest infra/scripts/test_platform_backup_drill.py",
   "uv run python -m unittest scripts/test_release_attestation.py",
   "uv run python -m unittest scripts/test_release_evidence.py",
@@ -374,11 +389,18 @@ run = "uv run python scripts/course_evidence.py verify"
 
 [tasks."gateway:host"]
 description = "Run the loopback-only host agentgateway container in the foreground"
+env = { AGENTOPS_GATEWAY_CONFIG = "config-gemini.yaml", _.file = { path = ".env", redact = true } }
 run = "infra/scripts/gateway-host.sh run"
 
 [tasks."gateway:host:start"]
 description = "Start the loopback-only host agentgateway container"
+env = { AGENTOPS_GATEWAY_CONFIG = "config-gemini.yaml", _.file = { path = ".env", redact = true } }
 run = "infra/scripts/gateway-host.sh start"
+
+[tasks."gateway:host:ollama"]
+description = "Run the optional host Ollama gateway profile"
+env = { AGENTOPS_GATEWAY_CONFIG = "config.yaml" }
+run = "infra/scripts/gateway-host.sh run"
 
 [tasks."gateway:host:stop"]
 description = "Stop the course-owned host agentgateway container"
@@ -449,7 +471,32 @@ run = [
   "helmfile --file infra/helmfile.yaml apply --skip-diff-on-install",
 ]
 
+[tasks."platform:credentials"]
+description = "Write the root dotenv Gemini key to the course-owned local Kubernetes Secret"
+env = { _.file = { path = ".env", redact = true } }
+run = "uv run --project agents/python --locked --no-default-groups python scripts/platform_credentials.py"
+
+[tasks."check:comparison"]
+description = "Check the optional LangGraph A2A integration offline"
+env = { LANGSMITH_TRACING = "false", LANGCHAIN_TRACING_V2 = "false" }
+run = [
+  "uv run --directory agents/python --locked --group comparison ty check labs/langgraph_a2a.py labs/test_langgraph_a2a.py",
+  "uv run --directory agents/python --locked --group comparison pytest --no-cov labs/test_langgraph_a2a.py",
+]
+
+[tasks."comparison:a2a"]
+description = "Run the optional read-only LangGraph A2A service on :8080 (no model)"
+env = { LANGSMITH_TRACING = "false", LANGCHAIN_TRACING_V2 = "false" }
+run = "uv run --directory agents/python --locked --group comparison python -m labs.langgraph_a2a"
+
 [tasks."platform:dev"]
+description = "Build, push, and reconcile the local platform; leave workloads for explicit teardown"
+run = [
+  "test \"$(kubectl config current-context)\" = k3d-local",
+  "cd infra && AGENT_SOURCE_COMMIT=\"$(git rev-parse HEAD)\" SKAFFOLD_DEFAULT_REPO=registry.localhost:5050 skaffold dev --filename skaffold.yaml --profile local-gemini --cleanup=false",
+]
+
+[tasks."platform:dev:ollama"]
 description = "Build, push, and reconcile the local platform; leave workloads for explicit teardown"
 run = [
   "test \"$(kubectl config current-context)\" = k3d-local",

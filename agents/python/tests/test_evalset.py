@@ -108,7 +108,7 @@ def test_eval_config_uses_in_order_trajectory_matching() -> None:
 
 def test_every_load_bearing_behavior_is_a_required_live_case() -> None:
     task = _MISE.read_text(encoding="utf-8")
-    assert "--min-pass-rate 0.33" in task
+    assert "--min-pass-rate 0.80" in task
     assert tuple(re.findall(r"--required-case ([a-z0-9-]+)", task)) == REQUIRED_LIVE_CASES
 
 

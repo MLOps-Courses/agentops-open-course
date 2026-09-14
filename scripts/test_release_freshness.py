@@ -9,7 +9,7 @@ import datetime as dt
 import html
 import unittest
 
-from scripts import release_freshness  # ty: ignore[unresolved-import]
+from scripts import release_freshness
 
 _NOW = dt.datetime(2026, 7, 31, 12, tzinfo=dt.UTC)
 _REPOSITORY = "MLOps-Courses/agentops-open-course"

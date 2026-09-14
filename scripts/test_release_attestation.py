@@ -6,7 +6,7 @@ import base64
 import json
 import unittest
 
-from scripts import release_attestation  # ty: ignore[unresolved-import]
+from scripts import release_attestation
 
 
 def envelope(predicate: object) -> dict[str, str]:

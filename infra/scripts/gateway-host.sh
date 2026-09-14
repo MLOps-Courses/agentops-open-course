@@ -91,6 +91,10 @@ validate_port() {
 	((number >= 1 && number <= 65535)) || die "${name} must be between 1 and 65535, got '${value}'"
 }
 
+config_needs_gemini() {
+	yq -e '[.binds[].listeners[].routes[].backends[].ai.provider.gemini | select(. != null)] | length > 0' "${canonical_config_input}" >/dev/null 2>&1
+}
+
 config_needs_auth() {
 	yq -e '
 		[.binds[].listeners[] | select(has("tls"))] | length > 0
@@ -150,7 +154,7 @@ render_base_config() {
 			(
 				.binds[] |
 				select(.port == 4000) |
-				.listeners[].routes[].backends[].ai.hostOverride
+				.listeners[].routes[].backends[].ai | select(.provider.openAI != null) | .hostOverride
 			) = ("host.docker.internal:" + strenv(MODEL_UPSTREAM_PORT)) |
 			.config.statsAddr = "0.0.0.0:15020" |
 			.config.readinessAddr = "0.0.0.0:15021" |
@@ -192,6 +196,11 @@ write_runtime_config() {
 	mkdir -p -- "${directory}"
 	chmod 0700 -- "${directory}"
 	render_config >"${directory}/config.yaml"
+	if config_needs_gemini; then
+		# Parent runtime directory is private. Mount only this provider key, never .env.
+		printf '%s' "${GOOGLE_API_KEY:-offline-config-validation}" >"${directory}/gemini-key"
+		chmod 0444 -- "${directory}/gemini-key"
+	fi
 	chmod 0444 -- "${directory}/config.yaml"
 
 	if config_needs_auth; then
@@ -330,6 +339,12 @@ build_docker_args() {
 		docker_args+=(
 			--mount "type=bind,src=${config_directory}/auth,dst=/etc/agentgateway/auth,readonly"
 		)
+	fi
+	if [[ -f "${config_directory}/gemini-key" ]]; then
+		if [[ "${lifecycle}" != "validate" && -z "${GOOGLE_API_KEY:-}" ]]; then
+			die 'Gemini gateway requires GOOGLE_API_KEY; configure the root .env and use mise run gateway:host'
+		fi
+		docker_args+=(--mount "type=bind,src=${config_directory}/gemini-key,dst=/etc/agentgateway/gemini-key,readonly")
 	fi
 	case "${lifecycle}" in
 	run)
@@ -574,12 +589,23 @@ print_args() {
 
 main() {
 	local command="${1:-}"
+	local gemini_key="${GOOGLE_API_KEY:-}"
 
 	[[ $# -le 1 ]] || {
 		usage >&2
 		exit 2
 	}
 	validate_inputs
+	# Fail before Docker or runtime-file mutations when the selected provider
+	# needs credentials. Read-only inspection and teardown never require a key.
+	case "${command}" in
+	run | start | args)
+		if config_needs_gemini && [[ -z "${gemini_key//[[:space:]]/}" ]]; then
+			die 'Gemini gateway requires GOOGLE_API_KEY; configure the root .env and use mise run gateway:host'
+		fi
+		;;
+	*) ;;
+	esac
 
 	case "${command}" in
 	run)

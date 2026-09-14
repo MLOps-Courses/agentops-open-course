@@ -48,7 +48,7 @@ flowchart TD
 
 The lifecycle you meet in [0.2. AgentOps](./0.2. AgentOps.md) is not only a mental model — it is the order of the course. Build ([2. Agents](../2. Agents/index.md)), Capabilities ([3. Capabilities](../3. Capabilities/index.md)), Quality ([4. Quality](../4. Quality/index.md)), Gateway ([5. Gateway](../5. Gateway/index.md)), Platform ([6. Platform](../6. Platform/index.md)), and Observe ([7. Observability](../7. Observability/index.md)) each own one phase. That is why the chapters run from a first model call to a monitored workload rather than in any other sequence. The full phase-to-chapter table is on that page, under "How does the lifecycle map to the course?".
 
-One thread runs underneath every decision above: the open-source boundary. The required path — ADK, agentgateway, kagent, MLflow, OpenTelemetry, Ollama, and the Apache-2.0 open-weight Qwen3 model — needs no account and no fee. Gemini, Vertex AI, and GKE are optional proprietary comparisons the course never relabels as open source.
+One thread runs underneath every decision above: the open-source boundary. The application and platform software are open source. The default Gemini service is proprietary and requires an account and quota. Ollama/Qwen3 is an optional local alternative; offline checks need no model. Vertex AI and GKE are optional cloud extensions.
 
 ## What do you need to run this chapter?
 
@@ -67,7 +67,7 @@ There is nothing to run here. The chapter has worked when you can answer its fiv
 - You can say why this course builds an agent for incident work, and when a workflow or plain code would have been the better answer.
 - You can name the six lifecycle phases — Build, Capabilities, Quality, Gateway, Platform, Observe — and the chapter that owns each one.
 - You can find, in [0.3. Ecosystem](./0.3. Ecosystem.md) and inside a minute, which tool owns the agent runtime, which owns the traffic in front of it, and which ones record what happened — by lookup, not from memory.
-- You have picked a model path, and you know the default one needs no account and no fee.
+- You have picked a model path, and you know the default Gemini service uses an account and quota; offline exercises need neither.
 - You know which four pages you will read now (0.0, 0.1, 0.2, 0.4) and which four lookup pages you have bookmarked (0.3, 0.5, 0.6, 0.7).
 
 Continue to [0.0. Course](./0.0.%20Course.md) when you are ready to pick a learning path.

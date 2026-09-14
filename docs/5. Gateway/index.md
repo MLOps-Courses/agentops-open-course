@@ -10,6 +10,8 @@ description: Route and govern the agent's MCP, A2A, and model traffic through a 
     - **You need:** Chapters 2-4 finished; [5.1. Gateway Setup](./5.1.%20Gateway%20Setup.md) installs the optional platform tier before starting anything.
     - **Time:** about 4 minutes, orientation.
 
+**Part II — Platform engineering.** This part is more demanding and assumes container and Kubernetes knowledge. Complete [4.8. Developer Handoff](../4.%20Quality/4.8.%20Developer%20Handoff.md) or begin from its tested reference checkpoint. Prepare with [Kubernetes Basics](https://kubernetes.io/docs/tutorials/kubernetes-basics/) if needed.
+
 ## Where should you begin?
 
 Begin with [5.0. Gateway](./5.0.%20Gateway.md), which owns the case for the extra hop, the data-plane definition, the listener map, and the responsibility boundary.
@@ -30,7 +32,7 @@ Read the sections by their kind, not just their order. **5.0 is conceptual** —
 - **[5.1. Gateway Setup](./5.1. Gateway Setup.md)** _(hands-on)_: Start the whole stack on your laptop, through a wrapper that keeps every listener on loopback.
 - **[5.2. MCP Gateway](./5.2. MCP Gateway.md)** _(hands-on)_: Watch the gateway allow exactly six read tools, refuse a seventh, and fail closed when the tool server is down.
 - **[5.3. A2A Gateway](./5.3. A2A Gateway.md)** _(hands-on)_: Chat with the agent from a browser through the gateway, and approve a service restart.
-- **[5.4. Model Gateway](./5.4. Model Gateway.md)** _(hands-on)_: Move the agent onto one model endpoint by changing a single variable, with local Qwen3 or GKE Vertex Gemini behind it.
+- **[5.4. Model Gateway](./5.4. Model Gateway.md)** _(hands-on)_: Move native Gemini traffic behind the gateway, with optional Ollama and GKE profiles.
 - **[5.5. Gateway Security](./5.5. Gateway Security.md)** _(hands-on)_: Trip the prompt guard, review the allowlists and limits already active, then add tokens and TLS in an opt-in profile.
 - **[5.6. Gateway Observability](./5.6. Gateway Observability.md)** _(hands-on)_: Read the gateway's own logs, metrics, and traces for a single request, and see what stays out of them.
 
@@ -54,9 +56,9 @@ flowchart TD
 
 Before you start, three things about the shape of the chapter:
 
-- **It all runs on your laptop.** The host profile needs no Kubernetes cluster, cloud account, or provider key.
-- **It needs the platform tier, Docker, and Qwen3.** [5.1. Gateway Setup](./5.1.%20Gateway%20Setup.md) runs `mise run install:platform`, then the model and gateway doctors.
-- **Not all of it is required.** The secured JWT/TLS profile in 5.5. Gateway Security is opt-in, the Vertex Gemini path in 5.4. Model Gateway is an optional proprietary comparison, and the Kubernetes material is a preview of Chapter 6.
+- **It all runs on your laptop.** The host profile needs no Kubernetes cluster or GCP project; the default Gemini path uses an API key.
+- **It needs the platform tier, Docker, and configured model access.** [5.1. Gateway Setup](./5.1.%20Gateway%20Setup.md) runs `mise run install:platform`, then the gateway doctor.
+- **Not all of it is required.** The secured JWT/TLS profile in 5.5. Gateway Security is opt-in, the GKE/Vertex path in 5.4. Model Gateway is an optional cloud extension, and the Kubernetes material is a preview of Chapter 6.
 
 ## What proves this chapter worked?
 

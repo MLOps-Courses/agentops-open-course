@@ -188,7 +188,7 @@ url = "https://storage.googleapis.com/cloud-sdk-release/google-cloud-sdk-578.0.0
 url = "https://storage.googleapis.com/cloud-sdk-release/google-cloud-sdk-578.0.0-darwin-x86_64.tar.gz"
 
 [tools.gcloud."platforms.windows-x64"]
-url = "https://storage.googleapis.com/cloud-sdk-release/google-cloud-sdk-578.0.0-windows-x86_64.zip"
+url = "https://storage.googleapis.com/cloud-sdk-release/google-cloud-sdk-578.0.0-windows-x86_64-bundled-python.zip"
 
 [[tools.gh]]
 version = "2.97.0"
@@ -848,9 +848,11 @@ version = "2.24.0"
 backend = "aqua:GoogleContainerTools/skaffold"
 
 [tools.skaffold."platforms.linux-arm64"]
+checksum = "sha256:a8331e599223ad9df489b4d956704505b888c24b0d89abf26a0fe61c58d10fc5"
 url = "https://storage.googleapis.com/skaffold/releases/v2.24.0/skaffold-linux-arm64"
 
 [tools.skaffold."platforms.linux-arm64-musl"]
+checksum = "sha256:a8331e599223ad9df489b4d956704505b888c24b0d89abf26a0fe61c58d10fc5"
 url = "https://storage.googleapis.com/skaffold/releases/v2.24.0/skaffold-linux-arm64"
 
 [tools.skaffold."platforms.linux-x64"]
@@ -858,15 +860,19 @@ checksum = "blake3:0d954128ae845bc951a394aa62a39186556c7171e3e5bef05e72c46154c29
 url = "https://storage.googleapis.com/skaffold/releases/v2.24.0/skaffold-linux-amd64"
 
 [tools.skaffold."platforms.linux-x64-musl"]
+checksum = "sha256:702344081860a587c57937cd55dfa2e70f124c05d6fb845319832ee23fd144a8"
 url = "https://storage.googleapis.com/skaffold/releases/v2.24.0/skaffold-linux-amd64"
 
 [tools.skaffold."platforms.macos-arm64"]
+checksum = "sha256:b30ff1735839adf96f3116a0e5ca63ddad37e33a3d6123a5c209ad77ea389c8b"
 url = "https://storage.googleapis.com/skaffold/releases/v2.24.0/skaffold-darwin-arm64"
 
 [tools.skaffold."platforms.macos-x64"]
+checksum = "sha256:d1fdc22b3ca5d99590943d6c476c494bd7862147af002fee7ab1b0237f90d926"
 url = "https://storage.googleapis.com/skaffold/releases/v2.24.0/skaffold-darwin-amd64"
 
 [tools.skaffold."platforms.windows-x64"]
+checksum = "sha256:4cf25dbb5a401c8acf0fcc9b8e3cd423b16c7a4b00631ec42e8689dc614c1eab"
 url = "https://storage.googleapis.com/skaffold/releases/v2.24.0/skaffold-windows-amd64.exe"
 
 [[tools.sops]]

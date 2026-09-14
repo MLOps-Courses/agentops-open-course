@@ -17,6 +17,9 @@ for _name in tuple(os.environ):
     if _name.startswith(_RUNTIME_ENV_PREFIXES):
         os.environ.pop(_name)
 os.environ["OTEL_SDK_DISABLED"] = "true"
+# Tests replace model calls; select the explicit account-free adapter for collection.
+os.environ["AGENT_MODEL_PROVIDER"] = "openai-compatible"
+os.environ["AGENT_MODEL"] = "qwen3:4b-instruct"
 
 from agent import config  # noqa: E402 - provider env must be cleared before importing agent settings
 

@@ -11,7 +11,7 @@ import pathlib
 import tempfile
 import unittest
 
-from scripts import release_reconcile  # ty: ignore[unresolved-import]
+from scripts import release_reconcile
 
 _VERSION = "v0.5.0"
 _SHA = "a" * 40

@@ -12,7 +12,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from scripts import check_conventions, course_evidence  # ty: ignore[unresolved-import]
+from scripts import check_conventions, course_evidence
 
 
 def copy_contract_files(root: pathlib.Path, relative_paths: tuple[str, ...]) -> None:
@@ -557,7 +557,7 @@ class SourceContractTests(unittest.TestCase):
     def test_outcome_matrix_cannot_exceed_the_linked_exercise(self) -> None:
         docs = (
             "docs/0. Overview/0.0. Course.md",
-            "docs/4. Quality/4.4. Evaluations.md",
+            "docs/4. Quality/4.7. Evaluation Reference.md",
         )
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)

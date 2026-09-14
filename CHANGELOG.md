@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented in this file.
 
+## [Unreleased]
+
+- Split the course into laptop Python development and advanced Kubernetes platform engineering, with cumulative exercises and separate completion contracts.
+- Make ADK with a Gemini API key the default; retain explicit Ollama profiles, offline checks, and an optional LangGraph/A2A comparison. See [provider migration instructions](./SUPPORT.md#migrating-to-the-python-developer-and-platform-course).
+- Introduce MLflow after grader calibration, raise live trajectory acceptance to 80% plus critical cases, and attach feedback to the exact response trace.
+- Add Gemini gateway and local Kubernetes profiles; update vulnerable dependency resolutions and validate the optional comparison dependency profile.
+
+These are unreleased source changes. Offline evidence does not qualify live Gemini behavior, a deployed Kubernetes profile, or a published course release.
+
 ## [0.7.0] - 2026-08-06
 
 ### 🚀 Features

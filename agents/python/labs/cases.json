@@ -1,0 +1,14 @@
+[
+  {
+    "answer": "Open incidents: INC-002, INC-005, INC-010.",
+    "expected_ids": ["INC-002", "INC-005", "INC-010"],
+    "passed": true
+  },
+  { "answer": "Open incidents: INC-002, INC-005.", "expected_ids": ["INC-002", "INC-005", "INC-010"], "passed": false },
+  {
+    "answer": "Open incidents: INC-002, INC-005, INC-010, INC-099.",
+    "expected_ids": ["INC-002", "INC-005", "INC-010"],
+    "passed": false
+  },
+  { "answer": "No incident evidence.", "expected_ids": [], "passed": true }
+]
