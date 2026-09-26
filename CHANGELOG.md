@@ -36,6 +36,7 @@ This release is qualified by CI, Docs, Scan, Platform, and a GKE Vertex Gemini s
 
 - _(smoke)_ Prove both MCP protocol eras and the guarded-write denial through agentgateway in `smoke:host`
 - _(licenses)_ Drop the google-crc32c exception from the agent profiles now that 1.9.0 declares its license
+- _(release)_ Check out the qualified source before the publish job uses the repository's Buildx action, which no release had exercised since it was extracted
 - _(release)_ Accept an explicit `eval_evidence=waiver:<reason>` that replaces the Eval run for one release and is published in place of model lineage; an empty input keeps Eval required
 - _(deps)_ Scope the `PYSEC-2026-3740` NLTK exception to the development, evaluation, and comparison audits; runtime and MLflow audits keep zero exceptions ([record](./SUPPORT.md#active-dependency-advisory-exception))
 
