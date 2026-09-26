@@ -402,6 +402,11 @@ description = "Run the optional host Ollama gateway profile"
 env = { AGENTOPS_GATEWAY_CONFIG = "config.yaml" }
 run = "infra/scripts/gateway-host.sh run"
 
+[tasks."gateway:host:ollama:start"]
+description = "Start the optional host Ollama gateway profile in the background"
+env = { AGENTOPS_GATEWAY_CONFIG = "config.yaml" }
+run = "infra/scripts/gateway-host.sh start"
+
 [tasks."gateway:host:stop"]
 description = "Stop the course-owned host agentgateway container"
 run = "infra/scripts/gateway-host.sh stop"

@@ -141,7 +141,8 @@ jobs:
             <<< "$smoke_response" >/dev/null
 
       - name: Start the judge path through agentgateway
-        run: mise run gateway:host:start
+        # The judge uses the local Ollama profile; the Gemini default needs a provider key.
+        run: mise run gateway:host:ollama:start
 
       - name: Run the ADK trajectory evaluation
         id: adk
