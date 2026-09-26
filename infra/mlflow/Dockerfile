@@ -2,7 +2,7 @@
 # --8<-- [start:base-images]
 FROM ghcr.io/astral-sh/uv:0.12.0@sha256:606e70c71c852d03f611b1e56a195d08648507018a7057fab82c4974c4eae105 AS uv
 
-FROM python:3.13.14-slim-trixie@sha256:6771159cd4fa5d9bba1258caf0b82e6b73458c694d178ad97c5e925c2d0e1a91 AS build
+FROM python:3.13.15-slim-trixie@sha256:7c61056e61ac89e852de05f3dc6fa51a6dd2181797bceed46aa725dd7cb2cd3b AS build
 # --8<-- [end:base-images]
 
 ENV PATH="/opt/mlflow/.venv/bin:$PATH" \
@@ -29,7 +29,7 @@ RUN --mount=type=bind,from=uv,source=/uv,target=/usr/local/bin/uv \
 COPY --chmod=0444 entrypoint.py /opt/mlflow/entrypoint.py
 
 # --8<-- [start:runtime-base]
-FROM cgr.dev/chainguard/wolfi-base@sha256:003627df3c1e1bba0c4116afcddb314aca9594ee2328c7e876a8081a6c988b2e
+FROM cgr.dev/chainguard/wolfi-base@sha256:08df5982c3d27e70a4ce1607e3bb9af09d746f8722cf135a7694afef879fc5a2
 # --8<-- [end:runtime-base]
 
 ARG AGENT_SOURCE_COMMIT=unknown
@@ -49,8 +49,8 @@ LABEL org.opencontainers.image.created="${OCI_CREATED}" \
 # package versions, so these exact pins periodically stop resolving. Refresh
 # them to the current versions rather than unpinning.
 RUN apk add --no-cache \
-    libstdc++=16.1.0-r4 \
-    python-3.13=3.13.14-r3
+    libstdc++=16.2.0-r1 \
+    python-3.13=3.13.15_git20260925-r0
 # --8<-- [end:apk-pins]
 
 ENV PATH="/opt/mlflow/.venv/bin:$PATH" \

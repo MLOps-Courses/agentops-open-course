@@ -22,6 +22,12 @@ The course returns to Python. Version 0.9 taught it in Go; that line is archived
 ### 🐛 Bug Fixes
 
 - _(evals)_ Accept ADK 2.10's `App`-based evaluation runner while keeping evaluator evidence ahead of the application policy, which the previous adapter rejected before any model call
+- _(ci)_ Smoke the agent image on the account-free provider profile, because the Gemini default correctly refuses to start without credentials
+- _(observability)_ Align the MLflow server with the 3.16.1 client, and the host Compose image tag with the one `build:mlflow-image` produces
+
+### 🔒 Security
+
+- _(images)_ Refresh the Wolfi runtime base and its `python-3.13` and `libstdc++` pins past busybox, OpenSSL, and Python `tarfile` advisories, and move both build stages to Python 3.13.15
 
 ### 🔒 Gates
 

@@ -10,7 +10,7 @@ x-hardened-service: &hardened-service
 services:
   mlflow:
     <<: *hardened-service
-    image: agentops-mlflow:3.15.0
+    image: agentops-mlflow:3.16.1
     build:
       context: ../mlflow
       dockerfile: Dockerfile

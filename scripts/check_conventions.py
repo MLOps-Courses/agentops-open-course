@@ -1005,24 +1005,21 @@ def check_source_versions(
             parsed_owners["Python build image"],
             {
                 "docs/1. Setup/1.1. Python.md": 1,
-                "docs/3. Capabilities/3.0. Packaging.md": 1,
-                "docs/6. Platform/6.1. Containers.md": 4,
+                "docs/6. Platform/6.1. Containers.md": 3,
             },
             re.compile(r"python:([0-9]+\.[0-9]+\.[0-9]+-slim-[a-z]+)", re.IGNORECASE),
         ),
         (
             "Wolfi Python",
             parsed_owners["Wolfi Python"],
-            {
-                "docs/3. Capabilities/3.0. Packaging.md": 1,
-                "docs/6. Platform/6.1. Containers.md": 2,
-            },
-            re.compile(r"(python-3\.13=\d+\.\d+\.\d+-r\d+)", re.IGNORECASE),
+            {"docs/6. Platform/6.1. Containers.md": 2},
+            # Wolfi snapshot builds append `_git<date>` before the package revision.
+            re.compile(r"(python-3\.13=\d+\.\d+\.\d+(?:_[0-9a-z]+)?-r\d+)", re.IGNORECASE),
         ),
         (
             "Wolfi libstdc++",
             parsed_owners["Wolfi libstdc++"],
-            {"docs/3. Capabilities/3.0. Packaging.md": 1},
+            {},  # 3.0 includes the Dockerfile's apk-pins region instead of copying it.
             re.compile(r"(libstdc\+\+=\d+\.\d+\.\d+-r\d+)", re.IGNORECASE),
         ),
     )
