@@ -55,7 +55,7 @@ dev = [
   # and scorer types. The tracking server, model flavors, and the numeric stack they
   # drag in (pyarrow, scipy, scikit-learn, matplotlib) live in the `eval` group.
   "mlflow-skinny>=3.16,<3.17",
-  "pandas>=2.2.3,<3", # `mlflow.genai` imports it eagerly; MLflow 3.15 excludes pandas 3
+  "pandas>=2.2.3,<4", # `mlflow.genai` imports it eagerly; MLflow 3.15 excludes pandas 3
   "pip-audit>=2.7.3",
   "pytest>=9.1.1",
   "pytest-cov>=7.1.0",
