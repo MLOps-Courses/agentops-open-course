@@ -66,7 +66,7 @@ This file owns the stable network inventory, while `scripts/check_conventions.py
 
 ## Maintainer recipes
 
-Release evidence is commit-scoped. Freeze `main`, dispatch Eval and Platform at the candidate SHA, then dispatch Release with that same SHA and the fresh handoffs. Any push creates a new candidate and restarts the evidence sequence; never combine evidence from different commits.
+Release evidence is commit-scoped. Freeze `main`, dispatch Eval and Platform at the candidate SHA, then dispatch Release with that same SHA and the fresh handoffs. An `eval_evidence=waiver:<reason>` dispatch is a recorded one-release exception published on the release, never a default. Any push creates a new candidate and restarts the evidence sequence; never combine evidence from different commits.
 
 - **Add repository Python:** add the tracked path to `scripts/repository-python-files.txt`; `mise run check:python` rejects both unlisted and stale entries.
 - **Add a network port:** update this file's inventory, `PORT_CONTRACT` in `scripts/check_conventions.py`, the executable owner, and the table in `docs/0. Overview/0.3. Ecosystem.md`.

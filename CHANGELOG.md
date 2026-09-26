@@ -8,6 +8,8 @@ All notable changes to this project are documented in this file.
 
 The course returns to Python. Version 0.9 taught it in Go; that line is archived on the [`go` branch](https://github.com/MLOps-Courses/agentops-open-course/tree/go) with its v0.9.0 and v0.9.1 releases. A Go 0.10.0 was prepared there on 2026-09-11 but never published, so this release skips that number instead of reusing it. Every URL the Go site served redirects to the matching Python page.
 
+This release is qualified by CI, Docs, Scan, Platform, and a GKE Vertex Gemini smoke, with an explicit Eval waiver: the redesigned model-backed suite exceeds the Eval job's 120-minute CPU-runner budget with `qwen3:4b-instruct`. No model-backed evaluation result is claimed for 0.11.0.
+
 ### 🚀 Features
 
 - _(course)_ Split the course into laptop Python development and advanced Kubernetes platform engineering, with cumulative exercises and separate completion contracts
@@ -34,6 +36,7 @@ The course returns to Python. Version 0.9 taught it in Go; that line is archived
 
 - _(smoke)_ Prove both MCP protocol eras and the guarded-write denial through agentgateway in `smoke:host`
 - _(licenses)_ Drop the google-crc32c exception from the agent profiles now that 1.9.0 declares its license
+- _(release)_ Accept an explicit `eval_evidence=waiver:<reason>` that replaces the Eval run for one release and is published in place of model lineage; an empty input keeps Eval required
 - _(deps)_ Scope the `PYSEC-2026-3740` NLTK exception to the development, evaluation, and comparison audits; runtime and MLflow audits keep zero exceptions ([record](./SUPPORT.md#active-dependency-advisory-exception))
 
 ## [0.9.1] - 2026-08-16

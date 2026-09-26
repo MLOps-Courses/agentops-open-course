@@ -20,6 +20,11 @@ on:
         description: "Closed recent audit as issue:<number>, or waiver:<reviewed reason>"
         required: true
         type: string
+      eval_evidence:
+        description: "Empty to require a successful Eval run, or waiver:<reviewed reason> for this release only"
+        required: false
+        default: ""
+        type: string
 
 permissions: {}
 # --8<-- [end:release-dispatch-authority]
@@ -47,11 +52,22 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           FRESHNESS_EVIDENCE: ${{ inputs.freshness_evidence }}
+          EVAL_EVIDENCE: ${{ inputs.eval_evidence }}
           SHA: ${{ inputs.sha }}
           VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
           [[ "$SHA" =~ ^[0-9a-f]{40}$ ]]
+          # An Eval waiver is explicit, single-line, reviewed, and recorded on the
+          # release; an empty input keeps the model-backed evidence requirement.
+          eval_waiver=""
+          if [[ -n "$EVAL_EVIDENCE" ]]; then
+            if [[ "$EVAL_EVIDENCE" == *$'\n'* || ! "$EVAL_EVIDENCE" =~ ^waiver:(.{24,500})$ ]]; then
+              echo "::error::eval_evidence must be empty or waiver:<single-line reason of 24-500 characters>."
+              exit 1
+            fi
+            eval_waiver="${BASH_REMATCH[1]}"
+          fi
           [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
           test "$GITHUB_REF" = refs/heads/main
           test "$GITHUB_SHA" = "$SHA"
@@ -113,6 +129,10 @@ jobs:
             'Eval|eval.yml|["workflow_dispatch","schedule"]' \
             'Platform|platform.yml|["workflow_dispatch","schedule"]'; do
             IFS='|' read -r workflow workflow_file allowed_events <<<"$specification"
+            if [[ "$workflow" == Eval && -n "$eval_waiver" ]]; then
+              echo "::warning::Eval evidence waived for ${VERSION}: ${eval_waiver}"
+              continue
+            fi
             response="$(
               gh api --paginate \
                 "repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow_file}/runs?branch=main&head_sha=${SHA}&status=completed&per_page=100"
@@ -174,6 +194,8 @@ jobs:
             --arg qualified_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             --argjson freshness "$(<freshness-evidence.json)" \
             --argjson workflows "$evidence" \
+            --arg eval_waiver "$eval_waiver" \
+            --arg actor "$GITHUB_ACTOR" \
             '{
               schema_version: 2,
               repository: $repository,
@@ -185,6 +207,11 @@ jobs:
               },
               qualified_at: $qualified_at,
               freshness: $freshness,
+              evaluation_waiver: (
+                if $eval_waiver == "" then null
+                else {reason: $eval_waiver, actor: $actor}
+                end
+              ),
               workflows: $workflows
             }' > qualification.json
 
@@ -193,6 +220,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           SHA: ${{ inputs.sha }}
         run: |
+          # A waived release publishes the waiver in place of model lineage, so the
+          # release states plainly that no model-backed evaluation qualified it.
+          if jq -e '.evaluation_waiver != null' qualification.json >/dev/null; then
+            jq '{kind: "waiver", repository, sha, version, evaluation_waiver}' \
+              qualification.json > evaluation-evidence.json
+            exit 0
+          fi
           eval_run="$(
             jq -er '.workflows[] | select(.workflow == "Eval") | .run_id' qualification.json
           )"
