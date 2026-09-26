@@ -76,14 +76,10 @@ def _validated_approval(tool_context: ToolContext | None) -> _Approval | str:
     if not isinstance(user_id, str) or not isinstance(session_id, str) or not isinstance(invocation_id, str):
         return "the confirmed action has invalid identity metadata"
     payload = getattr(confirmation, "payload", None)
-    if isinstance(payload, str) and payload.strip():
-        rationale = payload.strip()
-    elif isinstance(payload, dict):
-        rationale = str(payload.get("rationale", "")).strip()
-    else:
-        rationale = ""
-    if not rationale:
-        return "the approval carried no rationale"
+    rationale = payload.get("rationale") if isinstance(payload, dict) else payload
+    if not isinstance(rationale, str) or not rationale.strip():
+        return "the approval requires a non-empty text rationale"
+    rationale = rationale.strip()
     if len(rationale) > MAX_AUDIT_RATIONALE_LENGTH:
         return f"the approval rationale exceeds {MAX_AUDIT_RATIONALE_LENGTH} characters"
     rationale = redact_persisted_text(rationale)

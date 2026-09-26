@@ -246,13 +246,12 @@ fi
 
 check_python_environment "documentation" "${inventory_dir}/documentation.json"
 check_python_environment "agent runtime" "${inventory_dir}/agent-runtime.json"
-check_python_environment "agent development" "${inventory_dir}/agent-development.json" google-crc32c
-check_embedded_license "agent development" "${inventory_dir}/agent-development.json" google-crc32c 'Apache License'
+# google-crc32c declares Apache-2.0 metadata from 1.9.0, so the agent profiles need no
+# exception for it; the separately locked MLflow image still resolves 1.8.0 below.
+check_python_environment "agent development" "${inventory_dir}/agent-development.json"
 if [[ ${profile} == full ]]; then
-	check_python_environment "framework comparison" "${inventory_dir}/agent-comparison.json" google-crc32c
-	check_embedded_license "framework comparison" "${inventory_dir}/agent-comparison.json" google-crc32c 'Apache License'
-	check_python_environment "agent evaluation" "${inventory_dir}/agent-evaluation.json" google-crc32c huey skops
-	check_embedded_license "agent evaluation" "${inventory_dir}/agent-evaluation.json" google-crc32c 'Apache License'
+	check_python_environment "framework comparison" "${inventory_dir}/agent-comparison.json"
+	check_python_environment "agent evaluation" "${inventory_dir}/agent-evaluation.json" huey skops
 	check_embedded_license "agent evaluation" "${inventory_dir}/agent-evaluation.json" huey 'Permission is hereby granted'
 	check_embedded_license "agent evaluation" "${inventory_dir}/agent-evaluation.json" skops 'MIT License'
 	check_python_environment "MLflow" "${inventory_dir}/mlflow.json" google-crc32c huey skops

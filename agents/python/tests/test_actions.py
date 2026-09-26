@@ -213,14 +213,22 @@ def test_action_rejects_an_overlong_rationale_without_mutation_or_audit() -> Non
     assert _audit_count() == audit_count
 
 
-def test_action_rejects_a_missing_rationale() -> None:
-    for payload in (None, {}, {"rationale": "   "}, ""):
-        result = _run_action("restart_service", {"name": _INVENTORY}, _approved_context(payload))
+@pytest.mark.parametrize("rationale", [None, False, 0, [], {}, "", "   "])
+@pytest.mark.parametrize("action", ["restart_service", "resolve_incident"])
+def test_action_rejects_a_missing_or_nontext_rationale(action, rationale) -> None:
+    audit_count = _audit_count()
+    args = {"name": _INVENTORY} if action == "restart_service" else {"incident_id": _INVENTORY_INCIDENT}
+    for payload in (rationale, {"rationale": rationale}):
+        result = _run_action(action, args, _approved_context(payload))
         assert "error" in result, payload
         assert "rationale" in result["error"]
     service = data.get_service(_INVENTORY)
     assert service is not None
     assert service.status == "down"  # the refused action changed nothing
+    incident = data.get_incident(_INVENTORY_INCIDENT)
+    assert incident is not None
+    assert incident.status == "open"
+    assert _audit_count() == audit_count
 
 
 def test_direct_calls_fail_closed_without_mutating() -> None:

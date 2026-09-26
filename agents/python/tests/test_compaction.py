@@ -67,6 +67,7 @@ def test_marker_lists_elided_tool_names(monkeypatch) -> None:
         _result("get_incident"),
         _call("search_service_logs"),
         _result("search_service_logs"),
+        _text("model", "here is the evidence"),
         _text("user", "what next?"),
     ]
     request = _compact(history)
@@ -80,7 +81,7 @@ def test_marker_lists_elided_tool_names(monkeypatch) -> None:
 def test_window_never_opens_on_orphan_tool_result(monkeypatch) -> None:
     monkeypatch.setattr(compaction.settings, "max_history_messages", 3)
     # With keep=3 the raw cut lands on the tool result at index 3, whose matching
-    # call at index 1 would be dropped; compaction must advance past it.
+    # call at index 1 would be dropped; retain the complete exchange.
     history = [
         _text("user", "diagnose INC-001"),
         _call("get_incident"),
@@ -92,26 +93,50 @@ def test_window_never_opens_on_orphan_tool_result(monkeypatch) -> None:
     request = _compact(history)
     first_kept = request.contents[1]
     assert first_kept.parts is not None
-    assert first_kept.parts[0].function_response is None  # window opens on a real message
-    # The orphaned result was folded into the elided span (4 messages, not 3).
+    assert first_kept.parts[0].function_call is not None
+    assert request.contents[1:] == history[1:]
     assert request.contents[0].parts is not None
     assert request.contents[0].parts[0].text is not None
-    assert request.contents[0].parts[0].text.startswith("[history compacted: 4 earlier message(s)")
+    assert request.contents[0].parts[0].text.startswith("[history compacted: 1 earlier message(s)")
 
 
-def test_trailing_function_responses_never_collapse_to_marker_only(monkeypatch) -> None:
+def test_trailing_parallel_tool_batch_keeps_every_call_and_result(monkeypatch) -> None:
     monkeypatch.setattr(compaction.settings, "max_history_messages", 2)
+    names = ("get_incident", "search_service_logs", "get_runbook")
     history = [
         _text("user", "diagnose INC-001"),
-        _call("get_incident"),
-        _result("get_incident"),
-        _result("search_service_logs"),
-        _result("get_runbook"),
+        types.Content(
+            role="model",
+            parts=[types.Part(function_call=types.FunctionCall(id=name, name=name, args={})) for name in names],
+        ),
+        *[
+            types.Content(
+                role="user",
+                parts=[types.Part(function_response=types.FunctionResponse(id=name, name=name, response={}))],
+            )
+            for name in names
+        ],
     ]
 
     request = _compact(history)
 
-    assert len(request.contents) == 2
-    assert request.contents[-1] == history[-1]
-    assert request.contents[-1].parts is not None
-    assert request.contents[-1].parts[0].function_response is not None
+    assert request.contents[1:] == history[1:]
+    call_ids = {
+        part.function_call.id
+        for content in request.contents
+        for part in content.parts or ()
+        if part.function_call is not None
+    }
+    result_ids = {
+        part.function_response.id
+        for content in request.contents
+        for part in content.parts or ()
+        if part.function_response is not None
+    }
+    assert call_ids == result_ids == set(names)
+
+
+def test_compaction_preserves_a_tool_batch_that_starts_the_history(monkeypatch) -> None:
+    monkeypatch.setattr(compaction.settings, "max_history_messages", 2)
+    history = [_call("get_incident"), _result("get_incident"), _text("user", "what next?")]
+    assert _compact(history).contents == history

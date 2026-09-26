@@ -5,7 +5,8 @@
 # command is emitted only when model-backed evidence also passes for a clean
 # commit. The script neither builds an image nor applies anything to a cluster.
 #
-#   scripts/promote.sh                 # offline preflight for the local overlay
+#   scripts/promote.sh                 # offline preflight for local-gemini
+#   scripts/promote.sh local           # optional Ollama/fake overlay
 #   scripts/promote.sh gke             # offline preflight for the gke overlay
 #   scripts/promote.sh --with-model    # behavior gate + local promote command
 
@@ -16,7 +17,7 @@ source "${lib_dir}/lib.sh"
 require_cmd kubectl platform
 require_cmd skaffold platform
 
-overlay=local
+overlay=local-gemini
 overlay_set=0
 with_model=0
 candidate_commit=
@@ -27,7 +28,7 @@ for arg in "$@"; do
 		printf 'promote: unknown flag %q\n' "${arg}" >&2
 		exit 2
 		;;
-	local | gke)
+	local | local-gemini | gke)
 		if ((overlay_set)); then
 			printf 'promote: expected one overlay, got %q after %q\n' "${arg}" "${overlay}" >&2
 			exit 2
@@ -36,7 +37,7 @@ for arg in "$@"; do
 		overlay_set=1
 		;;
 	*)
-		printf 'promote: unknown overlay %q (expected local or gke)\n' "${arg}" >&2
+		printf 'promote: unknown overlay %q (expected local-gemini, local, or gke)\n' "${arg}" >&2
 		exit 2
 		;;
 	esac
@@ -97,11 +98,16 @@ if [[ ${overlay} == gke ]]; then
 	printf '    mise run gke:deploy\n'
 else
 	# shellcheck disable=SC2016
-	printf '    cd infra && AGENT_SOURCE_COMMIT="$(git rev-parse HEAD)" SKAFFOLD_DEFAULT_REPO=registry.localhost:5050 skaffold run --filename skaffold.yaml --profile local\n'
+	printf '    test "$(kubectl config current-context)" = k3d-local && \\\n'
+	# shellcheck disable=SC2016
+	printf '    (cd infra && AGENT_SOURCE_COMMIT="$(git rev-parse HEAD)" SKAFFOLD_DEFAULT_REPO=registry.localhost:5050 skaffold run --filename skaffold.yaml --profile %q)\n' "${overlay}"
 fi
 cat <<'EOF'
 
 The command builds after this preflight; no image digest was evaluated here.
+The evaluations use the current model configuration, not the target overlay's
+runtime. Record that configuration and validate the chosen target's model/tool
+path separately; a passing source evaluation does not qualify another transport.
 For production, scan and smoke the same immutable digest that you deploy, then
 record it with the source commit so rollback can target a known-good artifact.
 AGENT_PROMPT_URI is only supported by host development and evaluation processes.

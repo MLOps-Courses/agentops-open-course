@@ -5,6 +5,8 @@
 # directory is gitignored — never commit certificates or private keys.
 #
 # Usage: infra/scripts/gateway-tls.sh [--force]
+# AGENTOPS_GATEWAY_AUTH_DIR overrides the output directory shared with the host
+# wrapper; by default it is infra/agentgateway/host/auth under the repository.
 
 # shellcheck source=scripts/lib.sh
 source "$(dirname "${BASH_SOURCE[0]}")/../../scripts/lib.sh"
@@ -12,13 +14,15 @@ source "$(dirname "${BASH_SOURCE[0]}")/../../scripts/lib.sh"
 require_cmd openssl gateway
 
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
-out_dir="infra/agentgateway/host/auth"
+out_dir="${AGENTOPS_GATEWAY_AUTH_DIR:-infra/agentgateway/host/auth}"
 cert_file="${out_dir}/tls-cert.pem"
 key_file="${out_dir}/tls-key.pem"
 ca_cert_file="${out_dir}/ca-cert.pem"
 ca_key_file="${out_dir}/ca-key.pem"
 csr_file="${out_dir}/tls-cert.csr"
 
+# Newly generated demo keys and their directory stay private to this user.
+umask 077
 mkdir -p "${out_dir}"
 
 if [[ -f "${ca_cert_file}" && -f "${ca_key_file}" && -f "${cert_file}" && -f "${key_file}" && "${1:-}" != "--force" ]]; then

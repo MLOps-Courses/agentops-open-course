@@ -509,17 +509,18 @@ class SourceContractTests(unittest.TestCase):
         relative = "infra/README.md"
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
-            copy_contract_files(root, (relative,))
             readme = root / relative
-            text = readme.read_text(encoding="utf-8")
-            needle = "skaffold delete --filename skaffold.yaml --profile local"
-            assert needle in text
-            readme.write_text(
-                text.replace(needle, "skaffold delete -p local", 1),
-                encoding="utf-8",
-            )
-            problems = check_conventions.check_skaffold_runbooks(root=root)
-        assert any("run from `infra/`" in message for _, message in problems)
+            readme.parent.mkdir()
+            for profile in ("local", "local-gemini", "gke"):
+                with self.subTest(profile=profile):
+                    readme.write_text(
+                        f"cd infra\nskaffold delete --filename skaffold.yaml --profile {profile}\n",
+                        encoding="utf-8",
+                    )
+                    assert check_conventions.check_skaffold_runbooks(root=root) == []
+                    readme.write_text(f"skaffold delete -p {profile}\n", encoding="utf-8")
+                    problems = check_conventions.check_skaffold_runbooks(root=root)
+                    assert any("run from `infra/`" in message for _, message in problems)
 
     def test_eval_runtime_cannot_drift_from_the_reviewed_cost_baseline(self) -> None:
         files = (".github/workflows/eval.yml", "agents/python/evals/cost_baseline.json")

@@ -62,4 +62,4 @@ mise run check:labs
 - You know whether your interactive path uses Gemini quota or optional local inference.
 - You know which preparation pages to revisit before Part II.
 
-Continue to [2.1. First Agent](../2.%20Agents/2.1.%20First%20Agent.md) when installation and provider configuration are complete.
+Continue to [2.1. First Agent](../2.%20Agents/2.1.%20First%20Agent.md) when the offline checkpoints pass; configure a provider only for interactive work.

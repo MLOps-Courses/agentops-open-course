@@ -2,21 +2,15 @@
 
 from __future__ import annotations
 
-import logging
-from collections.abc import AsyncGenerator
 from functools import cached_property
 from typing import Any
 
-from google.adk.models import BaseLlm, Gemini, OpenAILlm
-from google.adk.models.llm_request import LlmRequest
-from google.adk.models.llm_response import LlmResponse
+from google.adk.models import BaseLlm, FallbackModel, Gemini, OpenAILlm
 from google.genai import types
 from openai import AsyncOpenAI
 from pydantic import Field, SecretStr
 
 from .config import ModelProvider, settings
-
-logger = logging.getLogger(__name__)
 
 
 class ResilientOpenAILlm(OpenAILlm):
@@ -87,47 +81,12 @@ def build_generation_config() -> types.GenerateContentConfig | None:
     return types.GenerateContentConfig(temperature=settings.model_temperature)
 
 
-class FallbackLlm(BaseLlm):
-    """Try a primary model, then a secondary when the primary fails outright.
-
-    Retries and timeouts (``model.py``/``resilience.py``) handle a *flaky* call;
-    a fallback handles a *dead* one — the primary endpoint is down, overloaded,
-    or the model was unloaded. The fallback only engages if the primary raises
-    **before yielding any response**: once a (possibly streamed) turn has begun,
-    switching models mid-answer would splice two different completions together,
-    so a mid-flight error is re-raised instead.
-    """
-
-    primary: BaseLlm = Field(exclude=True)
-    fallback: BaseLlm = Field(exclude=True)
-
-    async def generate_content_async(
-        self, llm_request: LlmRequest, stream: bool = False
-    ) -> AsyncGenerator[LlmResponse]:
-        yielded = False
-        try:
-            async for response in self.primary.generate_content_async(llm_request, stream=stream):
-                yielded = True
-                yield response
-            return
-        except Exception as error:  # a dead primary is exactly when the fallback earns its keep
-            if yielded:
-                raise
-            logger.warning(
-                "Primary model %s failed before responding, falling back to %s (%s)",
-                self.primary.model,
-                self.fallback.model,
-                type(error).__name__,
-            )
-        async for response in self.fallback.generate_content_async(llm_request, stream=stream):
-            yield response
-
-
 async def close_model(llm: str | BaseLlm) -> None:
     """Close materialized clients owned by a disposable model."""
-    if isinstance(llm, FallbackLlm):
-        await close_model(llm.primary)
-        await close_model(llm.fallback)
+    if isinstance(llm, FallbackModel):
+        for entry in llm.models:
+            if isinstance(entry, BaseLlm):
+                await close_model(entry)
         return
     if isinstance(llm, Gemini):
         client = llm.__dict__.get("api_client")
@@ -179,14 +138,15 @@ def build_model() -> str | BaseLlm:
     The default Gemini mode uses ADK's native integration. The alternate mode
     uses ADK's OSS OpenAI-compatible client; ``OPENAI_BASE_URL`` chooses direct
     Ollama or an agentgateway route without changing application code. When
-    ``AGENT_MODEL_FALLBACK`` names a second model, the primary is wrapped so a
-    dead primary fails over to it on the same provider (Chapter 5.4).
+    ``AGENT_MODEL_FALLBACK`` names a second model, ADK's ``FallbackModel`` tries
+    it on the same provider after a retriable 429/5xx from the primary, and only
+    before the primary has produced any output (Chapter 2.2).
     """
     settings.require_model_credentials()
     primary = _build_single(settings.model)
     if settings.model_fallback is None:
         return primary
-    return FallbackLlm(model=settings.model, primary=primary, fallback=_build_single(settings.model_fallback))
+    return FallbackModel(models=[primary, _build_single(settings.model_fallback)])
 
 
 # --8<-- [end:build-model]

@@ -47,7 +47,7 @@ jobs:
 
       - name: Install only the account-free platform dependencies
         run: |
-          mise install uv k3d kubectl helm helmfile skaffold jq
+          mise install aqua:astral-sh/uv k3d kubectl helm helmfile skaffold jq
           ./scripts/install-helm-diff.sh
 
       - name: Verify the cgroup-v2 and container prerequisites

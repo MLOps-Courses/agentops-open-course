@@ -80,6 +80,24 @@ def _connect() -> Iterator[sqlite3.Connection]:
         connection.close()
 
 
+@contextmanager
+def _connect_for_read() -> Iterator[sqlite3.Connection]:
+    """Read an existing store without creating directories, databases, or schema."""
+    path = settings.state_dir / "memory.db"
+    try:
+        connection = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True, timeout=5)
+    except (OSError, sqlite3.Error) as error:
+        raise data.DataAccessError("Could not open long-term memory read-only") from error
+    try:
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA query_only = ON")
+        yield connection
+    except sqlite3.Error as error:
+        raise data.DataAccessError("Long-term memory read failed; inspect the existing memory database") from error
+    finally:
+        connection.close()
+
+
 def _user(tool_context: ToolContext | None) -> str:
     return getattr(tool_context, "user_id", None) or _ANONYMOUS
 
@@ -144,13 +162,15 @@ def recall_incident_context(incident_id: str = "", tool_context: ToolContext | N
         normalized = normalize_incident_id(incident_id)
         if normalized is None:
             return {"error": f"Invalid incident id {incident_id!r}; expected an id like INC-002."}
+    if not (settings.state_dir / "memory.db").exists():
+        return {"count": 0, "notes": []}
     query = "SELECT ts, incident_id, note FROM incident_notes WHERE user_id = ?"
     params: list[str] = [_user(tool_context)]
     if normalized:
         query += " AND incident_id = ?"
         params.append(normalized)
     query += " ORDER BY id DESC LIMIT ?"
-    with _connect() as connection:
+    with _connect_for_read() as connection:
         rows = connection.execute(query, (*params, _RECALL_LIMIT)).fetchall()
     notes = [{"ts": row["ts"], "incident_id": row["incident_id"], "note": row["note"]} for row in rows]
     return {"count": len(notes), "notes": notes}

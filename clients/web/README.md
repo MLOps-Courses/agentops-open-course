@@ -1,6 +1,6 @@
 # AgentOps Agent web client
 
-A single-file A2A browser client for the course's AgentOps Agent: one `index.html` with vanilla JavaScript, no build step, no framework, and no external requests (it works offline). It is teaching material for the _client_ side of the [A2A protocol](https://a2a-protocol.org/): agent-card discovery, `message/stream` (SSE) with a `message/send` fallback, task-state rendering, and the human-approval round-trip for guarded actions. MIT licensed (see [`../LICENSE`](../LICENSE)).
+A single-file A2A browser client for the course's AgentOps Agent: one `index.html` with vanilla JavaScript, no build step, no framework, and no third-party browser assets. The page works offline; agent turns still require its configured backend, which uses hosted Gemini by default. It is teaching material for the _client_ side of the [A2A protocol](https://a2a-protocol.org/): agent-card discovery, `message/stream` (SSE) with a `message/send` fallback, task-state rendering, and the human-approval round-trip for guarded actions. MIT licensed (see [`../LICENSE`](../LICENSE)).
 
 ## What it does
 
@@ -14,9 +14,8 @@ A single-file A2A browser client for the course's AgentOps Agent: one `index.htm
 
 ## How to run it
 
-1. In a first terminal, start the A2A server: `cd agents/python && mise run a2a` (raw `:8080`).
-1. In a second terminal, start the digest-pinned host gateway wrapper: `mise run gateway:host` from the repository root (loopback A2A route on `:3001`).
-1. In a third terminal, serve this directory: `mise run client:web` from the repository root.
+1. Follow [5.1. Gateway Setup](../../docs/5.%20Gateway/5.1.%20Gateway%20Setup.md) to start MCP, gateway, and A2A in separate terminals. Use its gateway environment so both tools and model traffic follow the governed routes.
+1. In another terminal, serve this directory on loopback: `mise run client:web` from the repository root.
 1. Open `http://localhost:8001`, keep the base URL `http://localhost:3001`, and press Connect.
 
 Point the client at agentgateway `:3001` — the governed data plane — not the raw application port `:8080`.
@@ -43,8 +42,9 @@ The gateway answers the preflight itself (`200` with `access-control-allow-*` he
 
 1. Lab-only: no authentication, no TLS, loopback addresses — consistent with the course's no-public-endpoint stance.
 1. The default A2A runtime records a synthetic `A2A_USER_<context-id>` approver. This proves confirmation continuity, not authenticated human identity.
-1. One conversation per page load; reconnecting without a reload preserves it, but a reload does not list or resume tasks from `.state/runtime.db`.
-1. Text parts only (the card advertises `text/plain`); file parts are not rendered.
+1. One conversation per page load; reconnecting to the same endpoint preserves it. Connecting to a different endpoint starts a new conversation. Reloading does not list or resume persisted tasks.
+1. Streaming falls back only when the server explicitly reports an unsupported method. JSON responses are consumed directly; ambiguous failures require a deliberate retry to avoid duplicate turns.
+1. Text and ADK tool metadata are rendered; file parts are not.
 1. Token-level streaming appears only when the server runs with `AGENT_A2A_STREAMING=true`; by default SSE carries whole events.
 
 When telemetry produces a valid context, terminal A2A metadata includes `otel_trace_id` and `mlflow_trace_id`. The client displays the exact response's MLflow trace ID for manual feedback. Copy that ID; never select the latest trace by timestamp. No feedback-writing endpoint is exposed by this client.

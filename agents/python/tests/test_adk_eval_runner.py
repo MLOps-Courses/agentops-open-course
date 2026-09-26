@@ -10,6 +10,7 @@ from typing import cast
 
 import pytest
 from google.adk.agents.callback_context import CallbackContext
+from google.adk.apps import App
 from google.adk.models.llm_response import LlmResponse
 from google.adk.plugins import BasePlugin
 from google.adk.plugins.plugin_manager import PluginManager
@@ -111,6 +112,52 @@ def test_evaluator_evidence_runs_before_a_policy_replacement(monkeypatch) -> Non
     )
     assert result is response
     assert response.custom_metadata == {"evaluation-evidence": "recorded"}
+
+
+def test_governed_runner_orders_the_app_shape_that_adk_builds(monkeypatch) -> None:
+    """Drive ADK's own Runner-kwargs builder so a changed upstream seam fails offline."""
+    from google.adk.agents import Agent
+
+    from agent.governance import build_app
+
+    root = Agent(name="eval_root", model="offline-test-model", instruction="Answer from evidence.")
+    evaluator_plugin = governed_adk_eval.BasePlugin(name="evaluator")
+    runner_kwargs = governed_adk_eval.evaluation_generator._build_eval_runner_kwargs(  # noqa: SLF001 - pinned seam
+        root_agent=root,
+        app_name="eval",
+        app=build_app(root),
+        internal_eval_plugins=[evaluator_plugin],
+    )
+    captured = {}
+
+    def fake_runner(**kwargs):
+        captured.update(kwargs)
+        return "runner"
+
+    monkeypatch.setattr(governed_adk_eval, "_ADK_RUNNER", fake_runner)
+    assert governed_adk_eval._governed_runner(**runner_kwargs) == "runner"  # noqa: SLF001
+    assert captured["app"].root_agent is root
+    assert [plugin.name for plugin in captured["app"].plugins] == ["evaluator", "agentops_policy"]
+    assert captured["app_name"] == "eval"
+
+
+def test_governed_runner_rejects_an_app_without_exactly_one_policy(monkeypatch) -> None:
+    from google.adk.agents import Agent
+
+    monkeypatch.setattr(governed_adk_eval, "build_app", lambda root: _FakeApp(root, [AgentOpsPolicyPlugin()]))
+    evaluator_plugin = governed_adk_eval.BasePlugin(name="evaluator")
+    root = Agent(name="eval_root", model="offline-test-model", instruction="Answer from evidence.")
+    missing: list[object] = [evaluator_plugin]
+    duplicated: list[object] = [AgentOpsPolicyPlugin(), AgentOpsPolicyPlugin()]
+    for plugins in (missing, duplicated):
+        with pytest.raises(RuntimeError, match="exactly once"):
+            governed_adk_eval._governed_runner(app=cast("App", _FakeApp(root, plugins)))  # noqa: SLF001
+    with pytest.raises(RuntimeError, match="both an App and loose plugins"):
+        governed_adk_eval._governed_runner(  # noqa: SLF001
+            app=cast("App", _FakeApp(root, [AgentOpsPolicyPlugin()])), plugins=[evaluator_plugin]
+        )
+    with pytest.raises(RuntimeError, match="no agent or workflow root"):
+        governed_adk_eval._governed_runner(app=cast("App", _FakeApp(None, [AgentOpsPolicyPlugin()])))  # noqa: SLF001
 
 
 def test_governed_runner_rejects_duplicate_policy(monkeypatch) -> None:

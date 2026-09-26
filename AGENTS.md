@@ -9,7 +9,7 @@ The course teaches the complete lifecycle of one **AgentOps Agent** with Google 
 - `docs/` contains FAQ-based course pages published by Zensical.
 - `agents/python/` is the locked Python reference agent, offline tests, and model-backed evaluations.
 - `agents/data/` is immutable seed input: SQLite, logs, runbooks, and the agent's runtime Agent Skills.
-- `skills/` holds installable, portable Agent Skills (`npx skills add …`) that distil the course's patterns for reuse in other projects — distinct from the runtime skills under `agents/data/skills`. `scripts/check_conventions.py skills` (via `mise run check:skills`) validates them.
+- `skills/` holds portable Agent Skills (`npx skills add …`), validated by `mise run check:skills`; runtime skills live separately under `agents/data/skills`.
 - `clients/web/` is a minimal, offline, dependency-free A2A web client for the AgentOps Agent.
 - `load/` holds k6 load tests and the documented latency budgets for the platform.
 - `infra/agentgateway/{host,k3d,gke}/` contains the three data-plane profiles.
@@ -26,7 +26,7 @@ The course teaches the complete lifecycle of one **AgentOps Agent** with Google 
 - **Seed and state stay separate.** `agents/data/incidents.db` is never mutated. Host writes go to `agents/python/.state`; Kubernetes agent/MCP processes share `agentops-agent-state` so reads remain coherent with approved writes. Only the A2A startup and direct write boundary may prepare or migrate runtime state; probes and read tools stay read-only.
 - **Restore is crash-recoverable, not an instantaneous multi-file rename.** Stop every writer first. `agent.state` serializes backup/restore with a process lock and fsyncs a three-phase journal; A2A startup recovers an interrupted transaction before schema preflight or publication. Never bypass that boundary with direct file copies or delete unexplained `.restore-*` evidence.
 - **Reads and writes have different authority.** The conversational entrypoint alone switches its six read/runbook tools from direct local calls to MCP through `AGENT_MCP_URL`; workflow and coordinator specialists always bind local tools. The MCP toolset passes `tool_filter=MCP_READ_TOOL_NAMES` (`mcp_client.py`), so a server cannot widen the surface by advertising more tools. `restart_service` and `resolve_incident` remain in-process, require ADK confirmation, validate targets, and append audit evidence in the same transaction. Replays with the same invocation, action, and target return the original audit row without mutating state again.
-- **Policy is attached once, at the app boundary.** `src/agent/governance.py` holds `AgentOpsPolicyPlugin`, an ADK `BasePlugin` registered on the `App` that `composition.py` exports as `app` (also re-exported by `src/agent/__init__.py`, which ADK discovery prefers over a bare `root_agent`). Its hooks fire for every agent, sub-agent, and workflow node, so adding an agent cannot lose the policy. Two properties are load-bearing: the before-model order is budget → compaction → redaction, and the first non-`None` return short-circuits the rest. Never reintroduce a per-agent callback list — that is what let nine copies of the same six callbacks accumulate. ADK 2.6's stock evaluator rebuilds a bare-agent runner, so ADK evals must enter through `evals/governed_adk_eval.py`, while MLflow must use `InMemoryRunner(app=build_app(...))`.
+- **Policy is attached once, at the app boundary.** `AgentOpsPolicyPlugin` in `governance.py` is registered on the `App` exported by `composition.py` and `src/agent/__init__.py`. ADK discovery prefers `app` over `root_agent`. Hooks cover every agent and workflow node; never add per-agent callback lists. Before-model order is budget → compaction → redaction; the first non-`None` return short-circuits. ADK's stock evaluator appends its plugins after the `App` policy (a bare agent before ADK 2.10): use `evals/governed_adk_eval.py` for ADK evals, which keeps evaluator evidence first and the policy exactly once, and `InMemoryRunner(app=build_app(...))` for MLflow.
 - **Skills and retrieved data have different trust.** The carve-out is keyed on the ADK `LoadSkillTool` **type**, which only the locally built `skill_toolset()` constructs — not on the tool's name, which any MCP server could claim. That result is reviewed repository instruction, so it bypasses injection neutralization and spotlighting while retaining recursive PII/credential redaction. Every other tool result stays data-hardened by default.
 - **Audit is append-only, not immutable.** Every row carries its audit schema version. SQLite triggers block row update/delete through the schema; administrators can still alter the file/schema. Do not overclaim.
 - **Telemetry content stays private by default.** Both ADK/GenAI content-capture variables default to literal `false`. PII callbacks cover outbound model requests, inbound model responses, and tool output, but raw session ingestion occurs earlier.
@@ -75,7 +75,7 @@ Release evidence is commit-scoped. Freeze `main`, dispatch Eval and Platform at 
 
 ## Development commands
 
-Root tasks:
+Common root tasks (discover the complete list with `mise tasks`):
 
 ```bash
 mise run install
@@ -83,10 +83,6 @@ mise run install:platform
 mise run install:gcp
 mise run install:maintainer
 mise run doctor
-mise run doctor:model
-mise run doctor:gateway
-mise run doctor:platform
-mise run doctor:gcp
 mise run format
 mise run check:core
 mise run check
@@ -96,16 +92,7 @@ mise run build
 mise run build:docs
 mise run serve
 mise run gateway:host
-mise run gateway:host:start
-mise run gateway:host:stop
-mise run gateway:host:status
-mise run gateway:host:logs
-mise run gateway:host:auth
 mise run smoke:host
-mise run observability:up
-mise run observability:down
-mise run cluster:start
-mise run platform:install
 mise run platform:dev
 mise run promote
 mise run gke:smoke
@@ -151,7 +138,7 @@ The GKE path stops at `tofu plan` unless the user explicitly approves deployment
 
 ## Documentation workflow
 
-Every course page follows the same frame. `scripts/check_conventions.py` (via `mise run check:docs`) enforces the front matter, the FAQ headings, the opening block, the closing heading, the page kind, and the collapsible and link-label rules below, so a page cannot silently drift out of shape.
+Every course page follows this frame, enforced by `mise run check:docs`:
 
 ```markdown
 ---
@@ -210,3 +197,5 @@ mise run scan
 ```
 
 The Python suite enforces at least 95% combined line-and-branch coverage. The complete gate renders all three overlays and scans the repository; no model, cluster, or cloud call is part of it. Never suppress a real failure to force green. Do not call a live model, deploy Kubernetes/cloud resources, or commit unless the user explicitly asks.
+
+On constrained machines, set `MISE_JOBS=1`, use disk-backed `TMPDIR`, and run gates sequentially. Dependency audits and scanner databases need network access; infrastructure rendering starts no services.

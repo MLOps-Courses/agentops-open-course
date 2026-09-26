@@ -8,8 +8,8 @@ span attributes and metrics. ``enforce_token_budget`` refuses the next model
 call once tracked usage reaches ``AGENT_MAX_TOKENS_PER_SESSION``. The last
 admitted call can cross the threshold, and responses without usage metadata
 cannot be counted. Costs are tokens times configurable per-1k prices — 0 by
-default because the reference path is local Ollama; no vendor pricing is
-hardcoded.
+default means prices are unconfigured, not that the default hosted model is
+free. No vendor pricing is hardcoded.
 """
 
 from __future__ import annotations
@@ -80,7 +80,7 @@ def _session_usage_lock(callback_context: CallbackContext) -> Iterator[None]:
 
 
 def estimate_cost(input_tokens: int, output_tokens: int) -> float:
-    """Estimate spend from the configured per-1k prices (0 for local Ollama)."""
+    """Estimate spend from per-1k prices; zero prices mean unconfigured attribution."""
     return (input_tokens / 1000) * settings.input_price_per_1k + (output_tokens / 1000) * settings.output_price_per_1k
 
 

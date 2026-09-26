@@ -4,12 +4,38 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
-- Split the course into laptop Python development and advanced Kubernetes platform engineering, with cumulative exercises and separate completion contracts.
-- Make ADK with a Gemini API key the default; retain explicit Ollama profiles, offline checks, and an optional LangGraph/A2A comparison. See [provider migration instructions](./SUPPORT.md#migrating-to-the-python-developer-and-platform-course).
-- Introduce MLflow after grader calibration, raise live trajectory acceptance to 80% plus critical cases, and attach feedback to the exact response trace.
-- Add Gemini gateway and local Kubernetes profiles; update vulnerable dependency resolutions and validate the optional comparison dependency profile.
+## [0.11.0] - 2026-09-26
 
-These are unreleased source changes. Offline evidence does not qualify live Gemini behavior, a deployed Kubernetes profile, or a published course release.
+The course returns to Python. Version 0.9 taught it in Go; that line is archived on the [`go` branch](https://github.com/MLOps-Courses/agentops-open-course/tree/go) with its v0.9.0 and v0.9.1 releases. A Go 0.10.0 was prepared there on 2026-09-11 but never published, so this release skips that number instead of reusing it. Every URL the Go site served redirects to the matching Python page.
+
+### 🚀 Features
+
+- _(course)_ Split the course into laptop Python development and advanced Kubernetes platform engineering, with cumulative exercises and separate completion contracts
+- _(workshop)_ Extend the workshop to eight steps with a prompt-injection guardrail and a learner-owned MCP server; `start N` scaffolds failing stubs and `mise run lab -- status` shows progress and the next command
+- _(agent)_ Make ADK with Gemini the default; retain explicit Ollama profiles, offline checks, and an optional LangGraph/A2A comparison. See [provider migration instructions](./SUPPORT.md#migrating-to-the-python-developer-and-platform-course)
+- _(agent)_ Upgrade to Google ADK 2.10, a2a-sdk 1.1.5, and the OpenAI SDK 3.x
+- _(mcp)_ Move the MCP server to MCP Python SDK 2.x (`MCPServer`), serving revisions 2025-11-25 and 2026-07-28 with read-only tool annotations
+- _(agent)_ Replace the hand-rolled model fallback with ADK's `FallbackModel`, which fails over only on retriable 429/5xx responses and restores the request between attempts
+- _(evals)_ Introduce MLflow after grader calibration, raise live trajectory acceptance to 80% plus critical cases, and attach feedback to the exact response trace
+- _(platform)_ Add Gemini gateway and local Kubernetes profiles
+
+### 🐛 Bug Fixes
+
+- _(evals)_ Accept ADK 2.10's `App`-based evaluation runner while keeping evaluator evidence ahead of the application policy, which the previous adapter rejected before any model call
+
+### 🔒 Gates
+
+- _(smoke)_ Prove both MCP protocol eras and the guarded-write denial through agentgateway in `smoke:host`
+- _(licenses)_ Drop the google-crc32c exception from the agent profiles now that 1.9.0 declares its license
+- _(deps)_ Scope the `PYSEC-2026-3740` NLTK exception to the development, evaluation, and comparison audits; runtime and MLflow audits keep zero exceptions ([record](./SUPPORT.md#active-dependency-advisory-exception))
+
+## [0.9.1] - 2026-08-16
+
+Taught in Go. See the [`go` branch](https://github.com/MLOps-Courses/agentops-open-course/tree/go) and the [release notes](https://github.com/MLOps-Courses/agentops-open-course/releases/tag/v0.9.1).
+
+## [0.9.0] - 2026-08-16
+
+Replaced the Python course with a Go rewrite. See the [`go` branch](https://github.com/MLOps-Courses/agentops-open-course/tree/go) and the [release notes](https://github.com/MLOps-Courses/agentops-open-course/releases/tag/v0.9.0).
 
 ## [0.7.0] - 2026-08-06
 
@@ -172,7 +198,10 @@ These are unreleased source changes. Offline evidence does not qualify live Gemi
 
 - Publish AgentOps Open Course
 
-[unreleased]: https://github.com/MLOps-Courses/agentops-open-course/compare/v0.7.0...HEAD
+[unreleased]: https://github.com/MLOps-Courses/agentops-open-course/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/MLOps-Courses/agentops-open-course/releases/tag/v0.11.0
+[0.9.1]: https://github.com/MLOps-Courses/agentops-open-course/releases/tag/v0.9.1
+[0.9.0]: https://github.com/MLOps-Courses/agentops-open-course/releases/tag/v0.9.0
 [0.7.0]: https://github.com/MLOps-Courses/agentops-open-course/releases/tag/v0.7.0
 [0.6.0]: https://github.com/MLOps-Courses/agentops-open-course/releases/tag/v0.6.0
 [0.5.0]: https://github.com/MLOps-Courses/agentops-open-course/releases/tag/v0.5.0

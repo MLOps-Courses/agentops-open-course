@@ -76,12 +76,17 @@ def compact_history(callback_context: CallbackContext, llm_request: LlmRequest) 
     if len(contents) <= keep:
         return None
     cut = len(contents) - keep
-    # Prefer a standalone message boundary, but a request can end mid-tool-loop
-    # with only function responses in the retained tail. Keep at least the newest
-    # result in that case; replacing the entire request with a marker would discard
-    # the evidence the model just requested.
-    while cut < len(contents) - 1 and _has_function_response(contents[cut]):
-        cut += 1
+    # A tool batch is indivisible: retain its call and every response, including
+    # when the latest message is still a tool result. Advancing the cut either
+    # loses fresh evidence or leaves an orphan result that providers reject.
+    # The message target is therefore soft at this protocol boundary.
+    if _has_function_response(contents[cut]):
+        while cut > 0:
+            cut -= 1
+            if any(part.function_call is not None for part in contents[cut].parts or ()):
+                break
+    if cut == 0:
+        return None
     llm_request.contents[:] = [_marker(contents[:cut]), *contents[cut:]]
     return None
 

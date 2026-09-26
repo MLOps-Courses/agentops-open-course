@@ -4,7 +4,7 @@
 # Git hooks (lefthook.yml) and CI (.github/workflows) call these same tasks.
 
 [tools]
-uv = "0.12.0"
+"aqua:astral-sh/uv" = "0.12.0"
 dprint = "0.55.2"
 lefthook = "2.1.10"
 gitleaks = "8.30.1"
@@ -30,7 +30,7 @@ lychee = "0.24.2"
 jq = "1.8.2"
 gh = "2.97.0"
 gcloud = "578.0.0"
-"github:mikefarah/yq" = "4.53.3"
+"aqua:mikefarah/yq" = "4.53.3"
 "github:agentgateway/agentgateway" = "1.4.1"
 
 [settings]
@@ -50,10 +50,10 @@ run_auto_install = false # fail fast in hooks instead of silently installing a m
 
 [tasks."install:learner"]
 description = "Install only uv and the locked Python runtime for laptop labs"
-run = ["mise install uv", "uv sync --directory agents/python --locked --no-default-groups"]
+run = ["mise install aqua:astral-sh/uv", "uv sync --directory agents/python --locked --no-default-groups"]
 
 [tasks.lab]
-description = "Progress through Python labs: list, start N, check N, run N, solution N, verify, record 6"
+description = "Progress through Python labs: list, status, start N, check N, run N, solution N, verify, record 6"
 run = "uv run --project agents/python --locked --no-default-groups python agents/python/labs/course_lab.py"
 
 [tasks."check:labs"]
@@ -75,7 +75,7 @@ run = [
 [tasks."install:tools:core"]
 hide = true # implementation detail of install:*; a learner picks a tier, never a tool list
 description = "Install only the tools used by learner and contributor core tasks"
-run = "mise install uv dprint lefthook gitleaks actionlint trivy sqlite shellcheck shfmt lychee jq"
+run = "mise install aqua:astral-sh/uv dprint lefthook gitleaks actionlint trivy sqlite shellcheck shfmt lychee jq"
 
 [tasks."install:platform"]
 description = "Install the separate MLflow server, local platform, and GKE plan dependencies"
@@ -95,7 +95,7 @@ run = [
 [tasks."install:tools:platform"]
 hide = true # implementation detail of install:platform
 description = "Install tools used by the local platform and optional GKE plan"
-run = "mise install uv k3d kubectl helm helmfile skaffold kubeconform kube-linter opentofu tflint aqua:prometheus/prometheus sops age ripgrep github:mikefarah/yq github:agentgateway/agentgateway"
+run = "mise install aqua:astral-sh/uv k3d kubectl helm helmfile skaffold kubeconform kube-linter opentofu tflint aqua:prometheus/prometheus sops age ripgrep aqua:mikefarah/yq github:agentgateway/agentgateway"
 
 [tasks."install:maintainer"]
 description = "Install every dependency used by the complete maintainer validation"
@@ -427,8 +427,8 @@ run = [
 ]
 
 [tasks."client:web"]
-description = "Serve the minimal A2A web client (offline, no build step) on :8001"
-run = "python3 -m http.server 8001 --directory clients/web"
+description = "Serve the minimal A2A web client on loopback :8001 (no build step)"
+run = "python3 -m http.server 8001 --bind 127.0.0.1 --directory clients/web"
 
 # k6 is intentionally not in [tools] (optional load path, AGPL-3.0); `mise x` runs the
 # pinned ephemeral binary documented in load/README.md and docs 7.2.

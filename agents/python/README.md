@@ -144,6 +144,6 @@ The code is [MIT licensed](../LICENSE). The bundled course content and external 
 
 ## Cumulative workshop
 
-From the repository root, use `mise run install:learner`, then `mise run lab -- start 1` and `mise run lab -- check 1`. Continue through the six steps in `labs/`; each start carries the preceding learner file forward and refuses to overwrite existing work. `mise run check:labs` validates the separate worked solutions offline. `mise run lab -- run N` is the explicit model-backed ADK Web command.
+From the repository root, use `mise run install:learner`, then `mise run lab -- start 1` and `mise run lab -- check 1`. Continue through the eight steps in `labs/`; each start carries the preceding learner file forward, appends failing stubs for the new functions, and refuses to overwrite existing work. `mise run lab -- status` shows your progress and the next command. `mise run check:labs` validates the separate worked solutions offline. `mise run lab -- run N` is the explicit model-backed ADK Web command.
 
 The optional `mise run check:comparison` validates the LangGraph A2A elective. Part II deploys the completed ADK reference, not these smaller teaching checkpoints.

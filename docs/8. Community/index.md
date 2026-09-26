@@ -7,7 +7,7 @@ description: Complete the capstone, then use the optional maintenance references
 !!! abstract "In one glance"
 
     - **You will:** Start the capstone directly and know which optional page to use when you maintain an open-source project.
-    - **You need:** Chapters 1-7 finished and the learner gates passing.
+    - **You need:** Part I completed for the developer capstone, or Chapters 1-7 for the platform capstone.
     - **Time:** about 6 minutes, orientation.
 
 ## What should you do after Chapter 7?

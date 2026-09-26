@@ -322,6 +322,157 @@ def web_client_interaction_smoke(page: Page, url: str) -> None:
     page.wait_for_selector(".state-completed")
 
 
+def web_client_transport_smoke(page: Page, url: str) -> None:
+    """Prevent duplicate turns and cross-endpoint reuse of conversation authority."""
+    open_page(page, url)
+    results = page.evaluate(
+        """async () => {
+          const originalFetch = window.fetch;
+          const completed = { result: { kind: "message", parts: [{ kind: "text", text: "Done" }] } };
+          const outcomes = [];
+          try {
+            for (const [status, body, expectedCalls, expectedError] of [
+              [200, completed, 1, false],
+              [500, {}, 1, true],
+              [200, { error: { code: -32603, message: "Internal error" } }, 1, true],
+              [200, { error: { code: -32601, message: "Method not found" } }, 2, false],
+            ]) {
+              const methods = [];
+              window.fetch = async (_, options) => {
+                methods.push(JSON.parse(options.body).method);
+                return new Response(JSON.stringify(methods.length === 1 ? body : completed), {
+                  status: methods.length === 1 ? status : 200,
+                  headers: { "content-type": "application/json" },
+                });
+              };
+              let failed = false;
+              try { await streamMessage({ kind: "message", parts: [] }); }
+              catch { failed = true; }
+              outcomes.push(methods.length === expectedCalls && failed === expectedError &&
+                methods[0] === "message/stream" && (expectedCalls === 1 || methods[1] === "message/send"));
+            }
+          } finally { window.fetch = originalFetch; }
+          return outcomes;
+        }"""
+    )
+    require(results == [True] * 4, f"{url}: streaming fallback replayed a turn or hid an error")
+
+    page.evaluate(
+        """() => {
+          state.baseUrl = location.origin;
+          state.contextId = "old-context";
+          state.taskId = "old-approval";
+          state.activeTaskId = "old-approval";
+          $("card").textContent = "Existing agent card";
+          renderConfirmation({ id: "old-call", name: "adk_request_confirmation", args: {
+            originalFunctionCall: { name: "restart_service", args: { name: "inventory" } },
+          } }, "old-approval");
+          window.fetch = async url => new Response(JSON.stringify({
+            name: "Test agent", version: "1", description: "Synthetic card",
+            skills: url.includes("/malformed/") ? {} : [],
+          }), { status: url.includes("/unavailable/") ? 503 : 200 });
+        }"""
+    )
+    base = urlparse(url)._replace(path="").geturl()
+    for endpoint in ("unavailable", "malformed"):
+        page.get_by_label("A2A base URL").fill(f"{base}/{endpoint}")
+        page.get_by_role("button", name="Connect", exact=True).click()
+        page.wait_for_function("!state.discovering")
+        require(
+            page.evaluate(
+                """state.baseUrl === location.origin && state.taskId === 'old-approval' &&
+                $("card").textContent === 'Existing agent card' && $("log").querySelector('.confirm') !== null"""
+            ),
+            f"{url}: failed or malformed discovery changed the active conversation",
+        )
+
+    page.evaluate(
+        """() => {
+          window.discoveryFetch = window.fetch;
+          window.pendingRequests = [];
+          window.fetch = (url, options) => {
+            window.pendingRequests.push(options ? JSON.parse(options.body).method : "discovery");
+            return new Promise(resolve => { window.resolveDiscovery = resolve; });
+          };
+        }"""
+    )
+    page.get_by_label("A2A base URL").fill(f"{base}/new")
+    page.get_by_role("button", name="Connect", exact=True).click()
+    require(
+        page.get_by_role("button", name="Deny", exact=True).is_disabled()
+        and page.get_by_role("button", name="Cancel the active task").is_disabled(),
+        f"{url}: discovery must disable approval and cancellation controls",
+    )
+    page.evaluate(
+        """() => {
+          const approval = $("log").querySelector('.confirm form');
+          approval.querySelector('input').value = 'Reviewed';
+          approval.dispatchEvent(new Event('submit', { cancelable: true }));
+          $("task-cancel").dispatchEvent(new Event('click'));
+          $("connect-form").dispatchEvent(new Event('submit', { cancelable: true }));
+          sendParts([{ kind: 'text', text: 'Must wait for discovery' }]);
+        }"""
+    )
+    require(
+        page.evaluate("JSON.stringify(window.pendingRequests) === '[\"discovery\"]'"),
+        f"{url}: discovery overlapped a turn, approval, cancellation, or second discovery",
+    )
+    page.evaluate("window.resolveDiscovery(new Response('{}', { status: 503 }))")
+    page.wait_for_function("!state.discovering")
+
+    page.evaluate(
+        """() => {
+          state.streaming = true;
+          window.pendingRequests = [];
+          window.fetch = (_, options) => {
+            const method = options ? JSON.parse(options.body).method : 'discovery';
+            window.pendingRequests.push(method);
+            if (method === 'message/stream') return Promise.resolve(new Response(new ReadableStream({
+              start(controller) { window.pendingStream = controller; },
+            }), { headers: { 'content-type': 'text/event-stream' } }));
+            return new Promise(resolve => { window.resolveCancel = resolve; });
+          };
+        }"""
+    )
+    page.get_by_role("button", name="Deny", exact=True).click()
+    require(
+        page.get_by_role("button", name="Connect", exact=True).is_disabled()
+        and page.get_by_role("button", name="Cancel the active task").is_enabled(),
+        f"{url}: a pending streamed approval must block discovery while permitting cancellation",
+    )
+    page.evaluate('$("connect-form").dispatchEvent(new Event("submit", { cancelable: true }))')
+    page.get_by_role("button", name="Cancel the active task").click()
+    page.evaluate("window.pendingStream.close()")
+    page.wait_for_function("!state.sending")
+    require(
+        page.get_by_role("button", name="Connect", exact=True).is_disabled(),
+        f"{url}: discovery resumed before the cancellation response arrived",
+    )
+    page.evaluate('$("connect-form").dispatchEvent(new Event("submit", { cancelable: true }))')
+    require(
+        page.evaluate('JSON.stringify(window.pendingRequests) === \'["message/stream","tasks/cancel"]\''),
+        f"{url}: pending approval or cancellation overlapped endpoint discovery",
+    )
+    page.evaluate(
+        """window.resolveCancel(new Response(JSON.stringify({ result: {
+          kind: 'task', id: 'old-approval', status: { state: 'canceled' },
+        } })))"""
+    )
+    page.wait_for_function("!state.canceling")
+    require(
+        page.get_by_role("button", name="Deny", exact=True).is_disabled(),
+        f"{url}: an answered approval was re-enabled after cancellation",
+    )
+    page.evaluate("() => { window.fetch = window.discoveryFetch; }")
+    page.get_by_label("A2A base URL").fill(f"{base}/new")
+    page.get_by_role("button", name="Connect", exact=True).click()
+    page.wait_for_function("state.baseUrl.endsWith('/new')")
+    require(
+        page.evaluate("state.contextId === null && state.taskId === null && state.activeTaskId === null"),
+        f"{url}: a different endpoint inherited conversation or approval identifiers",
+    )
+
+
 def forced_colors_smoke(page: Page, url: str) -> None:
     """Exercise the web client's forced-colors fallback in an emulated browser context."""
     open_page(page, url)
@@ -444,6 +595,7 @@ def run_acceptance() -> None:
             keyboard_smoke(page, web_client, ".skip-link", "#base-url")
             accessibility_tree_smoke(context, page, web_client, "web client")
             web_client_interaction_smoke(page, web_client)
+            web_client_transport_smoke(page, web_client)
             reflow_smoke(page, web_client)
             open_page(page, web_client)
             contrast_smoke(page, "header h1", "web client heading")

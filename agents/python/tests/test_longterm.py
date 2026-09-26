@@ -1,12 +1,15 @@
 """Unit tests for the persistent long-term memory tools (Ch. 3.4)."""
 
 import inspect
+import sqlite3
+from contextlib import closing
 from types import SimpleNamespace
 from typing import cast
 
+import pytest
 from google.adk.tools.tool_context import ToolContext
 
-from agent import longterm
+from agent import data, longterm
 from tests.domain import REFERENCE_DOMAIN
 
 _CHECKOUT_INCIDENT = REFERENCE_DOMAIN.incidents.checkout_latency
@@ -50,6 +53,56 @@ def test_memory_is_isolated_per_user() -> None:
     longterm.save_incident_note(_INVENTORY_INCIDENT, "private note from alice", _context("alice", "s1"))
     recalled = longterm.recall_incident_context(_INVENTORY_INCIDENT, _context("bob", "s2"))
     assert recalled["count"] == 0
+
+
+def test_recall_before_first_note_does_not_create_state(monkeypatch) -> None:
+    monkeypatch.setattr(longterm.settings, "writes_disabled", True)
+    assert not longterm.settings.state_dir.exists()
+    assert longterm.recall_incident_context() == {"count": 0, "notes": []}
+    assert not longterm.settings.state_dir.exists()
+
+
+def test_recall_uses_read_only_connection_and_preserves_existing_store(monkeypatch) -> None:
+    longterm.save_incident_note(_INVENTORY_INCIDENT, "restart failed")
+    path = longterm.settings.state_dir / "memory.db"
+    before = path.read_bytes()
+    connect = sqlite3.connect
+    connections = []
+
+    def read_only_connect(database, **kwargs):
+        connection = connect(database, **kwargs)
+        connections.append(connection)
+        # mode=ro must prevent mutations even before application query_only setup.
+        with pytest.raises(sqlite3.OperationalError, match="readonly"):
+            connection.execute("DELETE FROM incident_notes")
+        return connection
+
+    monkeypatch.setattr(longterm.sqlite3, "connect", read_only_connect)
+    monkeypatch.setattr(longterm.settings, "writes_disabled", True)
+    assert longterm.recall_incident_context()["count"] == 1
+    assert len(connections) == 1
+    assert path.read_bytes() == before
+
+
+@pytest.mark.parametrize("store", ["corrupt", "missing-schema", "directory"])
+def test_recall_rejects_invalid_existing_store_without_repairing_it(store) -> None:
+    longterm.settings.state_dir.mkdir()
+    path = longterm.settings.state_dir / "memory.db"
+    if store == "corrupt":
+        path.write_bytes(b"not a SQLite database")
+    elif store == "missing-schema":
+        with closing(sqlite3.connect(path)) as connection:
+            connection.execute("CREATE TABLE unrelated (value TEXT)")
+            connection.commit()
+    else:
+        path.mkdir()
+    before = path.read_bytes() if path.is_file() else None
+    with pytest.raises(data.DataAccessError, match=r"long-term memory|Long-term memory"):
+        longterm.recall_incident_context()
+    if before is not None:
+        assert path.read_bytes() == before
+    else:
+        assert path.is_dir()
 
 
 def test_notes_are_redacted_before_persisting() -> None:

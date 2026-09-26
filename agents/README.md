@@ -5,7 +5,7 @@ The course reference system combines a self-contained Google ADK application wit
 - [`python/`](./python) contains the typed agent, MCP and A2A servers, evaluations, and tests.
 - [`data/`](./data) contains the SQLite seed, service logs, runbooks, and least-privilege Agent Skills.
 
-The deterministic engineering path runs offline after dependencies are installed. The first interactive run uses the Apache-2.0 open-weight Qwen3 model directly through local Ollama. Chapter 5 changes the same OpenAI-compatible endpoint to agentgateway; native Gemini remains optional.
+The deterministic engineering path runs offline after dependencies are installed. The default interactive path uses native Gemini with an API key and available quota. The optional local alternative uses Apache-2.0 open-weight Qwen3 through Ollama. Chapter 5 routes model traffic through agentgateway; changing transport requires fresh behavior evidence.
 
 ## Architecture
 
@@ -19,15 +19,18 @@ flowchart LR
     Read --> State[(Runtime SQLite copy)]
     HITL --> State
     Agent --> MCP[MCP client/server]
-    Agent --> Model[Local Ollama or agentgateway]
+    Agent --> Model[Native Gemini or optional Ollama / agentgateway]
     Server --> OTel[OpenTelemetry]
 ```
+
+**Diagram in words:** The A2A server runs the ADK agent and exports telemetry. The agent calls its configured model, uses local or MCP reads and reviewed skills, and requires approval before writes to runtime SQLite state.
 
 ## Capability map
 
 | Capability                                       | Source                               | Course               |
 | ------------------------------------------------ | ------------------------------------ | -------------------- |
-| Agent, instructions, callbacks                   | `python/src/agent/composition.py`    | Chapter 2            |
+| Agent composition and instructions               | `python/src/agent/composition.py`    | Chapter 2            |
+| Shared application policy                        | `python/src/agent/governance.py`     | Chapters 2 and 4     |
 | Typed configuration and model selection          | `config.py`, `model.py`, `models.py` | Chapters 2 and 5     |
 | Immutable seed and runtime state                 | `data.py`, `data/`                   | Chapter 3            |
 | Incident, service, and log tools                 | `tools.py`                           | Chapter 3.1          |
@@ -51,14 +54,13 @@ mise run check:core
 mise run test
 ```
 
-Tests enforce at least 95% branch coverage and do not call a model or cloud service.
+Tests enforce at least 95% combined line-and-branch coverage and do not call a model or cloud service.
 
-## Run the account-free model path
+## Run the default model path
 
-Install Ollama, pull the model, and validate the staged prerequisite:
+Follow [1.4. Providers](../docs/1.%20Setup/1.4.%20Providers.md) to create the root `.env` from `.env.example` and configure `GOOGLE_API_KEY`. Keep the default `AGENT_MODEL_PROVIDER=gemini` and `AGENT_MODEL=gemini-3.5-flash`, then validate the prerequisite:
 
 ```bash
-ollama pull qwen3:4b-instruct
 mise run doctor:model
 ```
 
@@ -69,9 +71,9 @@ cd agents/python
 mise run run
 ```
 
-The typed defaults are `AGENT_MODEL_PROVIDER=openai-compatible`, `AGENT_MODEL=qwen3:4b-instruct`, `OPENAI_BASE_URL=http://127.0.0.1:11434/v1`, and the non-secret `local-ollama` client marker. No provider account or `.env` file is required. [Chapter 5](../docs/5.%20Gateway/) changes the base URL to agentgateway so model policy and telemetry move outside the application.
+Gemini is a proprietary hosted service; prompts consume provider quota and may be billed. [Chapter 5](../docs/5.%20Gateway/) changes the application to an OpenAI-compatible gateway endpoint and moves the upstream credential into the gateway.
 
-For the optional native Gemini branch, set `AGENT_MODEL_PROVIDER=gemini`, an explicit Gemini model, and either a Gemini API key or Application Default Credentials in the repository-root `.env`.
+For the account-free local alternative, follow the same model preparation page: install and start Ollama, pull `qwen3:4b-instruct`, and explicitly select `AGENT_MODEL_PROVIDER=openai-compatible`, `AGENT_MODEL=qwen3:4b-instruct`, `OPENAI_BASE_URL=http://127.0.0.1:11434/v1`, and the non-secret `OPENAI_API_KEY=local-ollama`. This path needs enough RAM for local inference; the offline checkpoint needs neither provider.
 
 ## Licenses
 

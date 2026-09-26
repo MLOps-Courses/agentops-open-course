@@ -18,11 +18,13 @@ Prepare with the [Python tutorial](https://docs.python.org/3/tutorial/) or [Kube
 
 ## What makes this course practical?
 
-- **Build progressively:** six cumulative Python exercises preserve your work and provide offline checks and separate solutions.
+- **Build progressively:** eight cumulative Python exercises scaffold each new function, preserve your work, and provide offline checks, a progress board, and separate solutions. They end with a prompt-injection guardrail and an MCP server of your own.
 - **Accessible laptop start:** Gemini is the default, so a GPU or model download is not required. Ollama/Qwen3 is an optional alternative.
 - **One reference and a clear handoff:** the platform part operates the tested Python application without rewriting its domain behavior.
 - **Distinct responsibilities:** ADK owns application orchestration, MLflow owns evaluation evidence, agentgateway governs connections, and kagent integrates agents with Kubernetes.
 - **Real boundaries:** the reference implements approval, transactional action audit, persistent sessions, privacy policy, and crash recovery.
+
+Versions 0.9.x taught this course in Go; that edition is archived on the [`go` branch](https://github.com/MLOps-Courses/agentops-open-course/tree/go), and its URLs redirect to the matching Python pages.
 
 Course text is CC BY 4.0 and code is MIT. The agent and platform software are open source. **Gemini is a proprietary hosted service requiring an account and API key**; free quotas depend on current provider terms. Offline checks require no model access. The optional local path uses open-weight Qwen3 through Ollama.
 
@@ -73,7 +75,7 @@ mise run lab -- start 1
 mise run lab -- check 1
 ```
 
-The small installation adds uv and the locked runtime. It excludes contributor, evaluation, Kubernetes, and cloud tooling. Open `learning/step-1/learner_agent/agent.py`, then follow [2.1. First Agent](./docs/2.%20Agents/2.1.%20First%20Agent.md) and [2.6. Workshop](./docs/2.%20Agents/2.6.%20Workshop.md).
+The small installation adds uv and the locked runtime. It excludes contributor, evaluation, Kubernetes, and cloud tooling. All eight workshop checks run without credentials or a model. On a memory-limited machine, use this route and leave model servers, containers, clusters, and observability services stopped. Open `learning/step-1/learner_agent/agent.py`, then follow [2.1. First Agent](./docs/2.%20Agents/2.1.%20First%20Agent.md) and [2.6. Workshop](./docs/2.%20Agents/2.6.%20Workshop.md).
 
 For an interactive run, create a [Gemini API key](https://aistudio.google.com/apikey), copy `.env.example` to `.env` only if it does not exist, and edit `GOOGLE_API_KEY` locally:
 
@@ -172,7 +174,7 @@ mise run course:evidence # clean-revision completion manifest from both gates
 
 mise run install:maintainer # complete platform/security toolchain and environments
 mise run format             # core plus OpenTofu
-mise run check              # core plus both infrastructure overlays
+mise run check              # core plus all three infrastructure overlays
 mise run scan               # gitleaks history + Trivy scans
 ```
 

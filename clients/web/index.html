@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!-- AgentOps Agent web client — a single-file A2A (JSON-RPC over HTTP) browser client.
      Teaching material first: every protocol shape is spelled out in the comments below.
-     No build step, no framework, no external requests (works offline). MIT licensed. -->
+     No build step, framework, or third-party assets; turns use the configured backend. MIT licensed. -->
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -81,6 +81,9 @@
       lastAgentText: "",
       lastTaskState: null,
       lastTraceId: null,
+      discovering: false,
+      sending: false,
+      canceling: false,
     };
     const $ = (id) => document.getElementById(id);
 
@@ -98,15 +101,28 @@
       state.lastTaskState = taskState;
       addBubble("state state-" + taskState, taskState);
     }
-    function setComposerEnabled(enabled) {
-      $("chat-input").disabled = !enabled;
-      $("chat-send").disabled = !enabled;
+    function requestPending() {
+      return state.discovering || state.sending || state.canceling;
+    }
+    function updateControls() {
+      const busy = requestPending();
+      $("chat-input").disabled = !state.baseUrl || busy;
+      $("chat-send").disabled = !state.baseUrl || busy;
+      $("base-url").disabled = busy;
+      $("connect-form").querySelector("button").disabled = busy;
+      // Cancellation is the one request allowed while a streamed turn is pending.
+      $("task-cancel").disabled = !state.activeTaskId || state.discovering || state.canceling;
+      for (const form of $("log").querySelectorAll(".confirm form")) {
+        const disabled = busy || form.dataset.answered === "true" || form.dataset.taskId !== state.taskId;
+        form.querySelectorAll("input,button").forEach((el) => (el.disabled = disabled));
+      }
     }
     function rememberTask(taskState, taskId) {
       const terminal = ["completed", "failed", "rejected", "canceled"].includes(taskState);
       state.activeTaskId = terminal ? null : taskId;
       state.taskId = taskState === "input-required" || taskState === "auth-required" ? taskId : null;
-      $("task-cancel").disabled = !state.activeTaskId;
+      updateControls();
+      $("log").querySelector(".confirm input:not(:disabled)")?.focus();
     }
 
     // --------------------- 1. Agent card discovery ------------------------
@@ -114,30 +130,54 @@
     // the protocol version, transports, and capabilities (e.g. streaming).
     $("connect-form").addEventListener("submit", async (event) => {
       event.preventDefault();
-      state.baseUrl = $("base-url").value.replace(/\/+$/, "");
+      if (requestPending()) return;
+      const baseUrl = $("base-url").value.replace(/\/+$/, "");
+      state.discovering = true;
+      updateControls();
       try {
-        const response = await fetch(state.baseUrl + "/.well-known/agent-card.json");
+        const response = await fetch(baseUrl + "/.well-known/agent-card.json");
         if (!response.ok) throw new Error("HTTP " + response.status);
         const card = await response.json();
-        state.streaming = Boolean(card.capabilities && card.capabilities.streaming);
-        const el = $("card");
-        el.hidden = false;
-        el.textContent = "";
+        if (!card || typeof card !== "object" ||
+            ![card.name, card.version, card.description].every((value) => typeof value === "string") ||
+            !Array.isArray(card.skills) || card.skills.some((skill) => !skill ||
+              typeof skill.name !== "string" || typeof skill.description !== "string")) {
+          throw new Error("Invalid agent card: expected a name, version, description, and skills list.");
+        }
+        const streaming = card.capabilities?.streaming === true;
         const title = document.createElement("strong");
         title.textContent = `${card.name} v${card.version} — ${card.description}`;
         const skills = document.createElement("ul");
-        for (const skill of card.skills || []) {
+        for (const skill of card.skills) {
           const li = document.createElement("li");
           li.textContent = `${skill.name}: ${skill.description}`;
           skills.append(li);
         }
-        el.append(title, ` (streaming: ${state.streaming})`, skills);
-        setComposerEnabled(true);
+        // Validate and prepare the card before changing conversation authority.
+        // Session and approval identifiers belong only to the discovered endpoint.
+        if (baseUrl !== state.baseUrl) {
+          state.contextId = null;
+          state.taskId = null;
+          state.activeTaskId = null;
+          state.lastAgentText = "";
+          state.lastTaskState = null;
+          state.lastTraceId = null;
+          $("log").replaceChildren();
+        }
+        state.baseUrl = baseUrl;
+        state.streaming = streaming;
+        const el = $("card");
+        el.hidden = false;
+        el.replaceChildren(title, ` (streaming: ${state.streaming})`, skills);
         addBubble("system", state.contextId ? "Reconnected; the current conversation is preserved." : "Connected.");
       } catch (error) {
         // The most common failure here is CORS: the gateway route must carry
         // a `cors` policy allowing this page's origin (see the README).
         addBubble("error", `Could not fetch the agent card: ${error}. If the URL is reachable with curl, the route is likely missing a CORS policy for this page's origin.`);
+      } finally {
+        state.discovering = false;
+        updateControls();
+        if (state.baseUrl) $("base-url").value = state.baseUrl;
       }
     });
 
@@ -148,12 +188,14 @@
     //       "role": "user", "parts": [{ "kind": "text", "text": "..." }],
     //       "contextId": "<session>", "taskId": "<only when resuming>" } } }
     async function sendParts(parts) {
+      if (requestPending() || !state.baseUrl) return;
       const message = { kind: "message", messageId: crypto.randomUUID(), role: "user", parts };
       if (state.contextId) message.contextId = state.contextId; // keep one session
       if (state.taskId) message.taskId = state.taskId; // resume the paused task
       state.lastAgentText = ""; // new turn: reset the duplicate-artifact filter
       state.lastTaskState = null;
-      setComposerEnabled(false);
+      state.sending = true;
+      updateControls();
       try {
         if (state.streaming) {
           await streamMessage(message); // SSE: incremental task events
@@ -163,8 +205,9 @@
       } catch (error) {
         addBubble("error", String(error));
       } finally {
-        setComposerEnabled(true);
-        $("chat-input").focus();
+        state.sending = false;
+        updateControls();
+        ($("log").querySelector(".confirm input:not(:disabled)") || $("chat-input")).focus();
       }
     }
 
@@ -187,13 +230,20 @@
 
     // message/stream: an SSE response; every `data:` line is one JSON-RPC
     // response whose result is a Task, Message, TaskStatusUpdateEvent, or
-    // TaskArtifactUpdateEvent. Falls back to message/send if SSE never starts.
+    // TaskArtifactUpdateEvent. Retry only an explicit unsupported-method response:
+    // a JSON result may already have executed the turn, and errors are ambiguous.
     async function streamMessage(message) {
       const response = await postRpc("message/stream", { message });
       const contentType = response.headers.get("content-type") || "";
-      if (!response.ok || !contentType.includes("text/event-stream")) {
-        addBubble("system", "Streaming unavailable, falling back to message/send.");
-        return sendMessage(message);
+      if (!response.ok) throw new Error("HTTP " + response.status);
+      if (!contentType.includes("text/event-stream")) {
+        const rpc = await response.json();
+        if (rpc.error && rpc.error.code === -32601) {
+          addBubble("system", "Streaming method unavailable, falling back to message/send.");
+          return sendMessage(message);
+        }
+        if (rpc.error) throw new Error(`A2A error ${rpc.error.code}: ${rpc.error.message}`);
+        return handleResult(rpc.result);
       }
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
@@ -294,6 +344,7 @@
       reviewP.textContent =
         "Review the evidence and tool results above before deciding. When execution resumes, the action re-reads current state and the write transaction validates the target; approval applies to these arguments, not to a frozen snapshot.";
       const form = document.createElement("form");
+      form.dataset.taskId = taskId || "";
       const rationaleLabel = document.createElement("label");
       rationaleLabel.textContent = "Approval rationale";
       const rationale = document.createElement("input");
@@ -310,11 +361,10 @@
       box.append(title, hintP, details, reviewP, form);
       $("log").append(box);
       box.scrollIntoView({ block: "end" });
-      rationale.focus();
 
       const answer = (confirmed) => {
-        form.querySelectorAll("input,button").forEach((el) => (el.disabled = true));
-        state.taskId = taskId; // resume this exact paused task
+        if (requestPending() || form.dataset.answered === "true" || state.taskId !== taskId) return;
+        form.dataset.answered = "true";
         addBubble("user", (confirmed ? "Approved: " : "Denied. ") + rationale.value);
         // Reply shape consumed by ADK's confirmation processor:
         //   data: { "id": "<same call-id>", "name": "adk_request_confirmation",
@@ -330,11 +380,13 @@
         if (rationale.value.trim()) answer(true);
       });
       deny.addEventListener("click", () => answer(false));
+      updateControls();
     }
 
     // --------------------------- Composer ----------------------------------
     $("chat-form").addEventListener("submit", (event) => {
       event.preventDefault();
+      if (requestPending() || !state.baseUrl) return;
       const text = $("chat-input").value.trim();
       if (!text) return;
       addBubble("user", text);
@@ -344,8 +396,9 @@
 
     $("task-cancel").addEventListener("click", async () => {
       const taskId = state.activeTaskId;
-      if (!taskId) return;
-      $("task-cancel").disabled = true;
+      if (!taskId || state.discovering || state.canceling) return;
+      state.canceling = true;
+      updateControls();
       try {
         const response = await postRpc("tasks/cancel", { id: taskId });
         if (!response.ok) throw new Error("HTTP " + response.status);
@@ -355,7 +408,9 @@
         showState(rpc.result.status.state);
       } catch (error) {
         addBubble("error", `Could not cancel the active task: ${error}`);
-        $("task-cancel").disabled = !state.activeTaskId;
+      } finally {
+        state.canceling = false;
+        updateControls();
       }
     });
   </script>

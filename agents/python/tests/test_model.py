@@ -15,25 +15,32 @@ from pydantic import SecretStr
 
 from agent import model
 from agent.config import ModelProvider
-from agent.model import FallbackLlm
+
+
+class _ProviderError(RuntimeError):
+    """The ``status_code`` shape that OpenAI-compatible SDK errors expose."""
+
+    def __init__(self, message: str, status_code: int) -> None:
+        super().__init__(message)
+        self.status_code = status_code
 
 
 class _StubLlm(model.BaseLlm):
     """A model stub that answers, raises up front, or raises after one chunk."""
 
     reply: str = ""
-    fail: bool = False
+    fail_status: int | None = None
     fail_after_yield: bool = False
 
     async def generate_content_async(
         self, llm_request: LlmRequest, stream: bool = False
     ) -> AsyncGenerator[LlmResponse]:
         del llm_request, stream
-        if self.fail:
-            raise ConnectionError(f"{self.model} is down")
+        if self.fail_status is not None:
+            raise _ProviderError(f"{self.model} is down", self.fail_status)
         yield LlmResponse(content=types.Content(role="model", parts=[types.Part(text=self.reply)]))
         if self.fail_after_yield:
-            raise ConnectionError(f"{self.model} dropped mid-stream")
+            raise _ProviderError(f"{self.model} dropped mid-stream", 503)
 
 
 async def _collect(llm: model.BaseLlm) -> list[str]:
@@ -179,7 +186,7 @@ def test_build_model_without_fallback_returns_bare_primary(monkeypatch) -> None:
     monkeypatch.setattr(model.settings, "model_fallback", None)
     configured = model.build_model()
     assert isinstance(configured, OpenAILlm)
-    assert not isinstance(configured, FallbackLlm)
+    assert not isinstance(configured, model.FallbackModel)
 
 
 def test_build_model_with_fallback_wraps_two_distinct_models(monkeypatch) -> None:
@@ -189,39 +196,52 @@ def test_build_model_with_fallback_wraps_two_distinct_models(monkeypatch) -> Non
     monkeypatch.setattr(model.settings, "model", "qwen3:4b-instruct")
     monkeypatch.setattr(model.settings, "model_fallback", "qwen3:1.7b")
     configured = model.build_model()
-    assert isinstance(configured, FallbackLlm)
-    assert configured.primary.model == "qwen3:4b-instruct"
-    assert configured.fallback.model == "qwen3:1.7b"
+    assert isinstance(configured, model.FallbackModel)
+    assert [entry.model for entry in configured.models if isinstance(entry, model.BaseLlm)] == [
+        "qwen3:4b-instruct",
+        "qwen3:1.7b",
+    ]
+    assert configured.model == "qwen3:4b-instruct"  # spans and reports attribute the primary
 
 
-def test_fallback_engages_only_when_primary_fails_before_responding() -> None:
-    primary = _StubLlm(model="primary", fail=True)
+def _chain(primary: _StubLlm, fallback: _StubLlm) -> model.FallbackModel:
+    return model.FallbackModel(models=[primary, fallback])
+
+
+@pytest.mark.parametrize("status", [429, 500, 502, 503, 504])
+def test_fallback_engages_on_a_retriable_status_before_responding(status) -> None:
+    primary = _StubLlm(model="primary", fail_status=status)
     fallback = _StubLlm(model="fallback", reply="from fallback")
-    chain = FallbackLlm(model="primary", primary=primary, fallback=fallback)
-    assert asyncio.run(_collect(chain)) == ["from fallback"]
+    assert asyncio.run(_collect(_chain(primary, fallback))) == ["from fallback"]
+
+
+@pytest.mark.parametrize("status", [400, 401, 404, 408])
+def test_fallback_does_not_mask_a_request_or_ambiguous_timeout_error(status) -> None:
+    """A bad request fails on every model; a 408 may already have been processed and billed."""
+    primary = _StubLlm(model="primary", fail_status=status)
+    fallback = _StubLlm(model="fallback", reply="from fallback")
+    with pytest.raises(_ProviderError, match="primary is down"):
+        asyncio.run(_collect(_chain(primary, fallback)))
 
 
 def test_healthy_primary_is_used_and_fallback_untouched() -> None:
     primary = _StubLlm(model="primary", reply="from primary")
-    fallback = _StubLlm(model="fallback", fail=True)  # would raise if ever called
-    chain = FallbackLlm(model="primary", primary=primary, fallback=fallback)
-    assert asyncio.run(_collect(chain)) == ["from primary"]
+    fallback = _StubLlm(model="fallback", fail_status=503)  # would raise if ever called
+    assert asyncio.run(_collect(_chain(primary, fallback))) == ["from primary"]
 
 
 def test_mid_stream_failure_is_not_masked_by_fallback() -> None:
     primary = _StubLlm(model="primary", reply="partial", fail_after_yield=True)
     fallback = _StubLlm(model="fallback", reply="from fallback")
-    chain = FallbackLlm(model="primary", primary=primary, fallback=fallback)
-    with pytest.raises(ConnectionError, match="dropped mid-stream"):
-        asyncio.run(_collect(chain))
+    with pytest.raises(_ProviderError, match="dropped mid-stream"):
+        asyncio.run(_collect(_chain(primary, fallback)))
 
 
 def test_both_models_down_surfaces_the_fallback_error() -> None:
-    primary = _StubLlm(model="primary", fail=True)
-    fallback = _StubLlm(model="fallback", fail=True)
-    chain = FallbackLlm(model="primary", primary=primary, fallback=fallback)
-    with pytest.raises(ConnectionError, match="fallback is down"):
-        asyncio.run(_collect(chain))
+    primary = _StubLlm(model="primary", fail_status=503)
+    fallback = _StubLlm(model="fallback", fail_status=503)
+    with pytest.raises(_ProviderError, match="fallback is down"):
+        asyncio.run(_collect(_chain(primary, fallback)))
 
 
 def test_close_model_closes_materialized_primary_and_fallback_clients(monkeypatch) -> None:
@@ -250,7 +270,7 @@ def test_close_model_closes_materialized_primary_and_fallback_clients(monkeypatc
     fallback_client.close.side_effect = record_close
     monkeypatch.setitem(primary.__dict__, "_openai_client", primary_client)
     monkeypatch.setitem(fallback.__dict__, "_openai_client", fallback_client)
-    chain = FallbackLlm(model="primary", primary=primary, fallback=fallback)
+    chain = model.FallbackModel(models=[primary, fallback])
 
     async def close() -> None:
         expected_loop = asyncio.get_running_loop()
@@ -296,3 +316,17 @@ def test_close_model_closes_materialized_gemini_async_and_sync_clients(monkeypat
         assert calls == [("async", expected_loop), ("sync", expected_loop)]
 
     asyncio.run(close())
+
+
+def test_close_model_skips_fallback_entries_named_by_string() -> None:
+    """ADK resolves string entries lazily; closing must not materialize or touch them."""
+    closed = model.ResilientOpenAILlm(
+        model="primary",
+        openai_base_url="http://localhost:11434/v1",
+        openai_api_key=SecretStr("local-marker"),
+        timeout_s=10,
+        retries=0,
+    )
+    chain = model.FallbackModel(models=[closed, "unresolved-fallback-name"])
+    asyncio.run(model.close_model(chain))
+    assert "_openai_client" not in closed.__dict__

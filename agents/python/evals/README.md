@@ -31,4 +31,4 @@ Add regression cases to `ops.evalset.json`; the report and workflow files each k
 
 The primary learner provider is now native Gemini; scheduled account-free platform evidence still names its Ollama/fake profile explicitly. The main reference acceptance target is 80% aggregate success plus all named critical cases. Historical 33% baselines are not completion evidence. Begin with the smaller recorded-answer calibration in the workshop before using these advanced runners.
 
-The locked ADK evaluator still imports `rouge-score` even though the course does not select its overlap metric. Its NLTK dependency currently blocks the full advisory gate; see [the unreleased qualification limit](../../../SUPPORT.md#current-unreleased-qualification-limit).
+The locked ADK evaluator still imports `rouge-score` even though the course does not select its overlap metric. Its NLTK dependency carries an advisory whose affected APIs the course never calls; see [the scoped exception](../../../SUPPORT.md#active-dependency-advisory-exception).

@@ -46,6 +46,7 @@ export const options = {
   },
   thresholds: {
     // Latency budgets — starting points for localhost, tune to your hardware.
+    checks: ['rate==1'],
     http_req_failed: ['rate<0.01'],
     'http_req_duration{op:raw_health}': ['p(95)<50'],
     'http_req_duration{op:gateway_health}': ['p(95)<100'],

@@ -1,7 +1,7 @@
 // MCP read path: JSON-RPC `tools/call` through the agentgateway MCP listener.
 //
 // Target (host quickstart default): http://localhost:3000/mcp — agentgateway
-// proxies to the raw FastMCP server on :8000/mcp. The script speaks MCP
+// proxies to the raw MCP server on :8000/mcp. The script speaks MCP
 // streamable HTTP: each VU performs the `initialize` handshake once, echoes
 // the negotiated `MCP-Protocol-Version` and any `Mcp-Session-Id` the gateway
 // issues, then loops `tools/call` on a read-only tool. Responses may arrive as
@@ -13,7 +13,7 @@
 // (HTTP 429), not the platform. Raise `maxTokens` in
 // infra/agentgateway/host/config.yaml to turn this into a real capacity probe,
 // or point MCP_URL at the raw server (http://localhost:8000/mcp) to isolate
-// FastMCP + SQLite from the gateway.
+// MCP server + SQLite from the gateway.
 //
 // Safety: only point this script at your own local stack.
 //
@@ -45,6 +45,7 @@ export const options = {
   },
   thresholds: {
     // Latency budget — a starting point for localhost, tune to your hardware.
+    checks: ['rate==1'], // HTTP 200 can still carry a JSON-RPC or tool error
     http_req_failed: ['rate<0.01'],
     'http_req_duration{op:tools_call}': ['p(95)<250'],
     mcp_rate_limited: ['count==0'], // any 429 means the gateway budget, not the platform, was measured
@@ -71,14 +72,14 @@ function post(payload, extraHeaders, op) {
 function parseMessage(res) {
   const contentType = res.headers['Content-Type'] || '';
   const body = String(res.body || '');
-  if (contentType.includes('text/event-stream')) {
-    const dataLines = body.split('\n').filter((line) => line.startsWith('data:'));
-    if (dataLines.length === 0) {
-      return null;
-    }
-    return JSON.parse(dataLines[dataLines.length - 1].slice('data:'.length));
-  }
   try {
+    if (contentType.includes('text/event-stream')) {
+      const dataLines = body.split('\n').filter((line) => line.startsWith('data:'));
+      if (dataLines.length === 0) {
+        return null;
+      }
+      return JSON.parse(dataLines[dataLines.length - 1].slice('data:'.length));
+    }
     return JSON.parse(body);
   } catch (error) {
     return null;
@@ -114,19 +115,27 @@ function handshake() {
   if (init.status === 429) {
     rateLimited.add(1);
   }
-  if (init.status !== 200) {
-    fail(`initialize failed with HTTP ${init.status}: is the gateway + MCP stack running?`);
-  }
   const message = parseMessage(init);
-  if (!message || message.error || !message.result) {
-    fail(`initialize returned an error: ${init.body}`);
+  // fail() aborts an iteration; a failed check makes the threshold fail the run.
+  if (!check(init, {
+    'initialize is 200': (r) => r.status === 200,
+    'initialize negotiated a protocol': () => Boolean(
+      message && !message.error && message.result &&
+      typeof message.result.protocolVersion === 'string' && message.result.protocolVersion.trim(),
+    ),
+  })) {
+    fail('initialize failed: expected HTTP 200 and an MCP protocol version');
   }
   session = {
     id: init.headers['Mcp-Session-Id'] || null,
     protocolVersion: message.result.protocolVersion,
   };
   const initialized = post({ jsonrpc: '2.0', method: 'notifications/initialized' }, sessionHeaders(), 'initialized');
-  check(initialized, { 'initialized notification accepted': (r) => r.status === 202 });
+  if (initialized.status === 429) rateLimited.add(1);
+  if (!check(initialized, { 'initialized notification accepted': (r) => r.status === 202 })) {
+    session = null;
+    fail('initialized notification was rejected');
+  }
 }
 
 export default function () {

@@ -3,7 +3,7 @@
 
 [project]
 name = "agentops-agent"
-version = "0.7.0"
+version = "0.11.0"
 description = "The AgentOps Open Course reference agent, built with Google ADK 2.x."
 readme = "README.md"
 requires-python = ">=3.13,<3.14"
@@ -12,14 +12,13 @@ authors = [{ name = "Médéric HURIER", email = "agentops-open-course@fmind.dev"
 # --8<-- [start:runtime-dependencies]
 dependencies = [
   "aiosqlite>=0.22.1,<0.23", # async SQLite driver for ADK sessions and the A2A task store
-  "google-adk[a2a]>=2.6.1", # locked agent runtime + A2A serving; avoid the unused Spanner `db` extra
-  "a2a-sdk>=1.1.2", # A2A protocol types + server (Ch. 3.6); 1.x reworked the type surface — kept current with ADK's <2 cap
-  # Model Context Protocol server (FastMCP) + client (McpToolset), Ch. 3.3.
-  # Capped at <2 because the locked ADK declares `mcp<2`. Lift this bound only with an ADK
-  # release that supports MCP 2.x; keeping the direct dependency aligned makes the inherited
-  # compatibility constraint explicit.
-  "mcp>=1.28.1,<2",
-  "openai>=2.51.0", # OSS SDK used by ADK OpenAILlm for direct Ollama or agentgateway
+  "google-adk[a2a]>=2.10.0", # locked agent runtime + A2A serving; avoid the unused Spanner `db` extra
+  "a2a-sdk>=1.1.5", # A2A protocol types + server (Ch. 3.6); 1.x reworked the type surface — kept current with ADK's <2 cap
+  # Model Context Protocol server (MCPServer) + client (McpToolset), Ch. 3.3. SDK 2.x speaks the
+  # 2026-07-28 revision and still serves 2025-era clients such as agentgateway. ADK resolves 1.x
+  # by default, so the course opts in explicitly; the <3 cap mirrors ADK's declared support.
+  "mcp>=2.2.0,<3",
+  "openai>=3.19.2", # OSS SDK used by ADK OpenAILlm for direct Ollama or agentgateway
   "opentelemetry-exporter-otlp-proto-http>=1.42.0,<=1.42.1", # match ADK's OTel cap; export to Collector/MLflow
   "pydantic-settings>=2.14.2",
   "presidio-analyzer==2.2.364", # paired release; 2.2.363 caps cryptography below the security floor
@@ -84,10 +83,10 @@ override-dependencies = ["cryptography>=50.0.0"]
 
 [[tool.agentops.compatibility-holds]]
 package = "mcp"
-constraint = "<2"
+constraint = "<3"
 owner = "google-adk"
-owner-constraints = ["mcp<2"]
-validation = "MCP/A2A boundary tests"
+owner-constraints = ["mcp<3"]
+validation = "MCP/A2A boundary tests + smoke:host"
 
 [[tool.agentops.compatibility-holds]]
 package = "opentelemetry-exporter-otlp-proto-http"
@@ -198,7 +197,7 @@ xfail_strict = true
 filterwarnings = [
   "error",
   'ignore:^BaseAgentConfig is deprecated and will be removed in future versions\. Config is now loaded via reflection so the separate config class is no longer needed\.$:DeprecationWarning',
-  'ignore:^\[EXPERIMENTAL\] feature FeatureName\.(JSON_SCHEMA_FOR_FUNC_DECL|PLUGGABLE_AUTH|TOOL_CONFIRMATION) is enabled\.$:UserWarning',
+  'ignore:^\[EXPERIMENTAL\] feature FeatureName\.(FALLBACK_MODEL|JSON_SCHEMA_FOR_FUNC_DECL|PLUGGABLE_AUTH|TOOL_CONFIRMATION) is enabled\.$:UserWarning',
   'ignore:^\[EXPERIMENTAL\] (_?A2a\w+|AgentCardBuilder|AgentRunRequest|convert_\w+|to_a2a):UserWarning',
   'ignore:^Using `httpx` with `starlette\.testclient` is deprecated; install `httpx2` instead\.$:UserWarning',
   # a2a-sdk 1.x proto validator still reads the deprecated `FieldDescriptor.label`; protobuf 6.x

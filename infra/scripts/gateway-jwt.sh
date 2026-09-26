@@ -7,6 +7,8 @@
 # Usage: infra/scripts/gateway-jwt.sh [subject] [ttl-seconds]
 #   subject      JWT `sub` claim: ops-admin (default) or ops-viewer
 #   ttl-seconds  token lifetime (default: 3600)
+# AGENTOPS_GATEWAY_AUTH_DIR overrides the output directory shared with the host
+# wrapper; by default it is infra/agentgateway/host/auth under the repository.
 
 # shellcheck source=scripts/lib.sh
 source "$(dirname "${BASH_SOURCE[0]}")/../../scripts/lib.sh"
@@ -15,12 +17,15 @@ require_cmd openssl gateway
 require_cmd xxd gateway
 
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
-out_dir="infra/agentgateway/host/auth"
+out_dir="${AGENTOPS_GATEWAY_AUTH_DIR:-infra/agentgateway/host/auth}"
 key_file="${out_dir}/jwt-signing-key.pem"
 jwks_file="${out_dir}/jwks.json"
 subject="${1:-ops-admin}"
 ttl="${2:-3600}"
 
+# The public JWKS needs no broader access than the private demo material here;
+# the wrapper stages its own readable container copy without the signing key.
+umask 077
 mkdir -p "${out_dir}"
 
 b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }

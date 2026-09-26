@@ -6,8 +6,10 @@
 from __future__ import annotations
 
 import pathlib
+import subprocess
 import sys
 import unittest
+from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
@@ -75,6 +77,35 @@ class ReleaseFixtureTests(unittest.TestCase):
 
 
 class ParserFixtureTests(unittest.TestCase):
+    def test_mise_command_compares_exact_project_pins_with_new_releases(self) -> None:
+        executable = "/usr/bin/mise"
+        command = (executable, "outdated", "--json", "--bump", "--local")
+        response = subprocess.CompletedProcess(
+            command,
+            0,
+            stdout='{"aqua:astral-sh/uv":{"requested":"0.12.0","latest":"0.12.17"}}',
+            stderr="",
+        )
+        with (
+            mock.patch.object(freshness_report.shutil, "which", return_value=executable),
+            mock.patch.object(freshness_report.subprocess, "run", return_value=response) as run,
+        ):
+            updates, error = freshness_report.run_mise_outdated()
+
+        run.assert_called_once_with(
+            command,
+            cwd=freshness_report.ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        self.assertIsNone(error)
+        self.assertEqual(
+            updates,
+            {"aqua:astral-sh/uv": freshness_report.MiseUpdate(requested="0.12.0", latest="0.12.17")},
+        )
+
     def test_mise_outdated_keeps_only_actionable_string_versions(self) -> None:
         fixture = {
             "uv": {"requested": "0.11.0", "latest": "0.12.0", "current": "0.11.0"},

@@ -89,37 +89,23 @@ Each page also owns the manifests below, so a symptom maps to one file:
 
 ## What changes between the local and GKE overlays?
 
-Six values change between local k3d and GKE. Everything else is the same file.
+Three profiles reuse one base and make their model, identity, storage, and egress differences explicit.
 
-**Kustomize** renders YAML from a shared `base/` folder plus a small per-environment `overlays/` folder of patches; `kubectl kustomize <dir>` prints the result.
+**Kustomize** renders YAML from a shared `base/` plus per-environment `overlays/` patches; `kubectl kustomize <dir>` prints the result.
 
-Both overlays layer onto the same `infra/k8s/base` Kustomize base, so ports, the MCP read route, the A2A image contract, the state PVCs, and the OTel pipeline are byte-identical across environments. A **PersistentVolumeClaim (PVC)** is a disk the cluster keeps and re-attaches to a replacement pod.
+| Profile        | Model route                                            | Provider credential                                  | Runtime task                        |
+| -------------- | ------------------------------------------------------ | ---------------------------------------------------- | ----------------------------------- |
+| `local-gemini` | Gemini API through agentgateway                        | `gemini-provider` Secret mounted only by the gateway | `mise run platform:dev`             |
+| `local`        | Host Ollama or deterministic fake through agentgateway | No upstream provider key                             | `mise run platform:dev:ollama`      |
+| `gke`          | Vertex Gemini through agentgateway                     | Workload Identity                                    | Approved `mise run gke:deploy` only |
 
-Skaffold selects the overlay with `-p local` or `-p gke` and never mixes the two.
+The main local profile extends `local`, replacing its model configuration, key mount, and model egress port. Both local profiles include Prometheus and Alertmanager; GKE leaves those services to an external operator. Local MLflow artifacts use a PVC; GKE uses GCS. The A2A and MCP contracts remain shared, but the rendered manifests are not byte-identical.
 
-??? note "Deeper: the row-by-row overlay diff"
-
-    Only environment-specific values differ, and every one is a small patch you can diff:
-
-    | Concern          | `overlays/local`                        | `overlays/gke`                                               |
-    | ---------------- | --------------------------------------- | ------------------------------------------------------------ |
-    | Gateway config   | `agentgateway/k3d`                      | `agentgateway/gke`                                           |
-    | Model backend    | `qwen3:4b-instruct` (host Ollama)       | `gemini-3.5-flash` (Vertex)                                  |
-    | Image registry   | `registry.localhost:5050`               | Artifact Registry (`…-docker.pkg.dev`)                       |
-    | Identity         | in-cluster ServiceAccounts              | GKE Workload Identity annotations (`workload-identity.yaml`) |
-    | MLflow artifacts | local PVC (`/var/lib/mlflow/artifacts`) | GCS bucket from the OpenTofu `mlflow_bucket_name` output     |
-    | Egress exception | any IPv4 TCP `:11434` (intended Ollama) | any IPv4 `:443` (intended Vertex) plus WIF `:987`/`:988`     |
-
-    Two of those rows are a `patches:` entry in exactly one overlay's `kustomization.yaml`, not in both:
-
-    1. The model-backend override (`qwen3:4b-instruct`) lives only in `overlays/local`; `overlays/gke` inherits `gemini-3.5-flash` from the base `infra/kagent/modelconfig.yaml`.
-    1. The MLflow GCS placeholder lives only in `overlays/gke`; `render-gke.sh` resolves it from OpenTofu, while `overlays/local` inherits `/var/lib/mlflow/artifacts` from the base `infra/k8s/base/mlflow.yaml`.
-
-    The egress rows are `NetworkPolicy` additions [6.5. Platform Gateway](./6.5. Platform Gateway.md) explains and `scripts/check-infra.sh` asserts.
+Both hosted profiles consume provider quota. Only `local` can use the deterministic fake; a successful fake-backed platform check does not prove either Gemini route. [6.5. Platform Gateway](./6.5.%20Platform%20Gateway.md) owns networking and [6.6. Platform Delivery](./6.6.%20Platform%20Delivery.md) owns the optional cloud boundary.
 
 ## What breaks first, and where do you look?
 
-The same handful of failures recur across this chapter and the next. Every one is a wiring mistake, not a bug in the agent.
+The same handful of failures recur across this chapter and the next. Start with configuration, then use logs and tests to distinguish it from an application failure.
 
 Each row below is a symptom you can observe, the misconfiguration that usually causes it, and the page that owns the fix:
 
@@ -128,13 +114,13 @@ Each row below is a symptom you can observe, the misconfiguration that usually c
 | No traces appear in MLflow                            | An `http/protobuf` client points at `:4317` instead of `:4318`, or `OTEL_EXPORTER_OTLP_ENDPOINT` is unset entirely                        | [7.1. Tracing](../7. Observability/7.1. Tracing.md#how-do-you-point-a-host-agent-at-the-collector)                |
 | Agent card fails to resolve though the pod is healthy | `AGENT_A2A_HOST` was left at `0.0.0.0` or the loopback default in-cluster, so the card advertises an uncallable URL                       | [6.3. Platform Agents](./6.3. Platform Agents.md#why-does-the-agent-advertise-a-different-a2a-host-than-it-binds) |
 | Dashboards are flat / a port-forward returns nothing  | Host Compose and the in-cluster stack were started together and bound the same local ports                                                | [6.2. Platform Install](./6.2. Platform Install.md#how-do-you-start-the-local-kubernetes-workloads)               |
-| Agent turns fail in k3d                               | Ollama is not reachable from pods because it binds loopback instead of the k3d bridge                                                     | [6.2. Platform Install](./6.2. Platform Install.md#how-do-you-start-the-local-kubernetes-workloads)               |
+| Agent turns fail in k3d                               | Missing Gemini Secret or provider quota; on the optional Ollama profile, a loopback-only model listener                                   | [6.2. Platform Install](./6.2. Platform Install.md#how-do-you-start-the-local-kubernetes-workloads)               |
 | Eval evidence vanished                                | `MLFLOW_TRACKING_URI` was unset, so `mise run eval:mlflow` wrote to the local `evals/mlflow.db` no one else sees                          | [7.0. Reproducibility](../7. Observability/7.0. Reproducibility.md#how-do-you-select-the-mlflow-destination)      |
 | Pods stay `Pending`, or a container dies with `137`   | The machine is out of memory: host Compose and the in-cluster stack are running together, or the model plus k3s exceeds what the host has | [6.2. Platform Install](./6.2. Platform Install.md#what-do-you-do-when-the-machine-runs-out-of-memory)            |
 
 ## What proves this chapter worked?
 
-One command renders and validates both overlays offline: no live cluster, no GCP project, no model.
+One command renders and validates all three overlays offline: no live cluster, no GCP project, no model.
 
 ```bash
 mise run check:infra
@@ -151,10 +137,10 @@ The chapter's required outcome is local. GCP stays at `tofu plan`: [6.6. Platfor
 **You are done when:**
 
 - `mise run doctor:platform` exits 0.
-- `mise run check:infra` exits 0, having rendered and validated both the `local` and the `gke` overlay.
+- `mise run check:infra` exits 0, having rendered and validated `local`, `local-gemini`, and `gke`.
 - You can name, for any of the eight sub-pages, the manifest it owns.
 - You can say why no cluster exists yet, and which page creates one.
 - You finished the required drill in [6.0. Platform](./6.0.%20Platform.md#your-turn-how-do-you-prove-a-manifest-change-reaches-the-render): your base edit showed up in both renders, your overlay edit in one, `mise run check:infra` refused the pinned model value, and `git restore infra/k8s` put the tree and the gate back.
-- Without reopening Chapter 5, you can name the three protocols agentgateway fronts and say why no cluster Service publishes any of them.
+- Without reopening Chapter 5, you can name the three protocols agentgateway fronts and say why their ClusterIP Services expose no public endpoint.
 
 Continue to [6.0. Platform](./6.0.%20Platform.md) when `mise run check:infra` passes without a cluster, a GCP project, or a model.

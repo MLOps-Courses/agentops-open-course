@@ -12,8 +12,9 @@ import os
 from typing import Literal
 
 import uvicorn
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 from mcp.server.transport_security import TransportSecuritySettings
+from mcp.types import ToolAnnotations
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
@@ -53,20 +54,25 @@ def _allowed_hosts() -> list[str]:
     return hosts
 
 
-mcp = FastMCP(
-    "agentops-agent",
-    host=os.environ.get("MCP_HOST", "127.0.0.1"),
-    port=int(os.environ.get("MCP_PORT", "8000")),
-    stateless_http=True,
-    transport_security=TransportSecuritySettings(
-        enable_dns_rebinding_protection=True,
-        allowed_hosts=_allowed_hosts(),
-        allowed_origins=list(_ALLOWED_ORIGINS),
-    ),
+# --8<-- [start:mcp-server-config]
+HOST = os.environ.get("MCP_HOST", "127.0.0.1")
+PORT = int(os.environ.get("MCP_PORT", "8000"))
+# MCP SDK 2.x configures transports when the ASGI app is built, not on the server object.
+TRANSPORT_SECURITY = TransportSecuritySettings(
+    enable_dns_rebinding_protection=True,
+    allowed_hosts=_allowed_hosts(),
+    allowed_origins=list(_ALLOWED_ORIGINS),
 )
+# Annotations are client-visible hints, not enforcement: the client allowlist, gateway
+# policy, and in-process guarded writes remain the security boundary.
+READ_ONLY = ToolAnnotations(read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False)
 
-# Re-expose the read-only tools over MCP. FastMCP derives each tool's schema from the same
+mcp = MCPServer("agentops-agent")
+# --8<-- [end:mcp-server-config]
+
+# Re-expose the read-only tools over MCP. MCPServer derives each tool's schema from the same
 # type hints and docstrings the ADK function tools already carry.
+# --8<-- [start:mcp-read-surface]
 for _tool in (
     tools.list_incidents,
     tools.get_incident,
@@ -75,10 +81,11 @@ for _tool in (
     memory.get_runbook,
     memory.search_runbooks,
 ):
-    mcp.add_tool(_tool)
+    mcp.add_tool(_tool, annotations=READ_ONLY)
+# --8<-- [end:mcp-read-surface]
 
 
-# Kubernetes-facing health endpoints on the HTTP transports (Ch. 6). FastMCP
+# Kubernetes-facing health endpoints on the HTTP transports (Ch. 6). MCPServer
 # serves custom routes without auth — suitable exactly for probes.
 @mcp.custom_route("/healthz", methods=["GET"])
 async def healthz(request: Request) -> JSONResponse:
@@ -104,11 +111,15 @@ async def livez(request: Request) -> JSONResponse:
 # --8<-- [start:mcp-server-transport]
 def _run_http(transport: Literal["sse", "streamable-http"]) -> None:
     """Serve MCP HTTP with the same bounded SIGTERM drain as A2A."""
-    app = mcp.sse_app() if transport == "sse" else mcp.streamable_http_app()
+    app = (
+        mcp.sse_app(transport_security=TRANSPORT_SECURITY)
+        if transport == "sse"
+        else mcp.streamable_http_app(stateless_http=True, transport_security=TRANSPORT_SECURITY)
+    )
     uvicorn.run(
         app,
-        host=mcp.settings.host,
-        port=mcp.settings.port,
+        host=HOST,
+        port=PORT,
         log_level=mcp.settings.log_level.lower(),
         timeout_graceful_shutdown=int(settings.drain_timeout_s),
     )

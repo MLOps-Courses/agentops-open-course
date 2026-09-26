@@ -45,7 +45,7 @@ Stability is split by payload, because a course page and a database schema fail 
 - the `agent` Python distribution, its package-level `root_agent`, and the `agent`, `workflow`, and `coordinator` `AGENT_ENTRYPOINT` values;
 - documented environment variables, defaults, validation rules, and the network ports listed in `AGENTS.md`;
 - immutable seed data, writable-state separation, SQLite schema versions, append-only audit behavior, and backup snapshot format;
-- the documented six read-only MCP tools, the guarded in-process write tools, and the A2A task, streaming, approval, reconnect, persistence, cancellation, and error behavior;
+- the documented six read-only MCP tools (served to MCP revisions 2025-11-25 and 2026-07-28), the guarded in-process write tools, and the A2A task, streaming, approval, reconnect, persistence, cancellation, and error behavior;
 - the host, local k3d, and optional GKE configuration shapes; Kubernetes resource names; image names; and versioned GHCR tags.
 
 **Course prose** gets exactly one guarantee: published course URLs are never left to 404. Chapters may be reordered, pages renamed, split, merged, or rewritten in any release, and a moved page keeps a redirect from its previous URL. Pedagogy improves faster than schemas do, and freezing page names would only protect the wrong thing.
@@ -119,12 +119,16 @@ The small workshop demonstrates patterns. The full reference owns persistent A2A
 
 ## Migrating to the Python developer and platform course
 
-This unreleased redesign changes the default provider from local Ollama to native Gemini. Existing Ollama users should keep `AGENT_MODEL_PROVIDER=openai-compatible`, `AGENT_MODEL=qwen3:4b-instruct`, `OPENAI_BASE_URL=http://127.0.0.1:11434/v1`, and the non-secret `OPENAI_API_KEY=local-ollama` explicit in their configuration.
+Version 0.11.0 returns the course to Python after the Go line (v0.9.0 and v0.9.1). The Go reference stays readable on the `go` branch and its release tags; it receives no further fixes. Every URL the Go site published redirects to the matching Python page, and pages without a Python equivalent redirect to the nearest chapter.
+
+This redesign changes the default provider from local Ollama to native Gemini. Existing Ollama users should keep `AGENT_MODEL_PROVIDER=openai-compatible`, `AGENT_MODEL=qwen3:4b-instruct`, `OPENAI_BASE_URL=http://127.0.0.1:11434/v1`, and the non-secret `OPENAI_API_KEY=local-ollama` explicit in their configuration.
 
 Use `gateway:host:ollama` and `platform:dev:ollama` for the existing local-model profiles. The default host and platform tasks now select Gemini and need its separately configured credential. The Python state schema and seed are unchanged; learner files under `learning/` are independent of runtime state. Do not infer a qualified live Gemini deployment from the offline migration checks.
 
-## Current unreleased qualification limit
+## Active dependency advisory exception
 
-The development, evaluation, and framework-comparison dependency profiles include `rouge-score`, because the locked ADK evaluator imports it even when the configured metric is tool trajectory. It brings `nltk==3.10.3`, which the package audit rejects for `PYSEC-2026-3740`. The [upstream advisory](https://github.com/nltk/nltk/security/advisories/GHSA-8mgp-746c-j5xp) lists no patched version as checked on 2026-09-12.
+The development, evaluation, and framework-comparison dependency profiles include `rouge-score`, because ADK 2.10's evaluator registry imports it even when the configured metric is tool trajectory. It brings `nltk==3.10.3`, which carries `PYSEC-2026-3740`: path traversal through NLTK's `TransitionParser`, `AveragedPerceptron`, `PerceptronTagger`, and maxent parameter APIs. The [upstream advisory](https://github.com/nltk/nltk/security/advisories/GHSA-8mgp-746c-j5xp) lists no patched version as checked on 2026-09-26.
 
-The runtime-only learner/agent and MLflow server profiles exclude NLTK and pass the package advisory audit. The full `mise run check` remains blocked until the dependency can be removed without breaking evaluation or an upstream fix is qualified. No advisory exception or scorer bypass is applied.
+This repository never reaches those APIs: `rouge-score` imports only NLTK's Porter stemmer and sentence tokenizer, and the course's ADK evaluation scores tool trajectories. Neither published image contains NLTK, because both install runtime dependencies only. `scripts/check-vulnerabilities.sh` therefore ignores exactly this advisory in those three tooling audits. The runtime and MLflow audits keep zero exceptions, so NLTK reaching a shipped profile still fails the gate.
+
+Remove the exception when NLTK publishes a fixed release or ADK stops importing ROUGE eagerly. Re-check it at every release and freshness audit.

@@ -997,7 +997,7 @@ def check_source_versions(
         (
             "k6",
             parsed_owners["k6"],
-            {"docs/7. Observability/7.2. Monitoring.md": 4},
+            {},  # Course commands use load:* tasks; k6 versions stay in mise.toml.
             re.compile(r"k6@(\d+\.\d+\.\d+)", re.IGNORECASE),
         ),
         (

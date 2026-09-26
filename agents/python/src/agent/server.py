@@ -602,8 +602,7 @@ def create_app(agent: BaseAgent | None = None) -> Starlette:
         # a2a-sdk exposes duplicate aliases in its type surface, while this is
         # the concrete TaskStore implementation accepted at runtime.
         task_store=cast("TaskStore", runtime.task_store),
-        # ADK documents an async context manager here but annotates an iterator.
-        lifespan=cast("Callable[[Starlette], AsyncIterator[None]]", lifespan),
+        lifespan=lifespan,
         agent_executor_factory=_agent_executor,
     )
     app.state.runtime = runtime

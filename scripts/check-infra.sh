@@ -16,7 +16,8 @@ require_cmd tflint gcp
 require_cmd promtool platform
 
 mkdir -p .agents/tmp
-tmp_dir=$(mktemp -d .agents/tmp/infra-check.XXXXXX)
+tmp_dir=$(mktemp -d "${PWD}/.agents/tmp/infra-check.XXXXXX")
+trap 'rm -rf -- "${tmp_dir}"' EXIT
 readonly kagent_schema_location='infra/kagent/schemas/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
 
 # Rendering must never consult the maintainer's active cluster. Skaffold and
@@ -26,16 +27,10 @@ export KUBECONFIG=/dev/null
 export AGENT_SOURCE_COMMIT
 AGENT_SOURCE_COMMIT="$(git rev-parse HEAD)"
 
-# The secured host profile references demo TLS/JWT material that stays
-# gitignored. Generate it on demand for validation, but remove it again when
-# this script created it: `mise run secure` rightly flags private keys in the
-# tree, and a learner who never ran Chapter 5.5 must keep a clean scan.
-gateway_auth_dir="infra/agentgateway/host/auth"
-cleanup_gateway_auth=0
-if [[ ! -d "${gateway_auth_dir}" ]]; then
-	cleanup_gateway_auth=1
-fi
-trap 'rm -rf "${tmp_dir}"; [[ "${cleanup_gateway_auth}" == "0" ]] || rm -rf "${gateway_auth_dir}"' EXIT
+# Always validate with fresh, isolated demo material. Existing learner keys may
+# be expired or in use; this gate must neither reuse nor change their directory.
+gateway_auth_dir="${tmp_dir}/auth"
+export AGENTOPS_GATEWAY_AUTH_DIR="${gateway_auth_dir}"
 
 # One source of truth for the alerting rules (Ch. 7.2): the Compose stack's file
 # is a symlink to the overlay's, so both planes evaluate identical expressions.
@@ -343,6 +338,21 @@ infra/scripts/check-state.sh
 
 infra/scripts/gateway-tls.sh
 infra/scripts/gateway-jwt.sh >/dev/null
+agents/python/.venv/bin/python - "${gateway_auth_dir}" <<'PY'
+import stat
+import sys
+from pathlib import Path
+
+directory = Path(sys.argv[1])
+if stat.S_IMODE(directory.stat().st_mode) != 0o700:
+    raise SystemExit("isolated gateway auth directory must be mode 0700")
+for name in (
+    "ca-cert.pem", "ca-key.pem", "tls-cert.pem", "tls-key.pem",
+    "jwt-signing-key.pem", "jwks.json",
+):
+    if stat.S_IMODE((directory / name).stat().st_mode) != 0o600:
+        raise SystemExit(f"isolated gateway auth file {name} must be mode 0600")
+PY
 grep -Fxq \
 	'# SSL_CERT_FILE=../../infra/agentgateway/host/auth/ca-cert.pem' \
 	.env.example
@@ -354,9 +364,18 @@ openssl x509 \
 	-checkhost localhost \
 	-noout
 
-for gateway_config in infra/agentgateway/host/config.yaml infra/agentgateway/host/config-auth.yaml infra/agentgateway/k3d/config.yaml; do
+for gateway_config in infra/agentgateway/host/config.yaml infra/agentgateway/k3d/config.yaml; do
 	agentgateway --validate-only -f "${gateway_config}"
 done
+# Change paths only in validation copies, preserving canonical policy assertions.
+auth_validation_paths='
+	(.binds[].listeners[] | select(.tls.cert != null) | .tls.cert) = (strenv(AGENTOPS_GATEWAY_AUTH_DIR) + "/tls-cert.pem") |
+	(.binds[].listeners[] | select(.tls.key != null) | .tls.key) = (strenv(AGENTOPS_GATEWAY_AUTH_DIR) + "/tls-key.pem") |
+	(.binds[].listeners[].routes[] | select(.policies.jwtAuth.jwks.file != null) | .policies.jwtAuth.jwks.file) = (strenv(AGENTOPS_GATEWAY_AUTH_DIR) + "/jwks.json")
+'
+host_auth_source_validation="${tmp_dir}/host-auth-source-validation.yaml"
+yq "${auth_validation_paths}" infra/agentgateway/host/config-auth.yaml >"${host_auth_source_validation}"
+agentgateway --validate-only -f "${host_auth_source_validation}"
 gke_gateway_config="${tmp_dir}/gke-gateway-config.yaml"
 sed 's/__GCP_PROJECT_ID__/agentops-course-check/g' \
 	infra/agentgateway/gke/config.yaml >"${gke_gateway_config}"
@@ -387,8 +406,7 @@ AGENTOPS_GATEWAY_CONFIG=config-auth.yaml infra/scripts/gateway-host.sh render >"
 # Keep assertions on the untouched container render, but resolve its mounted
 # auth paths to their generated host counterparts for local binary validation.
 host_auth_validation_config="${tmp_dir}/host-auth-validation.yaml"
-sed "s#/etc/agentgateway/auth/#${gateway_auth_dir}/#g" \
-	"${host_auth_container_config}" >"${host_auth_validation_config}"
+yq "${auth_validation_paths}" "${host_auth_container_config}" >"${host_auth_validation_config}"
 agentgateway --validate-only -f "${host_auth_validation_config}"
 auth_certs="$(yq -r '.binds[].listeners[] | select(.tls != null) | .tls.cert' "${host_auth_container_config}" | sort -u)"
 auth_keys="$(yq -r '.binds[].listeners[] | select(.tls != null) | .tls.key' "${host_auth_container_config}" | sort -u)"

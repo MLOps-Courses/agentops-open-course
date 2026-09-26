@@ -242,7 +242,9 @@ def run_mise_outdated() -> tuple[dict[str, MiseUpdate] | None, str | None]:
         return None, "mise is not available"
     try:
         result = subprocess.run(  # noqa: S603 - the resolved executable and arguments are fixed.
-            (executable, "outdated", "--json"),
+            # Exact pins have no newer matching version; --bump compares them
+            # with upstream releases while --local excludes workstation tools.
+            (executable, "outdated", "--json", "--bump", "--local"),
             cwd=ROOT,
             check=False,
             capture_output=True,
@@ -570,7 +572,7 @@ def mise_validation_tier(name: str) -> str:
         "sops",
         "age",
         "gcloud",
-        "github:mikefarah/yq",
+        "aqua:mikefarah/yq",
         "github:agentgateway/agentgateway",
     }:
         return "install:platform + check:infra"

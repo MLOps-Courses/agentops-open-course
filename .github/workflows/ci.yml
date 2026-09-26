@@ -96,7 +96,7 @@ jobs:
 
       - name: Install only the Python toolchain
         run: |
-          mise install uv
+          mise install aqua:astral-sh/uv
           cd agents/python
           mise run install
 

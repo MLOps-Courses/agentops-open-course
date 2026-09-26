@@ -6,7 +6,7 @@
 
 [project]
 name = "agentops-open-course"
-version = "0.7.0"
+version = "0.11.0"
 description = "Build, evaluate, secure, deploy, and operate production AI agents with Google ADK and an open-source AgentOps stack."
 authors = [{ name = "Médéric HURIER", email = "agentops-open-course@fmind.dev" }]
 readme = "README.md"

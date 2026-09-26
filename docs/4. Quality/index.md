@@ -7,7 +7,7 @@ description: "Make the agent correct and trustworthy: typing, linting, testing, 
 !!! abstract "In one glance"
 
     - **You will:** See how the chapter's seven quality layers fit together and which page owns each check.
-    - **You need:** Chapter 3 finished and `mise run test` passing.
+    - **You need:** Workshop step 6 for grader calibration; the contributor installation for reference tests and security checks.
     - **Time:** about 5 minutes, orientation.
 
 **Part I — Agent development.** Work through [2.6. Workshop](../2.%20Agents/2.6.%20Workshop.md) and consult this chapter when the exercise introduces its subject. Python fundamentals are assumed; no Kubernetes knowledge is needed here.
@@ -18,17 +18,17 @@ Trust comes in layers. Each page below adds one, and each layer catches a class 
 
 Your agent now holds a conversation ([Chapter 2](../2. Agents/)) and has bounded capabilities ([Chapter 3](../3. Capabilities/)). This chapter makes it defensible.
 
-The early checkpoints need no model, account, network, or bill. The full maintainer security gate may refresh advisory data. The marker on each line says what that page's own checkpoint needs; run `mise run doctor:model` before a model-backed one.
+The early checkpoints need no model, account, network, or bill. The full maintainer security gate may refresh advisory data. The marker on each line says what that page's own checkpoint needs; run `mise run config:check` before a model-backed one. `doctor:model` is specific to optional Ollama inference.
 
 - **[4.0. Typing](./4.0. Typing.md)** _(concept · offline)_: Python typing with ty, parsing tool I/O at the boundary.
 - **[4.1. Linting](./4.1. Linting.md)** _(hands-on · offline)_: Lint and format with ruff and dprint.
 - **[4.2. Testing](./4.2. Testing.md)** _(hands-on · offline)_: Fast, offline unit tests with pytest, against an isolated dataset copy.
 - **[4.3. Metrics](./4.3. Metrics.md)** _(reference · needs a model)_: A scorecard of deterministic gates, model-backed evidence, and observed operational indicators.
-- **[4.4. Evaluations](./4.4. Evaluations.md)** _(hands-on · needs a model)_: ADK trajectories plus full-conversation MLflow lineage and optional judge evidence.
+- **[4.4. Evaluations](./4.4. Evaluations.md)** _(hands-on · offline first)_: Recorded-answer grader calibration, optional MLflow recording, then explicitly selected live evaluations.
 - **[4.5. Guardrails](./4.5. Guardrails.md)** _(hands-on · offline, except the last checkpoint step)_: Boundary redaction, stable errors, confirmation, transactions, and audit evidence.
 - **[4.6. Security](./4.6. Security.md)** _(hands-on · model-free; scans may use network)_: Threat modeling, offline adversarial regressions, identity, and supply-chain scanning.
 
-Expect to write code, not just read. [4.5. Guardrails](./4.5. Guardrails.md) carries the chapter's required `## Your turn` drill — turn a guardrail into a test that fails if it ever weakens — and [4.4. Evaluations](./4.4. Evaluations.md) has you add an eval case on top of it.
+Expect to write code, not just read. [4.5. Guardrails](./4.5. Guardrails.md) carries the chapter's required `## Your turn` drill — turn a guardrail into a test that fails if it ever weakens — and [4.4. Evaluations](./4.4. Evaluations.md) distinguishes grader calibration from live model evidence.
 
 ## Where is gate versus evidence explained?
 

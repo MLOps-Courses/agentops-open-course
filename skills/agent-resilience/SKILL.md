@@ -19,7 +19,7 @@ Give an agent's outbound calls three layers of failure handling, applied in the 
 1. **Bound every call with a deadline.** Wrap each tool/model call so exceeding a timeout raises a clear error instead of hanging. Run sync tools in a worker thread so the deadline can actually fire on the event loop.
 1. **Retry only idempotent reads, never writes.** Retrying a non-idempotent action (restart, resolve, charge) can apply it twice. Retry reads with bounded, exponential backoff; leave writes to run exactly once behind human confirmation.
 1. **Add a circuit breaker for dead dependencies.** After N consecutive failures, open the breaker and fail fast (shed load) until a cooldown elapses, then let one trial call test recovery. Keep it opt-in so default behavior stays retry-only, and emit a metric each time it opens.
-1. **Fail over the model only to a validated fallback.** Try a primary model; on a failure _before any response_, fall back to a secondary you have evaluated. Never switch mid-stream (it splices two answers), and prefer a smaller same-provider model so failover keeps your cost and privacy properties.
+1. **Fail over the model only to a validated fallback.** Try a primary model; on a retriable `429`/`5xx` _before any response_, fall back to a secondary you have evaluated. Never fail over on a `4xx` or an ambiguous `408` (the request may already be billed), never switch mid-stream (it splices two answers), and prefer a smaller same-provider model so failover keeps your cost and privacy properties. Prefer the framework primitive (ADK's `FallbackModel`) over a hand-rolled wrapper: it also restores the request before the next attempt.
 
 ## Reference implementation
 
@@ -27,9 +27,9 @@ From the AgentOps Open Course (agent modules live under `agents/python/src/agent
 
 - `resilience.py` — `with_resilience` (deadline + bounded retry, never on writes).
 - `circuit.py` — a deterministic, clock-injectable `CircuitBreaker`.
-- `model.py` — `FallbackLlm` wrapping a primary and a validated fallback.
+- `model.py` — ADK's `FallbackModel` wrapping a primary and a validated fallback.
 - Course chapters `4.5. Guardrails` and `5.4. Model Gateway`.
 
 ## Verify
 
-Write deterministic unit tests with an injected clock and fake failing calls: assert the breaker opens after the threshold, fails fast while open, and recovers half-open; assert a write is never wrapped; assert the fallback engages only when the primary fails before responding.
+Write deterministic unit tests with an injected clock and fake failing calls: assert the breaker opens after the threshold, fails fast while open, and recovers half-open; assert a write is never wrapped; assert the fallback engages only on a retriable status before the primary responds.

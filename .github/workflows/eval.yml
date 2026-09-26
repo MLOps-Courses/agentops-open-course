@@ -74,7 +74,7 @@ jobs:
           install: false
 
       - name: Install only the evaluation toolchain
-        run: mise install uv github:mikefarah/yq
+        run: mise install aqua:astral-sh/uv aqua:mikefarah/yq
 
       - name: Install agent dependencies
         run: cd agents/python && mise run install:eval

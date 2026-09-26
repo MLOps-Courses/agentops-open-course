@@ -1,39 +1,39 @@
 ---
-description: Run and understand the completed Google ADK 2.x reference agent end to end with the configured model.
+description: Build a small Google ADK agent, then use the completed reference to understand models, instructions, sessions, and development checks.
 ---
 
 # 2. Agents
 
 !!! abstract "In one glance"
 
-    - **You will:** See how the whole chapter fits together, then prove the agent assembles correctly without starting a model.
-    - **You need:** Chapter 1 finished, with the learner runtime installed and Gemini configuration validated.
+    - **You will:** Build a small agent and find the reference page for each part of its behavior.
+    - **You need:** The learner runtime installed; model credentials only for optional interactive work.
     - **Time:** about 8 minutes, orientation.
 
 **Part I — Agent development.** Work through [2.6. Workshop](../2.%20Agents/2.6.%20Workshop.md) and consult this chapter when the exercise introduces its subject. Python fundamentals are assumed; no Kubernetes knowledge is needed here.
 
 ## What will you understand in this chapter?
 
-This chapter builds one object, `root_agent`. Every later chapter adds to that same object rather than replacing it.
+Start with your small `learner_agent`, then compare it with the completed AgentOps Agent as you add capabilities.
 
-That object is the **AgentOps Agent**, the single reference agent carried through the entire course. It is assembled once in `composition.py` as a plain ADK `Agent` value: a model, an instruction string, a flat tool list, and a set of **policy callbacks** — code the runtime runs around every model call and tool call.
+The reference's `composition.py` assembles `root_agent` from a model, instructions, and tools. Its enclosing `App` registers `AgentOpsPolicyPlugin` once to govern every model and tool call, including sub-agents and workflow stages.
 
 ??? note "Deeper: where does this agent go after Chapter 2?"
 
-    Every later chapter instruments _this same object_: Chapter 3 hangs capabilities off it, Chapter 4 wraps it in quality gates, Chapters 5 and 6 put it behind a gateway and onto Kubernetes, and Chapter 7 observes it in production.
+    The completed reference already contains the course's capabilities. Chapter 3 explains them, Chapter 4 validates them, Chapters 5 and 6 deploy the application, and Chapter 7 observes it.
 
     [Chapter 3](../3. Capabilities/) deepens its tools, knowledge, workflows, and delegation; [Chapter 8.7](../8.%20Community/8.7.%20Capstone.md) asks you to adapt these boundaries to your own domain.
 
-Read the sections by their kind, not just their order. **2.0 is conceptual**: the mental model you need before code makes sense. **2.1 and 2.5 are hands-on**: you run commands and see output. **2.2, 2.3, and 2.4 are reference**: the model, instruction, and runtime pieces you consult as you build.
+Begin with First Agent and the Workshop. Consult the other pages when an exercise needs their concepts; the reference development loop requires the larger contributor installation.
 
 - **[2.0. Concepts](./2.0. Concepts.md)** _(concept)_: The ADK 2.x building blocks — Agent, Runner, Session, Events, Tools, and the graph Workflow.
-- **[2.1. First Agent](./2.1. First Agent.md)** _(hands-on)_: Inspect and run the AgentOps Agent end to end with the configured model.
+- **[2.1. First Agent](./2.1. First Agent.md)** _(hands-on)_: Create a learner-owned agent, check it offline, and optionally inspect a model conversation.
 - **[2.2. Models](./2.2. Models.md)** _(reference)_: The optional Ollama contract and the default native Gemini branch.
 - **[2.3. Instructions](./2.3. Instructions.md)** _(hands-on)_: The system instruction, its enforcement map, and a deterministic red/green trajectory contract.
 - **[2.4. Sessions](./2.4. Sessions.md)** _(reference)_: Persistent ADK sessions, **A2A** tasks (units of work exchanged between agents across process boundaries), lifecycle ownership, and resettable runtime state.
 - **[2.5. Dev Loop](./2.5. Dev Loop.md)** _(hands-on)_: Offline gates, interactive modes, model-backed evaluations, and failure diagnosis.
 
-By the end you will have run the agent on a model on your own laptop. You will know which file picks the model, which string sets its behavior, where a conversation is stored, and which command proves it all works without a model.
+You can complete the exercises offline. When model access is available, use a small conversation to compare intended behavior with the events you observe.
 
 ## Which page owns which part of the agent?
 
@@ -75,42 +75,36 @@ Tools and policy hooks are named here, not taught here. Owned by [Chapter 3](../
 
     The `tools=` list and app plugin belong to later chapters: 2.1 shows the wiring, [Chapter 3](../3. Capabilities/) owns each tool, and [4.5. Guardrails](../4.%20Quality/4.5.%20Guardrails.md) owns policy. This page only names the seams.
 
-- **[2.6. Workshop](./2.6. Workshop.md)** _(hands-on)_: Build six cumulative Python checkpoints with offline checks and worked solutions.
+- **[2.6. Workshop](./2.6. Workshop.md)** _(hands-on)_: Build eight cumulative Python checkpoints with offline checks and worked solutions.
 
 ## What proves this chapter worked?
 
-Two things prove the chapter. The first is one command, and it never starts a model:
+Check your first agent from the repository root without starting a model:
 
 ```bash
-cd agents/python
-mise run test
+mise run lab -- check 1
 ```
 
-That is the offline test suite. The required drill in [2.3. Instructions](./2.3.%20Instructions.md#your-turn-which-eval-case-catches-a-rule-you-delete) is deterministic too: delete one instruction rule, watch the focused contract fail, then restore it. A live-model comparison remains optional evidence.
+Create the step through [2.1. First Agent](./2.1.%20First%20Agent.md) first. The check proves construction, not model behavior. Continue building your own tools through [2.6. Workshop](./2.6.%20Workshop.md).
 
-The whole run can take several minutes depending on the machine and cache state. It ends with a coverage total checked against the enforced 95% threshold, then a pytest `passed` line. Nothing in it needs a model or a network, so a red line is a real failure rather than a missing piece of setup.
+??? note "Deeper: how do you validate the completed reference?"
 
-A green run proves the agent is assembled correctly, not that it reasons well. Model-backed evaluation is a separate evidence lane, owned by [2.5. Dev Loop](./2.5. Dev Loop.md).
-
-??? note "Deeper: can you test the model and config wiring on its own?"
-
-    That is the umbrella gate (`uv run pytest` over the full suite). To verify just this chapter's seams in isolation, run the model and config tests directly:
+    After the contributor installation, the full reference suite verifies deterministic behavior and enforces 95% combined line-and-branch coverage:
 
     ```bash
-    uv run pytest tests/test_model.py tests/test_config.py
+    cd agents/python
+    mise run test
     ```
 
-    That focused subset exits cleanly and gives fast feedback. The repository-wide 95% combined line-and-branch coverage gate belongs to `mise run test`, which adds the coverage flags around the complete suite.
+    For a narrower check after a model/config edit, use `uv run pytest tests/test_model.py tests/test_config.py`. Do not rerun the full suite for every page you read.
 
-    Those cover provider resolution and the fail-fast cross-field checks in `config.py` — a bad `AGENT_MODEL_PROVIDER` combination fails at construction with a message that names the fix, not deep inside a turn. Model-backed behavior stays a separate evidence path ([2.5. Dev Loop](./2.5. Dev Loop.md)'s `mise run eval`), because a green offline suite proves the agent is assembled correctly, not that it reasons well.
+    [2.3. Instructions](./2.3.%20Instructions.md#your-turn-which-eval-case-catches-a-rule-you-delete) provides a reference-editing drill. [2.5. Dev Loop](./2.5.%20Dev%20Loop.md) owns the full development workflow and its separate model-backed evidence.
 
 **You are done when:**
 
-- `mise run test` finishes in `agents/python` with no failures and a coverage total above the enforced 95% threshold.
-- You finished the required drill in [2.3. Instructions](./2.3.%20Instructions.md#your-turn-which-eval-case-catches-a-rule-you-delete): the focused offline contract went red without the runbook rule, green after the scoped restore, and the live-model comparison remained optional evidence.
-- You can name the one object every later chapter adds to, and the file that assembles it.
-- You can say which sub-page owns the model, which owns the instruction, which owns the session store, and which owns the dev loop.
-- You know which two pages ask you to run something and which three you will come back to as reference.
-- Without reopening Chapter 1: you can name the command that proves the environment offline and the directory you run it from, and say why a passing `mise run test` reads no `.env`.
+- Your learner-owned step 1 passes its offline check.
+- You can distinguish your cumulative exercise from the completed reference application.
+- You know where to find the model, instruction, session, and development-loop explanations.
+- You can explain what an offline construction check cannot establish about a model's answer.
 
-Continue to [2.0. Concepts](./2.0.%20Concepts.md) when `mise run test` passes on your machine, because every page after this one assumes the agent already builds.
+Continue to [2.1. First Agent](./2.1.%20First%20Agent.md) to create your learner-owned file, or consult [2.0. Concepts](./2.0.%20Concepts.md) first if the ADK vocabulary is unfamiliar.

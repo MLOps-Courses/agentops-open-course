@@ -18,6 +18,15 @@ fi
 readonly reviewed_model_requirement="en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl \\"
 readonly reviewed_model_hash='    --hash=sha256:1932429db727d4bff3deed6b34cfc05df17794f4a52eeb26cf8928f7c1a0fb85'
 
+# PYSEC-2026-3740 (nltk <= 3.10.3, no patched release when checked on 2026-09-26)
+# arrives only through rouge-score, which ADK's evaluator registry imports. The
+# affected TransitionParser, AveragedPerceptron, PerceptronTagger, and maxent
+# parameter APIs are never called, and both published images install runtime
+# dependencies only. The exception is therefore limited to the development,
+# evaluation, and comparison tooling audits; the runtime and MLflow profiles keep
+# a zero-exception audit. SUPPORT.md owns the record and the removal condition.
+readonly tooling_only_advisory=PYSEC-2026-3740
+
 audit_dir=$(mktemp -d "${TMPDIR:-/tmp}/agentops-vulnerabilities.XXXXXX")
 readonly audit_dir
 trap 'rm -rf -- "${audit_dir}"' EXIT
@@ -41,6 +50,12 @@ audit_profile() {
 	local slug=$2
 	local project=$3
 	local dependency_profile=$4
+	shift 4
+	local -a ignored=()
+	local advisory
+	for advisory in "$@"; do
+		ignored+=(--ignore-vuln "${advisory}")
+	done
 	local requirements="${audit_dir}/${slug}.txt"
 	local auditable_requirements="${audit_dir}/${slug}-auditable.txt"
 	local ambient_requirements="${audit_dir}/${slug}-ambient.txt"
@@ -118,13 +133,14 @@ audit_profile() {
 		--disable-pip \
 		--progress-spinner off \
 		--cache-dir "${audit_dir}/http-cache" \
-		--strict
+		--strict \
+		"${ignored[@]}"
 }
 
 audit_profile "documentation" documentation . development
 audit_profile "agent runtime" agent-runtime agents/python runtime
-audit_profile "agent development" agent-development agents/python development
-audit_profile "agent evaluation" agent-evaluation agents/python evaluation
+audit_profile "agent development" agent-development agents/python development "${tooling_only_advisory}"
+audit_profile "agent evaluation" agent-evaluation agents/python evaluation "${tooling_only_advisory}"
 audit_profile "MLflow runtime" mlflow-runtime infra/mlflow runtime
 
-audit_profile "framework comparison" agent-comparison agents/python comparison
+audit_profile "framework comparison" agent-comparison agents/python comparison "${tooling_only_advisory}"

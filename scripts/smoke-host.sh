@@ -332,7 +332,7 @@ env -i \
 import asyncio
 import os
 
-from mcp import ClientSession
+from mcp import Client, MCPError
 from mcp.client.streamable_http import streamable_http_client
 
 EXPECTED_TOOLS = {
@@ -345,19 +345,36 @@ EXPECTED_TOOLS = {
 }
 
 
+async def check(mode: str) -> str:
+    # "legacy" is the 2025-era initialize handshake; "auto" probes the 2026-07-28
+    # server/discover path first and falls back when the gateway does not offer it.
+    # The stateless route has no session to delete, so skip the closing DELETE.
+    transport = streamable_http_client(os.environ["MCP_URL"], terminate_on_close=False)
+    async with Client(transport, mode=mode) as client:
+        tools = await client.list_tools()
+        names = {tool.name for tool in tools.tools}
+        if names != EXPECTED_TOOLS:
+            raise RuntimeError(f"unexpected MCP tools ({mode}): {sorted(names)}")
+        result = await client.call_tool("list_incidents", {})
+        if result.is_error:
+            raise RuntimeError(f"list_incidents failed ({mode}): {result.content}")
+        if not result.content:
+            raise RuntimeError(f"list_incidents returned no content ({mode})")
+        # The guarded write exists inside the agent but has no gateway allow rule.
+        try:
+            denied = await client.call_tool("restart_service", {"name": "inventory"})
+        except MCPError as error:
+            refusal = f"JSON-RPC {error.code}"
+        else:
+            if not denied.is_error:
+                raise RuntimeError(f"gateway allowed restart_service ({mode})")
+            refusal = "tool error result"
+        return f"protocol {client.protocol_version}, restart_service refused ({refusal})"
+
+
 async def main() -> None:
-    async with streamable_http_client(os.environ["MCP_URL"], terminate_on_close=False) as (read, write, _):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
-            tools = await session.list_tools()
-            names = {tool.name for tool in tools.tools}
-            if names != EXPECTED_TOOLS:
-                raise RuntimeError(f"unexpected MCP tools: {sorted(names)}")
-            result = await session.call_tool("list_incidents", {})
-            if result.isError:
-                raise RuntimeError(f"list_incidents failed: {result.content}")
-            if not result.content:
-                raise RuntimeError("list_incidents returned no content")
+    for mode in ("legacy", "auto"):
+        print(f"MCP through agentgateway ({mode}): {await check(mode)}")
 
 
 asyncio.run(main())

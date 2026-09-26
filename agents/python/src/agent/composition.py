@@ -1,9 +1,9 @@
 """The AgentOps Agent — the AgentOps Open Course reference agent.
 
 An on-call assistant that helps engineers triage and resolve incidents for a fictional
-platform against a bundled offline dataset. Model requests use direct local Ollama by
-default, the same OpenAI-compatible adapter through agentgateway when its URL is selected,
-or optional native Gemini. The implementation composes tools, skills, MCP, runbook retrieval,
+platform against a bundled offline dataset. Model requests use native Gemini by default,
+or the OpenAI-compatible adapter for agentgateway and optional local Ollama.
+The implementation composes tools, skills, MCP, runbook retrieval,
 workflows, and A2A delegation.
 """
 

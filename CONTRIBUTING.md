@@ -12,7 +12,7 @@ Install [mise](https://mise.jdx.dev/), clone your fork, and run:
 mise run install:maintainer
 ```
 
-This installs every pinned tool and locked environment used by the complete contributor gate, then enables the Git hooks. Learners use the smaller `mise run install` tier.
+This installs every pinned tool and locked environment used by the complete contributor gate, then enables the Git hooks. Learners use `mise run install:learner`; documentation and Python contributors can start with `mise run install` and `mise run check:core`.
 
 ## What should a contribution preserve?
 
@@ -38,6 +38,8 @@ mise run scan
 ```
 
 `format` updates Python, Markdown, shell, and configuration files. `check` validates/builds docs, Python, infrastructure, shell, workflows, and dependency licenses. `test` is offline and must not call a model or cloud service. `scan` runs full-history gitleaks plus Trivy vulnerability, secret, license, and misconfiguration checks.
+
+On a machine with limited available RAM, prefix these commands with `MISE_JOBS=1` to run task dependencies sequentially. Set `TMPDIR` to a disk-backed directory if the system temporary directory uses RAM; dependency license checks create temporary environments. The full gate renders infrastructure without starting clusters or containers, but dependency audits and scanner databases need network access. `mise run build` also builds container images; use `mise run build:docs` for a documentation-only build.
 
 Live-model evaluations are optional and require a configured model. The optional local Ollama path uses the non-secret `local-ollama` marker and needs no provider credential; default Gemini and other hosted paths require their documented authentication:
 

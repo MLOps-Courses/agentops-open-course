@@ -24,7 +24,7 @@ description: Build agents in Python on your laptop, then operate them on an open
 
 Build a Python incident assistant, then learn how a platform team operates it.
 
-**Part I — Agent development** uses Google ADK and a Gemini API key on your laptop. You build through small exercises, inspect failures, and compare your work with tested solutions. No GPU, Docker, or Kubernetes is needed.
+**Part I — Agent development** uses Google ADK on your laptop. Offline exercises need no account; interactive work uses Gemini by default. You build through small exercises, inspect failures, and compare your work with tested solutions. No GPU, Docker, or Kubernetes is needed.
 
 **Part II — Platform engineering** moves the reference agent behind agentgateway and onto Kubernetes with kagent. This part is deliberately more demanding: you already know containers, Kubernetes resources, networking, and `kubectl`.
 
@@ -36,7 +36,7 @@ Start with the small Python workshop, then consult the reference pages when you 
 
 1. Check the prerequisites in [0.0. Course](./0.%20Overview/0.0.%20Course.md).
 1. Install the Python runtime with [1.0. System](./1.%20Setup/1.0.%20System.md).
-1. Configure your Gemini API key with [1.4. Providers](./1.%20Setup/1.4.%20Providers.md).
+1. Choose offline practice or configure model access with [1.4. Providers](./1.%20Setup/1.4.%20Providers.md).
 1. Build your first agent in [2.1. First Agent](./2.%20Agents/2.1.%20First%20Agent.md).
 1. Carry your code through [2.6. Workshop](./2.%20Agents/2.6.%20Workshop.md).
 
@@ -64,7 +64,7 @@ Reading, copying, and modifying the course is free.
 
 Gemini removes the local model hardware requirement. Free-tier access depends on model, project, region, and current quotas; paid-tier calls can be billed. Check the current [Gemini pricing](https://ai.google.dev/gemini-api/docs/pricing) and [rate limits](https://ai.google.dev/gemini-api/docs/rate-limits).
 
-Every workshop check works without a model or API key. Ollama is an optional alternative for suitable hardware, and recorded examples support study when a provider is unavailable. Neither a fake nor a recording proves live model quality.
+Every workshop check works without a model or API key. On a memory-limited machine, finish those exercises first and leave Ollama, containers, Kubernetes, and observability services stopped. Ollama is an optional alternative for suitable hardware, and recorded examples support study when a provider is unavailable. Neither a fake nor a recording proves live model quality.
 
 ## How should you use the reference?
 

@@ -7,14 +7,14 @@ description: Give the agent real powers — tools, skills, MCP, memory, workflow
 !!! abstract "In one glance"
 
     - **You will:** Map the eight capabilities this chapter bolts onto the agent you already ran, and learn which one to reach for when.
-    - **You need:** Chapter 2 finished, with `mise run test` green in `agents/python`.
+    - **You need:** Workshop step 1 for reading; the contributor installation for reference pytest checks.
     - **Time:** about 8 minutes, orientation.
 
 **Part I — Agent development.** Work through [2.6. Workshop](../2.%20Agents/2.6.%20Workshop.md) and consult this chapter when the exercise introduces its subject. Python fundamentals are assumed; no Kubernetes knowledge is needed here.
 
 ## Which capabilities will you add?
 
-Your agent can now hold a conversation ([Chapter 2](../2. Agents/)). This chapter gives it things it can do — one capability per page, in reading order:
+Use these pages as references while building the Workshop. They explain capabilities already implemented in the completed reference; you add smaller versions to your own code.
 
 - **[3.0. Packaging](./3.0. Packaging.md)** _(reference)_: The uv package, the lazy ADK import, and the entrypoints every later page depends on.
 - **[3.1. Tools](./3.1. Tools.md)** _(hands-on)_: Typed reads, guarded writes, and a bounded local capability prototype.

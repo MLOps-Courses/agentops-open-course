@@ -8,8 +8,10 @@ from typing import cast
 
 import httpx
 import pytest
+from mcp import Client
 from mcp.server.transport_security import TransportSecurityMiddleware
-from starlette.requests import HTTPConnection, Request
+from mcp.types import LATEST_PROTOCOL_VERSION
+from starlette.requests import Request
 
 from agent import data, mcp_server, tools
 from agent.config import settings
@@ -28,9 +30,16 @@ def test_mcp_server_exposes_exactly_the_allowlisted_read_tools() -> None:
     assert {tool.name for tool in registered} == set(MCP_READ_TOOL_NAMES)
 
 
+def test_mcp_read_tools_advertise_read_only_hints() -> None:
+    """Hints help clients present the tools honestly; they never replace the allowlist."""
+    for tool in asyncio.run(mcp.list_tools()):
+        assert tool.annotations == mcp_server.READ_ONLY, tool.name
+    assert mcp_server.READ_ONLY.read_only_hint is True
+    assert mcp_server.READ_ONLY.open_world_hint is False
+
+
 def test_mcp_transport_security_uses_a_narrow_host_allowlist() -> None:
-    settings = mcp.settings.transport_security
-    assert settings is not None
+    settings = mcp_server.TRANSPORT_SECURITY
     assert settings.enable_dns_rebinding_protection is True
     assert {
         "localhost",
@@ -66,18 +75,16 @@ def test_mcp_transport_security_uses_a_narrow_host_allowlist() -> None:
     ],
 )
 def test_mcp_transport_security_accepts_expected_authorities(host) -> None:
-    settings = mcp.settings.transport_security
-    assert settings is not None
+    settings = mcp_server.TRANSPORT_SECURITY
     middleware = TransportSecurityMiddleware(settings)
-    request = cast("HTTPConnection", SimpleNamespace(headers={"host": host}))
+    request = cast("Request", SimpleNamespace(headers={"host": host}))
     assert asyncio.run(middleware.validate_request(request)) is None
 
 
 def test_mcp_transport_security_rejects_untrusted_host() -> None:
-    settings = mcp.settings.transport_security
-    assert settings is not None
+    settings = mcp_server.TRANSPORT_SECURITY
     middleware = TransportSecurityMiddleware(settings)
-    request = cast("HTTPConnection", SimpleNamespace(headers={"host": "attacker.example"}))
+    request = cast("Request", SimpleNamespace(headers={"host": "attacker.example"}))
     response = asyncio.run(middleware.validate_request(request))
     assert response is not None
     assert response.status_code == 421
@@ -107,15 +114,17 @@ def test_gateway_mcp_toolset_constructs() -> None:
     asyncio.run(toolset.close())
 
 
-def test_streamable_http_initialize_and_tool_call_round_trip(monkeypatch) -> None:
-    """Exercise the actual MCP protocol in process, without a port or external server."""
+def test_streamable_http_initialize_and_tool_call_round_trip() -> None:
+    """Exercise the 2025-era handshake that ADK and agentgateway clients still negotiate."""
 
     async def exercise() -> None:
         # JSON responses keep this protocol test finite under an in-process ASGI
         # transport; production clients may negotiate the equivalent SSE form.
-        monkeypatch.setattr(mcp.settings, "json_response", True)
-        monkeypatch.setattr(mcp, "_session_manager", None)
-        app = mcp.streamable_http_app()
+        app = mcp.streamable_http_app(
+            json_response=True,
+            stateless_http=True,
+            transport_security=mcp_server.TRANSPORT_SECURITY,
+        )
         transport = httpx.ASGITransport(app=app)
         common_headers = {
             "accept": "application/json, text/event-stream",
@@ -166,6 +175,21 @@ def test_streamable_http_initialize_and_tool_call_round_trip(monkeypatch) -> Non
     asyncio.run(exercise())
 
 
+def test_modern_client_discovers_and_calls_read_tools_without_a_handshake() -> None:
+    """MCP 2026-07-28 clients connect statelessly; the same server serves both protocol eras."""
+
+    async def exercise() -> tuple[str, set[str], bool]:
+        async with Client(mcp) as client:
+            listed = await client.list_tools()
+            called = await client.call_tool(MCP_READ_TOOL_NAMES[0], {})
+            return client.protocol_version, {tool.name for tool in listed.tools}, bool(called.is_error)
+
+    protocol_version, names, is_error = asyncio.run(exercise())
+    assert protocol_version == LATEST_PROTOCOL_VERSION
+    assert names == set(MCP_READ_TOOL_NAMES)
+    assert is_error is False
+
+
 def test_gateway_toolset_sends_bearer_token_when_configured(monkeypatch) -> None:
     from pydantic import SecretStr
 
@@ -207,8 +231,14 @@ def test_mcp_http_transports_have_a_bounded_sigterm_drain(transport, factory, mo
     def fake_run(target, **kwargs) -> None:
         call.update({"app": target, **kwargs})
 
+    options: dict[str, object] = {}
+
+    def build(**kwargs) -> object:
+        options.update(kwargs)
+        return app
+
     monkeypatch.setenv("MCP_TRANSPORT", transport)
-    monkeypatch.setattr(mcp_server.mcp, factory, lambda: app)
+    monkeypatch.setattr(mcp_server.mcp, factory, build)
     monkeypatch.setattr(mcp_server.uvicorn, "run", fake_run)
     mcp_server.main()
     assert call == {
@@ -218,6 +248,8 @@ def test_mcp_http_transports_have_a_bounded_sigterm_drain(transport, factory, mo
         "log_level": "info",
         "timeout_graceful_shutdown": 10,
     }
+    assert options["transport_security"] is mcp_server.TRANSPORT_SECURITY
+    assert options.get("stateless_http", transport == "streamable-http") is (transport == "streamable-http")
 
 
 def test_mcp_main_rejects_unknown_transport(monkeypatch) -> None:
