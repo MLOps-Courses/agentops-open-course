@@ -348,9 +348,16 @@ jobs:
           if [[ "$NAME" == agent ]]; then
             container_port=8080
             health_path=/healthz
+            # Gemini is the default provider and fails closed without credentials.
+            # The account-free marker profile builds the model client without
+            # contacting a model; readiness checks runtime state, not inference.
             docker run --detach --name "$container" --read-only \
               --tmpfs /tmp:rw,noexec,nosuid,size=128m \
               --tmpfs /app/state:rw,noexec,nosuid,size=128m,uid=10001,gid=10001 \
+              --env AGENT_MODEL_PROVIDER=openai-compatible \
+              --env AGENT_MODEL=qwen3:4b-instruct \
+              --env OPENAI_BASE_URL=http://127.0.0.1:11434/v1 \
+              --env OPENAI_API_KEY=local-ollama \
               --publish "127.0.0.1::${container_port}" \
               "$IMAGE" >/dev/null
           else
