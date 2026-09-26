@@ -5,7 +5,7 @@
       "context": "agents",
       "dockerfile": "agents/python/Dockerfile",
       "image": "agentops-agent:scan",
-      "smoke": "import asyncio; from agent.composition import root_agent; from agent.server import create_app; app = create_app(); assert root_agent.name == 'agentops_agent'; asyncio.run(app.state.runtime.close())"
+      "smoke": "import asyncio, os; os.environ.update(AGENT_MODEL_PROVIDER='openai-compatible', AGENT_MODEL='qwen3:4b-instruct', OPENAI_BASE_URL='http://127.0.0.1:11434/v1', OPENAI_API_KEY='local-ollama'); from agent.composition import root_agent; from agent.server import create_app; app = create_app(); assert root_agent.name == 'agentops_agent'; asyncio.run(app.state.runtime.close())"
     },
     {
       "name": "mlflow",
