@@ -74,7 +74,7 @@ eval = [
 ]
 
 # Optional framework comparison only; the main course remains ADK.
-comparison = ["langgraph==1.2.11"]
+comparison = ["langgraph==1.2.12"]
 
 [tool.uv]
 # `uv sync` must not pull the eval chain; `mise run install:eval` adds it explicitly.
