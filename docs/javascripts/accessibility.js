@@ -1,7 +1,7 @@
 // The locked Zensical renderer exposes its search UI through an open shadow
 // root. Pin this reviewed compatibility boundary so a renderer bump must
 // revalidate the shim before it can ship.
-const SEARCH_SHIM_ZENSICAL = "0.0.52";
+const SEARCH_SHIM_ZENSICAL = "0.0.65";
 const observedSearchRoots = new WeakSet();
 
 function repairSearchAccessibility(root) {
