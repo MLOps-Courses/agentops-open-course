@@ -5,7 +5,7 @@ name = "agentops-mlflow"
 version = "0.1.0"
 requires-python = ">=3.13,<3.14"
 dependencies = [
-  "google-cloud-storage==3.13.0",
+  "google-cloud-storage==3.16.0",
   "mlflow==3.16.1",
   "prometheus-flask-exporter==0.23.2",
 ]
