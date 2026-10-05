@@ -311,7 +311,7 @@ jobs:
         uses: ./.github/actions/setup-buildx
 
       - name: Build the exact preflight image
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
@@ -411,7 +411,7 @@ jobs:
           image: ${{ steps.metadata.outputs.image }}:candidate-${{ inputs.sha }}
 
       - name: Generate the SPDX SBOM
-        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
         with:
           image: ${{ steps.metadata.outputs.image }}:candidate-${{ inputs.sha }}
           format: spdx-json
@@ -507,7 +507,7 @@ jobs:
 
       - name: Create signed SLSA build provenance
         id: provenance
-        uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
           subject-name: ${{ steps.push.outputs.image }}
           subject-digest: ${{ steps.push.outputs.digest }}
@@ -643,7 +643,7 @@ jobs:
 
       - name: Create signed SLSA provenance for the public digest
         id: provenance
-        uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
           subject-name: ${{ steps.subject.outputs.image }}
           subject-digest: ${{ steps.subject.outputs.digest }}
