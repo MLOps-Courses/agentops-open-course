@@ -259,7 +259,7 @@ jobs:
             > evaluation-evidence.json
 
       - name: Upload qualification evidence
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-qualification
           path: |
@@ -311,7 +311,7 @@ jobs:
         uses: ./.github/actions/setup-buildx
 
       - name: Build the exact preflight image
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
@@ -411,7 +411,7 @@ jobs:
           image: ${{ steps.metadata.outputs.image }}:candidate-${{ inputs.sha }}
 
       - name: Generate the SPDX SBOM
-        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
         with:
           image: ${{ steps.metadata.outputs.image }}:candidate-${{ inputs.sha }}
           format: spdx-json
@@ -419,7 +419,7 @@ jobs:
           upload-artifact: false
 
       - name: Upload the exact preflight artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ matrix.name }}-preflight
           path: |
@@ -454,7 +454,7 @@ jobs:
           persist-credentials: false # this job pushes images, never Git refs
 
       - name: Download the preflight artifact
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: ${{ matrix.name }}-preflight
           path: artifact
@@ -507,7 +507,7 @@ jobs:
 
       - name: Create signed SLSA build provenance
         id: provenance
-        uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
           subject-name: ${{ steps.push.outputs.image }}
           subject-digest: ${{ steps.push.outputs.digest }}
@@ -522,7 +522,7 @@ jobs:
           cp "$BUNDLE" "${NAME}.source.provenance.sigstore.json"
 
       - name: Upload source digest, SBOM, and provenance
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ matrix.name }}-source-supply-chain
           path: |
@@ -547,7 +547,7 @@ jobs:
           ref: ${{ github.sha }}
 
       - name: Download both qualified digests
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: "*-source-supply-chain"
           merge-multiple: true
@@ -571,7 +571,7 @@ jobs:
         run: ./scripts/release-promote.sh
 
       - name: Upload the reversible version-index evidence
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-promotion
           path: |
@@ -597,13 +597,13 @@ jobs:
         name: [agent, mlflow]
     steps:
       - name: Download the source digest and SBOM
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: ${{ matrix.name }}-source-supply-chain
           path: assets/source
 
       - name: Download the reversible version-index evidence
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: release-promotion
           path: assets/promotion
@@ -643,7 +643,7 @@ jobs:
 
       - name: Create signed SLSA provenance for the public digest
         id: provenance
-        uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
           subject-name: ${{ steps.subject.outputs.image }}
           subject-digest: ${{ steps.subject.outputs.digest }}
@@ -661,7 +661,7 @@ jobs:
           cp "$BUNDLE" "${NAME}.provenance.sigstore.json"
 
       - name: Upload the public digest, SBOM, and provenance
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ matrix.name }}-supply-chain
           path: |
@@ -691,7 +691,7 @@ jobs:
           ref: ${{ github.sha }}
 
       - name: Download the recorded digest and attestations
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: ${{ matrix.name }}-supply-chain
           path: assets
@@ -811,7 +811,7 @@ jobs:
             }' > "${NAME}.verification.json"
 
       - name: Upload independent verification evidence
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ matrix.name }}-verification
           path: ${{ matrix.name }}.verification.json
@@ -842,7 +842,7 @@ jobs:
           ref: ${{ github.sha }}
 
       - name: Download the qualified source digests
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: "*-source-supply-chain"
           merge-multiple: true
@@ -993,20 +993,20 @@ jobs:
           fetch-depth: 0
 
       - name: Download qualification evidence
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: release-qualification
           path: assets
 
       - name: Download supply-chain evidence
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: "*-supply-chain"
           merge-multiple: true
           path: assets
 
       - name: Download independent verification evidence
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: "*-verification"
           merge-multiple: true
