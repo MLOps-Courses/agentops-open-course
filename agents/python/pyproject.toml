@@ -47,7 +47,7 @@ dev = [
   # ADK imports Vertex evaluation types even for the local rubric evaluator.
   # Add only that SDK plus the local scorers instead of ADK's broad `eval` extra,
   # which also pulls the unused LiteLLM-backed evaluator.
-  "google-cloud-aiplatform>=1.163.0,<2",
+  "google-cloud-aiplatform>=1.163.0,<3",
   "hypothesis>=6.164.0",
   "jinja2>=3.1.4,<4", # security floor for spaCy's runtime template dependency
   "lefthook>=2.1.9",
