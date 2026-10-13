@@ -14,7 +14,7 @@ repo_url: https://github.com/MLOps-Courses/agentops-open-course
 edit_uri: edit/main/docs/
 
 # Copyright
-copyright: Copyright &copy; MLOps Courses
+copyright: Copyright &copy; MLOps Courses &ndash; <a href="#__consent">Change cookie settings</a>
 
 # Configs
 strict: true
@@ -152,6 +152,21 @@ extra:
     - icon: fontawesome/brands/linkedin
       link: https://www.linkedin.com/in/fmind-dev/
       name: Fmind on LinkedIn
+  # GA4 property 558623503 (account Fmind.dev); the brain's google-analytics sensor collects it daily.
+  analytics:
+    provider: google
+    property: G-02SZ2QDLEF
+  # EU consent: Google Analytics loads only after a visitor accepts; rejecting is one click, like accepting.
+  consent:
+    title: Cookie consent
+    description: >-
+      With your consent, Google Analytics measures which lessons help learners so the course can improve. Nothing
+      loads before you accept, and you can change your choice from the footer at any time. See the
+      <a href="https://www.fmind.dev/privacy">privacy notice</a>.
+    actions:
+      - accept
+      - reject
+      - manage
 extra_css:
   - stylesheets/extra.css
 extra_javascript:
