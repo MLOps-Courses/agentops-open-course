@@ -1,5 +1,5 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = "==3.13.*"
 
 [manifest]
@@ -20,7 +20,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "google-cloud-storage", specifier = "==3.13.0" },
+    { name = "google-cloud-storage", specifier = "==3.17.0" },
     { name = "mlflow", specifier = "==3.16.1" },
     { name = "prometheus-flask-exporter", specifier = "==0.23.2" },
 ]
@@ -523,7 +523,7 @@ wheels = [
 
 [[package]]
 name = "google-cloud-storage"
-version = "3.13.0"
+version = "3.17.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "google-api-core" },
@@ -533,9 +533,9 @@ dependencies = [
     { name = "google-resumable-media" },
     { name = "requests" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e3/25/355ed97c1723c787dfaa888808d55db18371f82c38ff862357b1e902cd19/google_cloud_storage-3.13.0.tar.gz", hash = "sha256:d11d8706ea1520fba0f21043bcb7897caf7015d76ce1ad9a4f60237e4d7a9f6c", size = 17340960, upload-time = "2026-07-13T19:10:07.524Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/55/e1/7460613a818ed8d38ee888e672ddb89966f8f92f751ba127c1bf57f4bec2/google_cloud_storage-3.17.0.tar.gz", hash = "sha256:4373aa6328e070c31c97aa236f1600a239dfd3c85e5870cdf3dc2a928dfe0bca", size = 17355535, upload-time = "2026-10-08T18:12:54.643Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/81/e8/b3678a0931ee7d4b3fdaf0813e6206d66e0922b2c26d912f308728b5b95a/google_cloud_storage-3.13.0-py3-none-any.whl", hash = "sha256:648af3ef8a6acc674e1359d3c920c67eb89a7a5ab66b336bd3ac43fed6b5ab84", size = 341428, upload-time = "2026-07-13T19:09:52.39Z" },
+    { url = "https://files.pythonhosted.org/packages/9e/21/c6869b66d723d93d4e63fba0dc4b539debeaf03e8b9af53de906a9910ec7/google_cloud_storage-3.17.0-py3-none-any.whl", hash = "sha256:0b89283fccf84745bae75bbefdbda8393e5323471071a2ba24ab437407141171", size = 345704, upload-time = "2026-10-08T18:12:26.717Z" },
 ]
 
 [[package]]
