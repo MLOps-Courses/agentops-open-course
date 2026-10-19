@@ -52,7 +52,7 @@ RUN ln -sfn /usr/bin/python3 /app/.venv/bin/python \
 
 # --- Stage 2: minimal, non-root runtime --------------------------------------
 # --8<-- [start:runtime-base]
-FROM cgr.dev/chainguard/wolfi-base@sha256:08df5982c3d27e70a4ce1607e3bb9af09d746f8722cf135a7694afef879fc5a2 AS runtime
+FROM cgr.dev/chainguard/wolfi-base@sha256:c2a4815b6ca49b9bbafd451b4bde690d567a86b2b6b54877faac8082a7bc4296 AS runtime
 # --8<-- [end:runtime-base]
 
 ARG AGENT_SOURCE_COMMIT=unknown
