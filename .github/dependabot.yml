@@ -1,111 +1,35 @@
-# https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
-#
-# Dependabot keeps the repository's pin-everything policy current instead of pinned-and-forgotten.
-# It is native to GitHub and needs no token, no app install, and no self-hosted workflow.
-#
-# Dependabot does not support globs in `directory`, so each project gets its own entry: the docs
-# root, the agent, and the MLflow image environment are three independent uv projects.
-#
-# Nothing auto-merges. The offline gate cannot see model or protocol drift, so every update goes
-# through the local validation playbook in docs 8.2. Releases.
-#
-# What Dependabot does NOT cover here, and is therefore updated by hand (see AGENTS.md "Pinned
-# contracts" and the quarterly docs-freshness issue): the `[tools]` pins in mise.toml plus
-# mise.lock, the Helm chart versions in infra/helmfile.yaml, the image digests inside
-# infra/k8s/**, and the Wolfi `apk` pins in agents/python/Dockerfile.
+# Docs: https://docs.github.com/en/code-security/reference/supply-chain-security/dependabot-options-reference
+# Security updates only: `open-pull-requests-limit: 0` disables version updates, while
+# Dependabot still opens one grouped fix PR per ecosystem when an alert has a patched
+# release. `schedule` is required by the schema; it only paces the disabled version updates.
+# Not covered, so updated by hand (AGENTS.md "Pinned contracts" and the quarterly docs-freshness
+# issue): routine package and Action releases, Dockerfile base images (no advisories exist for them),
+# the `[tools]` pins in mise.toml plus mise.lock, the Helm chart versions in infra/helmfile.yaml,
+# the image digests inside infra/k8s/**, and the Wolfi `apk` pins. Nothing auto-merges.
 version: 2
 updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
-      day: monday
+    open-pull-requests-limit: 0
     commit-message:
-      prefix: "chore(deps)"
-    open-pull-requests-limit: 5
+      prefix: "fix(deps)"
     groups:
-      github-actions:
-        patterns:
-          - "*"
-
+      actions-security:
+        applies-to: security-updates
+        patterns: ["*"]
   - package-ecosystem: uv
-    directory: / # documentation build (Zensical) and the authoring toolchain
+    directories:
+      - /
+      - /agents/python
+      - /infra/mlflow
     schedule:
       interval: weekly
-      day: monday
+    open-pull-requests-limit: 0
     commit-message:
-      prefix: "chore(deps)"
-    open-pull-requests-limit: 5
+      prefix: "fix(deps)"
     groups:
-      docs-dependencies:
-        patterns:
-          - "*"
-        update-types:
-          - minor
-          - patch
-
-  - package-ecosystem: uv
-    directory: /agents/python # the reference agent, its tests, and its evaluations
-    schedule:
-      interval: weekly
-      day: monday
-    commit-message:
-      prefix: "chore(deps)"
-    open-pull-requests-limit: 5
-    groups:
-      agent-dependencies:
-        patterns:
-          - "*"
-        exclude-patterns:
-          # Coordinated pins reviewed on their own, never inside the weekly batch.
-          - "google-adk*"
-          - "mlflow*"
-        update-types:
-          - minor
-          - patch
-
-  - package-ecosystem: uv
-    directory: /infra/mlflow # the locked self-hosted MLflow server image
-    schedule:
-      interval: weekly
-      day: monday
-    commit-message:
-      prefix: "chore(deps)"
-    open-pull-requests-limit: 5
-    groups:
-      mlflow-image-dependencies:
-        patterns:
-          - "*"
-        exclude-patterns:
-          - "mlflow*"
-        update-types:
-          - minor
-          - patch
-
-  - package-ecosystem: docker
-    directory: /agents/python # agent image base stages
-    schedule:
-      interval: weekly
-      day: monday
-    commit-message:
-      prefix: "chore(deps)"
-    open-pull-requests-limit: 5
-    ignore:
-      - dependency-name: python
-        update-types:
-          - version-update:semver-major
-          - version-update:semver-minor
-
-  - package-ecosystem: docker
-    directory: /infra/mlflow # MLflow image base stages
-    schedule:
-      interval: weekly
-      day: monday
-    commit-message:
-      prefix: "chore(deps)"
-    open-pull-requests-limit: 5
-    ignore:
-      - dependency-name: python
-        update-types:
-          - version-update:semver-major
-          - version-update:semver-minor
+      python-security:
+        applies-to: security-updates
+        patterns: ["*"]

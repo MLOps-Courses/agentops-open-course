@@ -33,11 +33,11 @@ The quarterly `.github/workflows/freshness.yml` workflow appends a read-only rep
 - [ ] The agentgateway pin and its `202`-on-`DELETE` session-termination quirk still agree with upstream — `mise.toml`, `docs/5. Gateway/5.2. MCP Gateway.md`, `docs/6. Platform/6.5. Platform Gateway.md`.
 - [ ] The kagent chart release and API version still agree with the immutable Helm sources and generated schemas — `infra/helmfile.yaml`, `infra/kagent/schemas`, and Chapter 6.
 - [ ] Wolfi apk exact pins still resolve from the rolling repository and match both runtime Dockerfiles — `agents/python/Dockerfile`, `infra/mlflow/Dockerfile`, and `docs/6. Platform/6.1. Containers.md`.
-- [ ] Container base-image digests, `uv`, and `trivy-action` pins current (Dependabot) — `agents/python/Dockerfile`.
+- [ ] Container base-image digests, `uv`, and `trivy-action` pins current (by hand; Dependabot covers security fixes only) — `agents/python/Dockerfile`.
 - [ ] The pinned `curlimages/curl` smoke image still resolves for every supported host architecture — `scripts/smoke-host.sh`.
 - [ ] Ollama evaluation release asset and SHA-256 still match the pinned version — `.github/workflows/eval.yml`.
 - [ ] Docker Buildx remains pinned to the current stable release, and its Docker/OCI index behavior still matches the release validator — `.github/workflows/release.yml`, `scripts/release_reconcile.py`.
-- [ ] GitHub Actions SHA pins current (Dependabot) — `.github/workflows/*.yml`.
+- [ ] GitHub Actions SHA pins current (by hand; Dependabot covers security fixes only) — `.github/workflows/*.yml`.
 
 ## Governance & foundation status
 
