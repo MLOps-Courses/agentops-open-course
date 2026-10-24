@@ -4,6 +4,11 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### 🔒 Security
+
+- _(images)_ Refresh the Wolfi runtime base past the `ca-certificates-bundle` Go `crypto/x509` advisory
+- _(observability)_ Move the MLflow server and client to 3.17.2 past the FileStore trace path-traversal and scorer SSRF advisories
+
 ## [0.11.0] - 2026-09-26
 
 The course returns to Python. Version 0.9 taught it in Go; that line is archived on the [`go` branch](https://github.com/MLOps-Courses/agentops-open-course/tree/go) with its v0.9.0 and v0.9.1 releases. A Go 0.10.0 was prepared there on 2026-09-11 but never published, so this release skips that number instead of reusing it. Every URL the Go site served redirects to the matching Python page.
