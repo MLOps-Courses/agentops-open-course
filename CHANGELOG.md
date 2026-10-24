@@ -8,6 +8,7 @@ All notable changes to this project are documented in this file.
 
 - _(images)_ Refresh the Wolfi runtime base past the `ca-certificates-bundle` Go `crypto/x509` advisory
 - _(observability)_ Move the MLflow server and client to 3.17.2 past the FileStore trace path-traversal and scorer SSRF advisories
+- _(telemetry)_ Override ADK's OpenTelemetry cap to 1.45.1, past the unbounded `tracestate` parsing advisory that MCP request metadata could reach
 
 ## [0.11.0] - 2026-09-26
 
